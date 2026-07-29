@@ -25,6 +25,12 @@ const ignoreMsgs = [
   '无效的刷新令牌', // 刷新令牌被删除时，不用提示
   '刷新令牌已过期' // 使用刷新令牌，刷新获取新的访问令牌时，结果因为过期失败，此时需要忽略。否则，会导致继续 401，无法跳转到登出界面
 ]
+
+const isDisabledModuleMsg = (msg: unknown) =>
+  typeof msg === 'string' &&
+  msg.includes('yudao-module-') &&
+  (msg.includes('已禁用') || msg.includes('表结构未导入'))
+
 // 是否显示重新登录
 export const isRelogin = { show: false }
 // Axios 无感知刷新令牌，参考 https://www.dashingdog.cn/article/11 与 https://segmentfault.com/a/1190000020210980 实现
@@ -150,6 +156,10 @@ service.interceptors.response.use(
     const msg = data.msg || errorCode[code] || errorCode['default']
     if (ignoreMsgs.indexOf(msg) !== -1) {
       // 如果是忽略的错误码，直接返回 msg 异常
+      return Promise.reject(msg)
+    } else if (isDisabledModuleMsg(msg)) {
+      // 可选模块未启用时，不再频繁弹窗打断主业务流程
+      console.warn('[disabled-module]', msg)
       return Promise.reject(msg)
     } else if (code === 401) {
       // 如果未认证，并且未进行刷新令牌，说明可能是访问令牌过期了

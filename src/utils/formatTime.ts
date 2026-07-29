@@ -63,13 +63,25 @@ export const defaultShortcuts = [
  * @description format 季度 + 星期 + 几周："YYYY-MM-DD HH:mm:ss WWW QQQQ ZZZ"
  * @returns 返回拼接后的时间字符串
  */
-export function formatDate(date: Date, format?: string): string {
+export type DateValue = Date | string | number | number[]
+
+const normalizeDateValue = (date: DateValue): Date | string | number => {
+  if (!Array.isArray(date)) {
+    return date
+  }
+  const [year, month = 1, day = 1, hour = 0, minute = 0, second = 0] = date
+  return new Date(year, month - 1, day, hour, minute, second)
+}
+
+export function formatDate(date: DateValue, format?: string): string {
   // 日期不存在，则返回空
   if (!date) {
     return ''
   }
   // 日期存在，则进行格式化
-  return date ? dayjs(date).format(format ?? 'YYYY-MM-DD HH:mm:ss') : ''
+  const value = normalizeDateValue(date)
+  const parsed = dayjs(value)
+  return parsed.isValid() ? parsed.format(format ?? 'YYYY-MM-DD HH:mm:ss') : ''
 }
 
 /**

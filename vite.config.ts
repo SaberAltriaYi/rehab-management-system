@@ -20,6 +20,29 @@ export default ({command, mode}: ConfigEnv): UserConfig => {
     } else {
         env = loadEnv(mode, root)
     }
+    const isInternal = mode === 'internal'
+    const internalAliases = isInternal
+        ? [
+            {
+                find: '@/utils/viewModules',
+                replacement: pathResolve('src/utils/viewModules.internal.ts')
+            },
+            {
+                find: '@/plugins/formCreate',
+                replacement: pathResolve('src/plugins/formCreate/internal.ts')
+            },
+            {
+                find: '@/views/bpm/model/form/PrintTemplate',
+                replacement: pathResolve('src/views/bpm/model/form/PrintTemplate/internal.ts')
+            },
+            {
+                // remaining.ts 中保留了上游 BPM 编辑器静态路由。内部版未启用 BPM，
+                // 将其编译到 404，避免 form-designer/wangEditor 4 进入生产产物。
+                find: '@/views/bpm/form/editor/index.vue',
+                replacement: pathResolve('src/views/Error/404.vue')
+            }
+        ]
+        : []
     return {
         base: env.VITE_BASE_PATH,
         root: root,
@@ -52,6 +75,7 @@ export default ({command, mode}: ConfigEnv): UserConfig => {
         resolve: {
             extensions: ['.mjs', '.js', '.ts', '.jsx', '.tsx', '.json', '.scss', '.css'],
             alias: [
+                ...internalAliases,
                 {
                     find: 'vue-i18n',
                     replacement: 'vue-i18n/dist/vue-i18n.cjs.js'
@@ -75,11 +99,15 @@ export default ({command, mode}: ConfigEnv): UserConfig => {
             },
             rollupOptions: {
                 output: {
-                    manualChunks: {
-                      echarts: ['echarts'], // 将 echarts 单独打包，参考 https://gitee.com/yudaocode/yudao-ui-admin-vue3/issues/IAB1SX 讨论
-                      'form-create': ['@form-create/element-ui'], // 参考 https://github.com/yudaocode/yudao-ui-admin-vue3/issues/148 讨论
-                      'form-designer': ['@form-create/designer'],
-                    }
+                    manualChunks: isInternal
+                        ? {
+                            echarts: ['echarts']
+                        }
+                        : {
+                            echarts: ['echarts'], // 将 echarts 单独打包，参考 https://gitee.com/yudaocode/yudao-ui-admin-vue3/issues/IAB1SX 讨论
+                            'form-create': ['@form-create/element-ui'], // 参考 https://github.com/yudaocode/yudao-ui-admin-vue3/issues/148 讨论
+                            'form-designer': ['@form-create/designer']
+                        }
                 },
             },
         },

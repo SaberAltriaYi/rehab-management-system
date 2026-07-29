@@ -127,6 +127,100 @@ const remainingRouter: AppRouteRecordRaw[] = [
       }
     ]
   },
+  {
+    path: '/rehab',
+    component: Layout,
+    name: 'rehab',
+    meta: {
+      hidden: true
+    },
+    children: [
+      {
+        path: 'patient/detail/:id',
+        component: () => import('@/views/rehab/patient/detail/index.vue'),
+        name: 'RehabPatientDetail',
+        meta: {
+          title: '患者详情',
+          noCache: true,
+          hidden: true,
+          canTo: true,
+          activeMenu: '/rehab/patient'
+        }
+      },
+      {
+        path: 'assessment/create',
+        component: () => import('@/views/rehab/assessment/create/index.vue'),
+        name: 'RehabAssessmentCreate',
+        meta: {
+          title: '新建评估',
+          noCache: true,
+          hidden: true,
+          canTo: true,
+          activeMenu: '/rehab/assessment'
+        }
+      },
+      {
+        path: 'assessment/edit/:id',
+        component: () => import('@/views/rehab/assessment/create/index.vue'),
+        name: 'RehabAssessmentEdit',
+        meta: {
+          title: '编辑评估',
+          noCache: true,
+          hidden: true,
+          canTo: true,
+          activeMenu: '/rehab/assessment'
+        }
+      },
+      {
+        path: 'assessment/detail/:id',
+        component: () => import('@/views/rehab/assessment/detail/index.vue'),
+        name: 'RehabAssessmentDetail',
+        meta: {
+          title: '评估详情',
+          noCache: true,
+          hidden: true,
+          canTo: true,
+          activeMenu: '/rehab/assessment'
+        }
+      },
+      {
+        path: 'plan/create',
+        component: () => import('@/views/rehab/plan/create/index.vue'),
+        name: 'RehabPlanCreate',
+        meta: {
+          title: '新建计划',
+          noCache: true,
+          hidden: true,
+          canTo: true,
+          activeMenu: '/rehab/plan'
+        }
+      },
+      {
+        path: 'plan/edit/:id',
+        component: () => import('@/views/rehab/plan/edit/index.vue'),
+        name: 'RehabPlanEdit',
+        meta: {
+          title: '编辑计划',
+          noCache: true,
+          hidden: true,
+          canTo: true,
+          activeMenu: '/rehab/plan'
+        }
+      },
+      {
+        path: 'plan/detail/:id',
+        component: () => import('@/views/rehab/plan/detail/index.vue'),
+        name: 'RehabPlanDetail',
+        meta: {
+          title: '计划详情',
+          noCache: true,
+          hidden: true,
+          canTo: true,
+          activeMenu: '/rehab/plan'
+        }
+      }
+    ]
+  },
 
   {
     path: '/codegen',
