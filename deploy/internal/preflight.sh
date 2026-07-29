@@ -27,6 +27,12 @@ command -v docker >/dev/null 2>&1 || fail "未安装 Docker"
 docker compose version >/dev/null 2>&1 || fail "Docker Compose 不可用"
 pass "Docker 与 Compose 可用"
 
+available_kb=$(df -Pk "$PROJECT_DIR" | awk 'NR == 2 {print $4}')
+minimum_kb=$((20 * 1024 * 1024))
+[ "${available_kb:-0}" -ge "$minimum_kb" ] \
+  || fail "部署磁盘可用空间不足 20 GiB"
+pass "部署磁盘可用空间不少于 20 GiB"
+
 [ -f "$ENV_FILE" ] || fail "缺少 deploy/internal/.env，请从 .env.example 复制后填写"
 if grep -q "CHANGE_ME\\|^DB_PASSWORD=$\\|^MYSQL_ROOT_PASSWORD=$\\|^REDIS_PASSWORD=$" "$ENV_FILE"; then
   fail ".env 仍包含 CHANGE_ME 占位密码"
