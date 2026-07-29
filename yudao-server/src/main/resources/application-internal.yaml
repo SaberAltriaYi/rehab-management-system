@@ -1,0 +1,146 @@
+server:
+  port: ${SERVER_PORT:48080}
+  forward-headers-strategy: framework
+
+spring:
+  autoconfigure:
+    exclude:
+      - com.alibaba.druid.spring.boot.autoconfigure.DruidDataSourceAutoConfigure
+      - org.springframework.ai.vectorstore.qdrant.autoconfigure.QdrantVectorStoreAutoConfiguration
+      - org.springframework.ai.vectorstore.milvus.autoconfigure.MilvusVectorStoreAutoConfiguration
+  datasource:
+    druid:
+      web-stat-filter:
+        enabled: false
+      stat-view-servlet:
+        enabled: false
+      filter:
+        stat:
+          enabled: true
+          log-slow-sql: true
+          slow-sql-millis: 500
+          merge-sql: true
+        wall:
+          config:
+            # 内部版业务 SQL 不需要一次执行多条语句，关闭以缩小 SQL 注入影响面。
+            multi-statement-allow: false
+    dynamic:
+      druid:
+        initial-size: 1
+        min-idle: 1
+        max-active: ${DB_POOL_MAX_ACTIVE:10}
+        max-wait: 60000
+        time-between-eviction-runs-millis: 60000
+        min-evictable-idle-time-millis: 600000
+        max-evictable-idle-time-millis: 1800000
+        validation-query: SELECT 1
+        test-while-idle: true
+        test-on-borrow: false
+        test-on-return: false
+      primary: master
+      datasource:
+        master:
+          url: jdbc:mysql://${DB_HOST:mysql}:${DB_PORT:3306}/${DB_NAME:ruoyi-vue-pro}?useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&nullCatalogMeansCurrent=true&rewriteBatchedStatements=true&useUnicode=true&characterEncoding=UTF-8
+          username: ${DB_USERNAME:yudao}
+          password: ${DB_PASSWORD}
+        slave:
+          lazy: true
+          url: jdbc:mysql://${DB_HOST:mysql}:${DB_PORT:3306}/${DB_NAME:ruoyi-vue-pro}?useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&nullCatalogMeansCurrent=true&rewriteBatchedStatements=true&useUnicode=true&characterEncoding=UTF-8
+          username: ${DB_USERNAME:yudao}
+          password: ${DB_PASSWORD}
+  redis:
+    host: ${REDIS_HOST:redis}
+    port: ${REDIS_PORT:6379}
+    database: ${REDIS_DATABASE:0}
+    password: ${REDIS_PASSWORD}
+  quartz:
+    auto-startup: true
+    scheduler-name: rehabInternalScheduler
+    job-store-type: jdbc
+    wait-for-jobs-to-complete-on-shutdown: true
+    jdbc:
+      initialize-schema: NEVER
+    properties:
+      org:
+        quartz:
+          scheduler:
+            instanceName: rehabInternalScheduler
+            instanceId: AUTO
+          jobStore:
+            class: org.springframework.scheduling.quartz.LocalDataSourceJobStore
+            isClustered: false
+            misfireThreshold: 60000
+          threadPool:
+            class: org.quartz.simpl.SimpleThreadPool
+            threadCount: 5
+            threadPriority: 5
+
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false
+
+knife4j:
+  enable: false
+
+# 系统模块会无条件装配微信客户端。内部版不开放微信/第三方登录，
+# 但仍需提供非生产占位值，避免无关 Bean 阻塞应用启动。
+wx:
+  mp:
+    app-id: disabled-internal
+    secret: disabled-internal
+    config-storage:
+      type: RedisTemplate
+      key-prefix: disabled:wx:mp
+      http-client-type: HttpClient
+  miniapp:
+    appid: disabled-internal
+    secret: disabled-internal
+    config-storage:
+      type: RedisTemplate
+      key-prefix: disabled:wx:miniapp
+      http-client-type: HttpClient
+
+justauth:
+  enabled: false
+
+management:
+  endpoints:
+    web:
+      base-path: /actuator
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+logging:
+  file:
+    name: ${LOG_PATH:/app/logs}/yudao-server.log
+  level:
+    cn.iocoder.yudao.module.rehab: INFO
+    cn.iocoder.yudao.module.system: INFO
+    cn.iocoder.yudao.module.infra: INFO
+
+yudao:
+  captcha:
+    enable: true
+  security:
+    mock-enable: false
+  access-log:
+    # 康复请求包含手机号、病史和评估原始数据；内部版关闭通用请求体日志，
+    # 业务审计继续由 rehab_audit_log 与各模块 operation_log 记录。
+    enable: false
+    console-enable: false
+  demo: false
+  rehab:
+    storage-path: ${REHAB_STORAGE_PATH:/app/data/rehab}
+    alert-job-enabled: ${REHAB_ALERT_JOB_ENABLED:true}
+    alert-job-cron: '${REHAB_ALERT_JOB_CRON:0 0 3 * * ?}'
+    alert-job-operator-user-id: ${REHAB_ALERT_JOB_OPERATOR_USER_ID:1}
+    ai:
+      enable-analysis: false
+      mock-mode: false
+      use-platform-bridge: false

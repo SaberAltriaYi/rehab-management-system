@@ -18,6 +18,9 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 @AutoConfiguration(after = YudaoWebAutoConfiguration.class)
 public class YudaoApiLogAutoConfiguration implements WebMvcConfigurer {
 
+    @Value("${yudao.access-log.console-enable:true}")
+    private boolean consoleLogEnabled;
+
     /**
      * 创建 ApiAccessLogFilter Bean，记录 API 请求日志
      */
@@ -38,7 +41,7 @@ public class YudaoApiLogAutoConfiguration implements WebMvcConfigurer {
 
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
-        registry.addInterceptor(new ApiAccessLogInterceptor());
+        registry.addInterceptor(new ApiAccessLogInterceptor(consoleLogEnabled));
     }
 
 }

@@ -1,0 +1,14 @@
+.git
+.idea
+.vscode
+**/.DS_Store
+**/node_modules
+**/dist
+**/dist-*
+!yudao-ui/yudao-ui-admin-vue3-app/dist-internal/
+!yudao-ui/yudao-ui-admin-vue3-app/dist-internal/**
+**/target/*
+!yudao-server/target/yudao-server.jar
+**/*.log
+data
+deploy/internal/.env

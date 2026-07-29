@@ -27,7 +27,7 @@ public class GeminiChatModelTests {
         .openAiApi(OpenAiApi.builder()
                 .baseUrl(GeminiChatModel.BASE_URL)
                 .completionsPath(GeminiChatModel.COMPLETE_PATH)
-                .apiKey("AIzaSyAVoBxgoFvvte820vEQMma2LKBnC98bqMQ")
+                .apiKey("DUMMY_API_KEY")
                 .build())
         .defaultOptions(OpenAiChatOptions.builder()
                 .model(GeminiChatModel.MODEL_DEFAULT) // 模型

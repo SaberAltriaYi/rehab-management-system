@@ -9,6 +9,7 @@ target/
 !.mvn/wrapper/maven-wrapper.jar
 
 .flattened-pom.xml
+**/.flattened-pom\ *.xml
 
 ######################################################################
 # IDE
@@ -49,6 +50,16 @@ nbdist/
 rebel.xml
 
 application-my.yaml
+/deploy/internal/.env
+/deploy/internal/certs/*
+!/deploy/internal/certs/README.md
+/deploy/internal/secrets/*
+!/deploy/internal/secrets/README.md
+/backups/
+/data/
+/output/
+/script/rehab/output/*
+!/script/rehab/output/.gitkeep
 
 /yudao-ui-app/unpackage/
 **/.DS_Store

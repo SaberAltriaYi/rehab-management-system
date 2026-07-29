@@ -14,7 +14,7 @@ import org.springframework.ai.image.ImageResponse;
 public class SiliconFlowImageModelTests {
 
     private final SiliconFlowImageModel imageModel = new SiliconFlowImageModel(
-            new SiliconFlowImageApi("sk-epsakfenqnyzoxhmbucsxlhkdqlcbnimslqoivkshalvdozz") // 密钥
+            new SiliconFlowImageApi("DUMMY_API_KEY") // 测试占位值
     );
 
     @Test

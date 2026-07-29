@@ -34,7 +34,7 @@ public class TongYiChatModelTests {
 
     private final DashScopeChatModel chatModel = DashScopeChatModel.builder()
             .dashScopeApi(DashScopeApi.builder()
-                    .apiKey("sk-47aa124781be4bfb95244cc62f63f7d0")
+                    .apiKey("DUMMY_API_KEY")
                     .build())
             .defaultOptions(DashScopeChatOptions.builder()
 //                    .withModel("qwen1.5-72b-chat") // 模型
@@ -105,7 +105,7 @@ public class TongYiChatModelTests {
         // 准备环境
         RerankModel rerankModel = new DashScopeRerankModel(
                 DashScopeApi.builder()
-                        .apiKey("sk-47aa124781be4bfb95244cc62f63f7d0")
+                        .apiKey("DUMMY_API_KEY")
                         .build());
         // 准备参数
         String query = "spring";

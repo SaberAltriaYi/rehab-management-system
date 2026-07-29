@@ -1,0 +1,5 @@
+repository=yudao-ui/yudao-ui-admin-vue3-app
+commit=6ad355dcb8086ce7e76815ce7edd697a5c74abe4
+tag=rehab-internal-v1.0.0-20260729
+build_mode=internal
+ai_enabled=false

@@ -24,7 +24,7 @@ public class MoonshotChatModelTests {
 
     private final MoonshotChatModel chatModel = MoonshotChatModel.builder()
             .moonshotApi(MoonshotApi.builder()
-                    .apiKey("sk-aHYYV1SARscItye5QQRRNbXij4fy65Ee7pNZlC9gsSQnUKXA") // 密钥
+                    .apiKey("DUMMY_API_KEY") // 测试占位值
                     .build())
             .defaultOptions(MoonshotChatOptions.builder()
                     .model("kimi-k2-0711-preview") // 模型

@@ -33,6 +33,19 @@ public class ApiAccessLogInterceptor implements HandlerInterceptor {
 
     private static final String ATTRIBUTE_STOP_WATCH = "ApiAccessLogInterceptor.StopWatch";
 
+    /**
+     * 是否在控制台打印请求参数。生产与含敏感业务数据的内部环境应关闭。
+     */
+    private final boolean consoleLogEnabled;
+
+    public ApiAccessLogInterceptor() {
+        this(true);
+    }
+
+    public ApiAccessLogInterceptor(boolean consoleLogEnabled) {
+        this.consoleLogEnabled = consoleLogEnabled;
+    }
+
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) {
         // 记录 HandlerMethod，提供给 ApiAccessLogFilter 使用
@@ -42,7 +55,7 @@ public class ApiAccessLogInterceptor implements HandlerInterceptor {
         }
 
         // 打印 request 日志
-        if (!SpringUtils.isProd()) {
+        if (consoleLogEnabled && !SpringUtils.isProd()) {
             Map<String, String> queryString = ServletUtils.getParamMap(request);
             String requestBody = ServletUtils.isJsonRequest(request) ? ServletUtils.getBody(request) : null;
             if (CollUtil.isEmpty(queryString) && StrUtil.isEmpty(requestBody)) {
@@ -64,11 +77,13 @@ public class ApiAccessLogInterceptor implements HandlerInterceptor {
     @Override
     public void afterCompletion(HttpServletRequest request, HttpServletResponse response, Object handler, Exception ex) {
         // 打印 response 日志
-        if (!SpringUtils.isProd()) {
+        if (consoleLogEnabled && !SpringUtils.isProd()) {
             StopWatch stopWatch = (StopWatch) request.getAttribute(ATTRIBUTE_STOP_WATCH);
-            stopWatch.stop();
-            log.info("[afterCompletion][完成请求 URL({}) 耗时({} ms)]",
-                    request.getRequestURI(), stopWatch.getTotalTimeMillis());
+            if (stopWatch != null) {
+                stopWatch.stop();
+                log.info("[afterCompletion][完成请求 URL({}) 耗时({} ms)]",
+                        request.getRequestURI(), stopWatch.getTotalTimeMillis());
+            }
         }
     }
 

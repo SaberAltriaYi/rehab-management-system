@@ -87,6 +87,9 @@ public class GlobalExceptionHandler {
         if (ex instanceof BindException) {
             return bindExceptionHandler((BindException) ex);
         }
+        if (ex instanceof HttpMessageNotReadableException) {
+            return methodArgumentTypeInvalidFormatExceptionHandler((HttpMessageNotReadableException) ex);
+        }
         if (ex instanceof ConstraintViolationException) {
             return constraintViolationExceptionHandler((ConstraintViolationException) ex);
         }
@@ -188,7 +191,7 @@ public class GlobalExceptionHandler {
         if (StrUtil.startWith(ex.getMessage(), "Required request body is missing")) {
             return CommonResult.error(BAD_REQUEST.getCode(), "请求参数类型错误: request body 缺失");
         }
-        return defaultExceptionHandler(ServletUtils.getRequest(), ex);
+        return CommonResult.error(BAD_REQUEST.getCode(), "请求参数类型错误: 请求体格式不正确");
     }
 
     /**
