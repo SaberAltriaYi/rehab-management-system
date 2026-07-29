@@ -92,6 +92,16 @@ WHERE deleted = 0
     OR component LIKE 'rehab/ai-%'
   )
 UNION ALL
+SELECT 'undelivered_top_menus_enabled', COUNT(*)
+FROM system_menu
+WHERE deleted = 0
+  AND status = 0
+  AND parent_id = 0
+  AND path IN (
+    '/pay', '/report', '/bpm', '/member', '/mp',
+    '/mall', '/erp', '/crm', '/ai', '/iot'
+  )
+UNION ALL
 SELECT 'oauth_default_clients_enabled', COUNT(*)
 FROM system_oauth2_client
 WHERE deleted = b'0' AND status = 0 AND client_id = 'default'
@@ -234,6 +244,7 @@ rehab_tables=$(metric_value rehab_tables)
 [ "$(metric_value non_utf8mb4_tables)" -eq 0 ] || fail "存在非 utf8mb4 康复表"
 [ "$(metric_value ai_config_rows_enabled)" -eq 0 ] || fail "数据库中仍有启用的康复 AI 配置"
 [ "$(metric_value ai_menus_enabled)" -eq 0 ] || fail "数据库中仍有启用的 AI 菜单"
+[ "$(metric_value undelivered_top_menus_enabled)" -eq 0 ] || fail "数据库中仍有启用的未交付模块菜单"
 [ "$(metric_value oauth_default_clients_enabled)" -eq 1 ] || fail "内部后台登录客户端状态异常"
 [ "$(metric_value oauth_nondefault_clients_enabled)" -eq 0 ] || fail "内部版仍有启用的非登录 OAuth2 客户端"
 [ "$(metric_value oauth_clients_with_weak_secret)" -eq 0 ] || fail "OAuth2 客户端仍有弱演示 secret"

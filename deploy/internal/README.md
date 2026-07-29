@@ -4,6 +4,7 @@
 
 - Nginx `1.30.4-alpine`：HTTPS 管理端及同源 `/admin-api` 代理
 - Spring Boot `2.7.18` / Java 8 运行时：业务 API
+- Tomcat `9.0.120`、Jackson `2.21.4`、Netty `4.2.16.Final`、MySQL Connector/J `9.7.0`
 - MySQL `8.4.10`：业务数据
 - Redis `7.4.10-alpine`：缓存、验证码和登录会话
 - Vue 3、Vite、Element Plus：内部管理端
@@ -29,12 +30,11 @@ Compose 内部网络通信。AI 在前端、后端和数据库菜单三处关闭
 建议使用 JDK 17 LTS、Maven 3.9、Node.js 20/22 和项目锁定的 pnpm。
 
 ```bash
-# 后端测试和干净构建
+# 后端测试和隔离构建
 mvn -pl yudao-module-rehab test
 mvn -pl yudao-framework/yudao-spring-boot-starter-web \
   -Dtest=ApiAccessLogInterceptorTest,GlobalExceptionHandlerTest test
-mvn clean -DskipTests
-mvn -pl yudao-server -am package -DskipTests
+deploy/internal/build-server-isolated.sh
 
 # 内部前端
 cd yudao-ui/yudao-ui-admin-vue3-app
@@ -51,7 +51,19 @@ cd ../../..
 - `yudao-server/target/yudao-server.jar`
 - `yudao-ui/yudao-ui-admin-vue3-app/dist-internal/`
 
-当前生产依赖审计为 0 个已知漏洞。预检还会扫描内部前端产物，拒绝已停用的
+后端发布脚本会在系统临时目录中复制源码并构建，再校验 JAR 中没有文件同步产生的
+`* 2.class` 冲突副本。项目位于 iCloud、NAS 或其他同步目录时必须使用该脚本，不要直接把
+工作区 `target/` 当作发布产物。
+
+当前前端生产依赖审计为 0 个已知漏洞。四个容器镜像的操作系统包 High/Critical 为 0；
+后端 Java 库扫描从 56 项降至 8 项条件型条目，均已完成适用性核对和补偿控制，详见
+`deploy/internal/SECURITY_RISK_REGISTER.md`。可用固定 Trivy `v0.72.0` 复验：
+
+```bash
+TRIVY_BIN=/可信路径/trivy deploy/internal/security-scan.sh
+```
+
+预检还会扫描内部前端产物，拒绝已停用的
 form-create/wangEditor 代码进入发布包。全仓库类型检查仍有上游存量问题，发布门禁为自定义康复
 代码检查、内部生产构建、自动测试和真实浏览器回归。
 
@@ -116,7 +128,7 @@ deploy/internal/smoke-test.sh
 ```
 
 只有在已逐项确认某个旧库已经执行相应 SQL、但尚未创建账本时，才可使用
-`deploy/internal/migrate.sh baseline 015`。不得猜测基线版本。当前发布清单共 18 个版本，
+`deploy/internal/migrate.sh baseline 015`。不得猜测基线版本。当前发布清单共 19 个版本，
 数据库必须显示全部登记且校验和一致。
 
 不要对已有业务库手工执行 `clean-demo-rehab-data.sql` 或 `internal-hardening.sql`；这两个脚本只用于
@@ -135,8 +147,8 @@ docker compose --env-file deploy/internal/.env \
 
 只读发布回归会执行：部署预检、数据库结构/数据完整性、迁移账本、HTTPS/安全头/鉴权、生产依赖审计
 和前端高风险依赖产物扫描。数据库门禁要求 34 张康复表、41 个核心外键、InnoDB、utf8mb4、
-租户字段与索引正确，且无重复业务编号、孤儿关系、跨租户关系、AI 启用记录、启用的非登录
-OAuth2 客户端或弱演示 secret。
+租户字段与索引正确，且无重复业务编号、孤儿关系、跨租户关系、AI 启用记录、未交付模块菜单、
+启用的非登录 OAuth2 客户端或弱演示 secret。
 
 ## 七、附件
 
@@ -199,5 +211,7 @@ docker compose --env-file deploy/internal/.env \
 4. 将最新加密备份复制到部署机外，将 `backup.key` 单独保管。
 5. 至少两名工作室成员完成真实设备核心流程验收。
 6. 由业务负责人、发布负责人和备份保管人完成上线签字。
+7. 发布负责人阅读并接受 `SECURITY_RISK_REGISTER.md` 中的 Java 8/Spring Boot 2 限定边界，
+   将 JDK 17 / Spring Boot 3 迁移列入下一技术周期。
 
 可直接使用 `deploy/internal/manual/` 中的表单，不得用自动测试结果代替人员姓名、日期和签字。

@@ -5,6 +5,7 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 PROJECT_DIR=$(CDPATH= cd -- "$SCRIPT_DIR/../.." && pwd)
 ENV_FILE=${ENV_FILE_OVERRIDE:-"$SCRIPT_DIR/.env"}
 COMPOSE_FILE="$SCRIPT_DIR/docker-compose.yml"
+MIGRATION_MANIFEST="$SCRIPT_DIR/migrations.manifest"
 BACKUP_DIR=${1:-}
 REHEARSAL_PROJECT="rehab-restore-rehearsal-$(date +%Y%m%d%H%M%S)"
 REHEARSAL_BACKUPS=$(mktemp -d)
@@ -16,6 +17,9 @@ fail() {
 
 [ -n "$BACKUP_DIR" ] || fail "用法：rehearse-restore.sh <rehab-backup-directory>"
 [ -d "$BACKUP_DIR" ] || fail "备份目录不存在：$BACKUP_DIR"
+[ -f "$MIGRATION_MANIFEST" ] || fail "缺少迁移清单：$MIGRATION_MANIFEST"
+EXPECTED_MIGRATION_COUNT=$(awk -F '|' '$1 !~ /^($|#)/ {count++} END {print count + 0}' "$MIGRATION_MANIFEST")
+[ "$EXPECTED_MIGRATION_COUNT" -gt 0 ] || fail "迁移清单为空"
 
 case "$REHEARSAL_PROJECT" in
   rehab-restore-rehearsal-*) ;;
@@ -72,8 +76,8 @@ WHERE deleted = b'0'
 SQL
 )
 printf '%s\n' "$fresh_metrics"
-printf '%s\n' "$fresh_metrics" | grep -q '^fresh_migration_versions=18$' \
-  || fail "全新数据卷未自动登记 18 个迁移版本"
+printf '%s\n' "$fresh_metrics" | grep -q "^fresh_migration_versions=${EXPECTED_MIGRATION_COUNT}$" \
+  || fail "全新数据卷迁移版本数与清单不一致"
 printf '%s\n' "$fresh_metrics" | grep -q '^fresh_oauth_default_clients_enabled=1$' \
   || fail "全新数据卷的内部登录客户端状态异常"
 printf '%s\n' "$fresh_metrics" | grep -q '^fresh_oauth_nondefault_clients_enabled=0$' \
@@ -100,7 +104,7 @@ WHERE constraint_schema = DATABASE()
 SQL
 )
 printf '%s\n' "$metrics"
-printf '%s\n' "$metrics" | grep -q '^migration_versions=18$' \
+printf '%s\n' "$metrics" | grep -q "^migration_versions=${EXPECTED_MIGRATION_COUNT}$" \
   || fail "恢复后的迁移账本版本数异常"
 printf '%s\n' "$metrics" | grep -q '^rehab_foreign_keys=41$' \
   || fail "恢复后的核心外键数量异常"

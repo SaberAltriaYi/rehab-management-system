@@ -1,6 +1,7 @@
 package cn.iocoder.yudao.module.system.service.user;
 
 import cn.hutool.core.util.RandomUtil;
+import cn.hutool.core.util.StrUtil;
 import cn.iocoder.yudao.framework.common.enums.CommonStatusEnum;
 import cn.iocoder.yudao.framework.common.exception.ServiceException;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
@@ -627,6 +628,31 @@ public class AdminUserServiceImplTest extends BaseDbUnitTest {
                 USER_PASSWORD_FAILED);
         // 校验调用
         verify(passwordEncoder, times(1)).matches(eq(oldPassword), eq(user.getPassword()));
+    }
+
+    @Test
+    public void testIsPasswordMatch_rejectsOverlongPasswordBeforeBCrypt() {
+        String rawPassword = RandomUtil.randomString(73);
+
+        assertFalse(userService.isPasswordMatch(rawPassword, "encoded"));
+        verify(passwordEncoder, never()).matches(anyString(), anyString());
+    }
+
+    @Test
+    public void testIsPasswordMatch_rejectsOverlongUtf8PasswordBeforeBCrypt() {
+        String rawPassword = StrUtil.repeat("测", 25); // 25 个汉字共 75 个 UTF-8 字节
+
+        assertFalse(userService.isPasswordMatch(rawPassword, "encoded"));
+        verify(passwordEncoder, never()).matches(anyString(), anyString());
+    }
+
+    @Test
+    public void testIsPasswordMatch_acceptsSupportedLength() {
+        String rawPassword = RandomUtil.randomString(16);
+        when(passwordEncoder.matches(rawPassword, "encoded")).thenReturn(true);
+
+        assertTrue(userService.isPasswordMatch(rawPassword, "encoded"));
+        verify(passwordEncoder).matches(rawPassword, "encoded");
     }
 
     @Test

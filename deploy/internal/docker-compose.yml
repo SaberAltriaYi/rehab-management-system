@@ -88,7 +88,8 @@ services:
       REDIS_PASSWORD: ${REDIS_PASSWORD:?请在 .env 中设置 REDIS_PASSWORD}
       REHAB_STORAGE_PATH: /app/data/rehab
       OPENAI_ENABLE_AI_ANALYSIS: "false"
-      JAVA_OPTS: ${JAVA_OPTS:--Xms256m -Xmx768m -Djava.security.egd=file:/dev/./urandom}
+      SERVER_SERVLET_SESSION_PERSISTENT: "false"
+      JAVA_OPTS: ${JAVA_OPTS:--Xms256m -Xmx768m -Djava.security.egd=file:/dev/./urandom -Dsun.io.useCanonCaches=false}
     volumes:
       - rehab-data:/app/data/rehab
       - server-logs:/app/logs

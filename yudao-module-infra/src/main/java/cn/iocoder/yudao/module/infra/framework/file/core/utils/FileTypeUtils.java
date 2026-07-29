@@ -1,26 +1,54 @@
 package cn.iocoder.yudao.module.infra.framework.file.core.utils;
 
 import cn.hutool.core.io.IoUtil;
+import cn.hutool.core.io.FileTypeUtil;
 import cn.hutool.core.util.StrUtil;
+import cn.hutool.http.HttpUtil;
 import cn.iocoder.yudao.framework.common.util.http.HttpUtils;
-import lombok.SneakyThrows;
-import lombok.extern.slf4j.Slf4j;
-import org.apache.tika.Tika;
-import org.apache.tika.mime.MimeTypeException;
-import org.apache.tika.mime.MimeTypes;
 
 import javax.servlet.http.HttpServletResponse;
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  * 文件类型 Utils
  *
  * @author 芋道源码
  */
-@Slf4j
 public class FileTypeUtils {
 
-    private static final Tika TIKA = new Tika();
+    private static final String OCTET_STREAM = "application/octet-stream";
+
+    private static final Map<String, String> MIME_EXTENSION_MAP;
+
+    static {
+        Map<String, String> extensions = new HashMap<>();
+        extensions.put("image/jpeg", ".jpg");
+        extensions.put("image/png", ".png");
+        extensions.put("image/gif", ".gif");
+        extensions.put("image/webp", ".webp");
+        extensions.put("image/bmp", ".bmp");
+        extensions.put("image/svg+xml", ".svg");
+        extensions.put("application/pdf", ".pdf");
+        extensions.put("application/zip", ".zip");
+        extensions.put("application/msword", ".doc");
+        extensions.put("application/vnd.openxmlformats-officedocument.wordprocessingml.document", ".docx");
+        extensions.put("application/vnd.ms-excel", ".xls");
+        extensions.put("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", ".xlsx");
+        extensions.put("application/vnd.ms-powerpoint", ".ppt");
+        extensions.put("application/vnd.openxmlformats-officedocument.presentationml.presentation", ".pptx");
+        extensions.put("text/plain", ".txt");
+        extensions.put("text/csv", ".csv");
+        extensions.put("application/json", ".json");
+        extensions.put("application/xml", ".xml");
+        extensions.put("text/xml", ".xml");
+        extensions.put("video/mp4", ".mp4");
+        extensions.put("audio/mpeg", ".mp3");
+        MIME_EXTENSION_MAP = Collections.unmodifiableMap(extensions);
+    }
 
     /**
      * 获得文件的 mineType，对于 doc，jar 等文件会有误差
@@ -28,9 +56,8 @@ public class FileTypeUtils {
      * @param data 文件内容
      * @return mineType 无法识别时会返回“application/octet-stream”
      */
-    @SneakyThrows
     public static String getMineType(byte[] data) {
-        return TIKA.detect(data);
+        return getMineType(data, null);
     }
 
     /**
@@ -40,7 +67,7 @@ public class FileTypeUtils {
      * @return mineType 无法识别时会返回“application/octet-stream”
      */
     public static String getMineType(String name) {
-        return TIKA.detect(name);
+        return HttpUtil.getMimeType(name, OCTET_STREAM);
     }
 
     /**
@@ -51,7 +78,15 @@ public class FileTypeUtils {
      * @return mineType 无法识别时会返回“application/octet-stream”
      */
     public static String getMineType(byte[] data, String name) {
-        return TIKA.detect(data, name);
+        String safeName = StrUtil.nullToEmpty(name);
+        String extension = FileTypeUtil.getType(new ByteArrayInputStream(data), safeName);
+        if (StrUtil.isNotEmpty(extension)) {
+            String detectedType = HttpUtil.getMimeType("file." + extension);
+            if (StrUtil.isNotEmpty(detectedType)) {
+                return detectedType;
+            }
+        }
+        return getMineType(safeName);
     }
 
     /**
@@ -63,12 +98,7 @@ public class FileTypeUtils {
      * @return 后缀，例如说 .pdf
      */
     public static String getExtension(String mineType) {
-        try {
-            return MimeTypes.getDefaultMimeTypes().forName(mineType).getExtension();
-        } catch (MimeTypeException e) {
-            log.warn("[getExtension][获取文件后缀({}) 失败]", mineType, e);
-            return null;
-        }
+        return MIME_EXTENSION_MAP.get(mineType);
     }
 
     /**

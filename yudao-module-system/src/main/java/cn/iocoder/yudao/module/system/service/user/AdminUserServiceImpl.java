@@ -42,6 +42,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import javax.annotation.Resource;
 import javax.validation.ConstraintViolationException;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -536,7 +537,9 @@ public class AdminUserServiceImpl implements AdminUserService {
 
     @Override
     public boolean isPasswordMatch(String rawPassword, String encodedPassword) {
-        return passwordEncoder.matches(rawPassword, encodedPassword);
+        // BCrypt 只处理前 72 个字节；拒绝超长输入，避免不同密码共享相同前缀时被误判为匹配。
+        return rawPassword != null && rawPassword.getBytes(StandardCharsets.UTF_8).length <= 72
+                && passwordEncoder.matches(rawPassword, encodedPassword);
     }
 
     /**

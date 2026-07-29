@@ -17,3 +17,4 @@
 016|08d3d8de2480523a95c1a1062f71494b695f92085db52b8112ef29ea26ddc302|sql/mysql/rehab-step10-integrity-v1.sql|核心关系完整性约束
 017|60cba3977703f1af12f6ee692da4730c5610c3ed4d7c7c69aa05767402b08480|sql/mysql/rehab-step11-auth-hardening-v1.sql|停用并轮换演示 OAuth2 客户端
 018|e85a527672f5ac2ae82768ea4644bd9a37f33bdf63cd46eff968ecdfab26f948|sql/mysql/rehab-step12-internal-login-client-v1.sql|保留无外部授权能力的内部登录客户端
+019|eed12ce59f4cdedec7cef2cb495ce33560c644d8e54b7aae843df6e668901cfc|sql/mysql/rehab-step13-disable-undelivered-menus-v1.sql|关闭未交付模块菜单

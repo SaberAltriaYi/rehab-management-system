@@ -50,12 +50,12 @@
 <!--            <artifactId>yudao-module-report</artifactId>-->
 <!--            <version>${revision}</version>-->
 <!--        </dependency>-->
-        <!-- 工作流。默认注释，保证编译速度 -->
-        <dependency>
-            <groupId>cn.iocoder.boot</groupId>
-            <artifactId>yudao-module-bpm</artifactId>
-            <version>${revision}</version>
-        </dependency>
+        <!-- 工作流。本期内部康复版本不交付 BPM，避免将未使用的引擎和接口打入生产包 -->
+<!--        <dependency>-->
+<!--            <groupId>cn.iocoder.boot</groupId>-->
+<!--            <artifactId>yudao-module-bpm</artifactId>-->
+<!--            <version>${revision}</version>-->
+<!--        </dependency>-->
         <!-- 支付服务。默认注释，保证编译速度 -->
 <!--        <dependency>-->
 <!--            <groupId>cn.iocoder.boot</groupId>-->
@@ -92,12 +92,12 @@
 <!--            <version>${revision}</version>-->
 <!--        </dependency>-->
 
-        <!-- CRM 相关模块。默认注释，保证编译速度 -->
-        <dependency>
-            <groupId>cn.iocoder.boot</groupId>
-            <artifactId>yudao-module-crm</artifactId>
-            <version>${revision}</version>
-        </dependency>
+        <!-- CRM：内部康复版本不交付，患者档案由 rehab 模块独立提供 -->
+<!--        <dependency>-->
+<!--            <groupId>cn.iocoder.boot</groupId>-->
+<!--            <artifactId>yudao-module-crm</artifactId>-->
+<!--            <version>${revision}</version>-->
+<!--        </dependency>-->
 
         <!-- ERP 相关模块。默认注释，保证编译速度 -->
 <!--        <dependency>-->
@@ -132,6 +132,11 @@
             <groupId>cn.iocoder.boot</groupId>
             <artifactId>yudao-spring-boot-starter-protection</artifactId>
         </dependency>
+        <!-- 容器健康检查；仅在 internal 配置中暴露 health/info -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
 
     </dependencies>
 
@@ -144,6 +149,10 @@
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
                 <version>${spring.boot.version}</version>
+                <configuration>
+                    <!-- 显式锁定启动类，避免同步目录中的冲突副本干扰可重复构建。 -->
+                    <mainClass>cn.iocoder.yudao.server.YudaoServerApplication</mainClass>
+                </configuration>
                 <executions>
                     <execution>
                         <goals>
