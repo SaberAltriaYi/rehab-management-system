@@ -10,6 +10,7 @@ REHAB_TENANT_MIGRATION="$PROJECT_DIR/sql/mysql/rehab-step9-tenant-v1.sql"
 REHAB_INTEGRITY_MIGRATION="$PROJECT_DIR/sql/mysql/rehab-step10-integrity-v1.sql"
 AUTH_HARDENING_MIGRATION="$PROJECT_DIR/sql/mysql/rehab-step11-auth-hardening-v1.sql"
 INTERNAL_LOGIN_MIGRATION="$PROJECT_DIR/sql/mysql/rehab-step12-internal-login-client-v1.sql"
+UNDELIVERED_MENU_MIGRATION="$PROJECT_DIR/sql/mysql/rehab-step13-disable-undelivered-menus-v1.sql"
 CA_CERT="$SCRIPT_DIR/certs/ca.crt"
 SERVER_CERT="$SCRIPT_DIR/certs/server.crt"
 SERVER_KEY="$SCRIPT_DIR/certs/server.key"
@@ -21,6 +22,14 @@ fail() {
 
 pass() {
   echo "PASS: $1"
+}
+
+file_mode() {
+  if stat -f '%Lp' "$1" >/dev/null 2>&1; then
+    stat -f '%Lp' "$1"
+  else
+    stat -c '%a' "$1"
+  fi
 }
 
 command -v docker >/dev/null 2>&1 || fail "未安装 Docker"
@@ -50,6 +59,7 @@ redis_password=$(env_value REDIS_PASSWORD)
 bind_address=$(env_value BIND_ADDRESS)
 tls_port=$(env_value TLS_PORT)
 backup_key_file=$(env_value BACKUP_KEY_FILE)
+lan_hostname=$(env_value LAN_HOSTNAME)
 [ "${#db_password}" -ge 24 ] || fail "DB_PASSWORD 长度必须至少为 24"
 [ "${#mysql_root_password}" -ge 24 ] || fail "MYSQL_ROOT_PASSWORD 长度必须至少为 24"
 [ "${#redis_password}" -ge 24 ] || fail "REDIS_PASSWORD 长度必须至少为 24"
@@ -66,10 +76,14 @@ pass "部署环境文件已配置"
 [ -f "$CA_CERT" ] || fail "缺少内部 CA，请执行 deploy/internal/generate-tls.sh"
 [ -f "$SERVER_CERT" ] || fail "缺少服务器证书，请执行 deploy/internal/generate-tls.sh"
 [ -f "$SERVER_KEY" ] || fail "缺少服务器私钥，请执行 deploy/internal/generate-tls.sh"
-[ "$(stat -f '%Lp' "$SERVER_KEY")" = "600" ] || fail "服务器私钥权限必须为 600"
+[ "$(file_mode "$SERVER_KEY")" = "600" ] || fail "服务器私钥权限必须为 600"
 openssl verify -CAfile "$CA_CERT" "$SERVER_CERT" >/dev/null || fail "服务器证书链校验失败"
 openssl x509 -in "$SERVER_CERT" -noout -checkip "$bind_address" >/dev/null \
   || fail "服务器证书不包含 BIND_ADDRESS=$bind_address"
+if [ -n "$lan_hostname" ]; then
+  openssl x509 -in "$SERVER_CERT" -noout -checkhost "$lan_hostname" >/dev/null \
+    || fail "服务器证书不包含 LAN_HOSTNAME=$lan_hostname"
+fi
 pass "内部 HTTPS 证书有效并匹配绑定地址"
 
 case "$backup_key_file" in
@@ -77,7 +91,7 @@ case "$backup_key_file" in
   *) backup_key_path="$PROJECT_DIR/$backup_key_file" ;;
 esac
 [ -f "$backup_key_path" ] || fail "缺少备份加密密钥，请执行 deploy/internal/generate-backup-key.sh"
-[ "$(stat -f '%Lp' "$backup_key_path")" = "600" ] || fail "备份加密密钥权限必须为 600"
+[ "$(file_mode "$backup_key_path")" = "600" ] || fail "备份加密密钥权限必须为 600"
 [ "$(wc -c < "$backup_key_path" | tr -d ' ')" -ge 48 ] || fail "备份加密密钥强度不足"
 pass "备份加密密钥已配置"
 
@@ -98,6 +112,7 @@ pass "前后端构建产物存在"
 [ -f "$REHAB_INTEGRITY_MIGRATION" ] || fail "缺少康复业务表关系完整性迁移脚本"
 [ -f "$AUTH_HARDENING_MIGRATION" ] || fail "缺少内部认证安全迁移脚本"
 [ -f "$INTERNAL_LOGIN_MIGRATION" ] || fail "缺少内部登录客户端迁移脚本"
+[ -f "$UNDELIVERED_MENU_MIGRATION" ] || fail "缺少未交付菜单关闭迁移脚本"
 grep -q "rehab-step9-tenant-v1.sql" "$SCRIPT_DIR/docker-compose.yml" \
   || fail "Compose 未挂载康复业务表多租户迁移脚本"
 grep -q "rehab-step10-integrity-v1.sql" "$SCRIPT_DIR/docker-compose.yml" \
@@ -106,6 +121,8 @@ grep -q "rehab-step11-auth-hardening-v1.sql" "$SCRIPT_DIR/docker-compose.yml" \
   || fail "Compose 未挂载内部认证安全迁移脚本"
 grep -q "rehab-step12-internal-login-client-v1.sql" "$SCRIPT_DIR/docker-compose.yml" \
   || fail "Compose 未挂载内部登录客户端迁移脚本"
+grep -q "rehab-step13-disable-undelivered-menus-v1.sql" "$SCRIPT_DIR/docker-compose.yml" \
+  || fail "Compose 未挂载未交付菜单关闭迁移脚本"
 grep -q "init-schema-history.sql" "$SCRIPT_DIR/docker-compose.yml" \
   || fail "Compose 未挂载全新数据库迁移账本初始化脚本"
 "$SCRIPT_DIR/migrate.sh" verify-files

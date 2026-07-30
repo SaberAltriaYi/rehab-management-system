@@ -1,35 +1,22 @@
-#!/usr/bin/env sh
+#!/bin/sh
 set -eu
 
-SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-ENV_FILE=${ENV_FILE_OVERRIDE:-"$SCRIPT_DIR/.env"}
-CERT_DIR="$SCRIPT_DIR/certs"
-TLS_IP=${1:-}
-TLS_HOSTNAME=${TLS_HOSTNAME:-}
-
-fail() {
-  echo "FAIL: $1" >&2
-  exit 1
-}
-
-[ -f "$ENV_FILE" ] || fail "缺少部署环境文件：$ENV_FILE"
-if [ -z "$TLS_IP" ]; then
-  TLS_IP=$(awk -F= '$1 == "BIND_ADDRESS" {sub(/^[^=]*=/, ""); print; exit}' "$ENV_FILE")
-fi
-if [ -z "$TLS_HOSTNAME" ]; then
-  TLS_HOSTNAME=$(awk -F= '$1 == "LAN_HOSTNAME" {sub(/^[^=]*=/, ""); print; exit}' "$ENV_FILE")
-fi
+CERT_DIR=/certs
+TLS_IP=${TLS_IP:-}
 TLS_HOSTNAME=${TLS_HOSTNAME:-rehab.local}
+
 case "$TLS_IP" in
-  ''|0.0.0.0|::*|*[!0-9.]*) fail "请传入明确的 IPv4 局域网地址或在 .env 设置 BIND_ADDRESS" ;;
+  ''|0.0.0.0|::*|*[!0-9.]*) echo "FAIL: TLS_IP 必须是明确的局域网 IPv4" >&2; exit 1 ;;
 esac
 case "$TLS_HOSTNAME" in
-  ''|*[!A-Za-z0-9.-]*) fail "LAN_HOSTNAME 只能包含字母、数字、点和连字符" ;;
+  ''|*[!A-Za-z0-9.-]*) echo "FAIL: TLS_HOSTNAME 格式无效" >&2; exit 1 ;;
 esac
 
 if [ -e "$CERT_DIR/ca.key" ] || [ -e "$CERT_DIR/server.key" ]; then
-  [ "${FORCE_REGENERATE_TLS:-}" = "YES" ] \
-    || fail "证书已存在；确需轮换时设置 FORCE_REGENERATE_TLS=YES"
+  [ "${FORCE_REGENERATE_TLS:-}" = "YES" ] || {
+    echo "FAIL: 证书已存在，拒绝覆盖" >&2
+    exit 1
+  }
 fi
 
 umask 077
@@ -40,13 +27,13 @@ trap 'rm -rf "$tmp_dir"' EXIT HUP INT TERM
 openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:3072 -out "$CERT_DIR/ca.key"
 openssl req -x509 -new -sha256 -days 3650 \
   -key "$CERT_DIR/ca.key" \
-  -subj "/C=CN/O=Rehab Internal/CN=Rehab Internal Root CA" \
+  -subj "/C=CN/O=Rehab LAN/CN=Rehab LAN Root CA" \
   -out "$CERT_DIR/ca.crt"
 
 openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:3072 -out "$CERT_DIR/server.key"
 openssl req -new -sha256 \
   -key "$CERT_DIR/server.key" \
-  -subj "/C=CN/O=Rehab Internal/CN=$TLS_HOSTNAME" \
+  -subj "/C=CN/O=Rehab LAN/CN=$TLS_HOSTNAME" \
   -out "$tmp_dir/server.csr"
 
 {
@@ -77,6 +64,3 @@ chmod 644 "$CERT_DIR/ca.crt" "$CERT_DIR/server.crt"
 openssl verify -CAfile "$CERT_DIR/ca.crt" "$CERT_DIR/server.crt"
 openssl x509 -in "$CERT_DIR/server.crt" -noout -checkip "$TLS_IP"
 openssl x509 -in "$CERT_DIR/server.crt" -noout -checkhost "$TLS_HOSTNAME"
-
-echo "PASS: 已为 $TLS_IP 和 $TLS_HOSTNAME 生成内部 HTTPS 证书"
-echo "成员设备只需安装：$CERT_DIR/ca.crt"

@@ -12,10 +12,25 @@
 仅 Nginx 的 HTTP 跳转端口和 HTTPS 端口绑定到指定局域网 IP。MySQL、Redis、Java 后端均只在
 Compose 内部网络通信。AI 在前端、后端和数据库菜单三处关闭，不需要任何模型密钥。
 
+面向空数据库的新主机，优先使用仓库根目录的一键安装入口。它会自动生成基础设施密钥、
+局域网证书和随机管理员密码，并在管理端对外提供前完成数据库加固：
+
+```bash
+# macOS / Linux
+./install.sh
+
+# Windows PowerShell
+.\install.ps1
+```
+
+首次登录信息只写入本机 `deploy/lan/FIRST_LOGIN.txt`；使用后应立即修改密码并删除该文件。
+以下手工流程用于维护现有部署或需要逐项控制的运维场景。
+
 ## 一、部署边界
 
 - 使用部署机明确的局域网 IPv4 地址，禁止 `0.0.0.0`。
-- 成员通过 `https://部署机IP:8443` 访问；`http://部署机IP:8080` 只做 308 跳转。
+- 成员通过 `https://部署机IP:8443` 访问；`http://部署机IP:8080/ca.crt` 用于下载
+  内部 CA，其余 HTTP 请求做 308 跳转。
 - 成员设备必须安装并信任 `deploy/internal/certs/ca.crt`。
 - 当前没有独立预约模块；可交付流程为患者、Episode、评估、报告、计划、任务、打卡、进度、
   复评、风险、随访和通知。
@@ -83,6 +98,7 @@ deploy/internal/generate-backup-key.sh
 | 变量 | 必需 | 说明 |
 | --- | --- | --- |
 | `BIND_ADDRESS` | 是 | 部署机明确的局域网 IPv4 或 `127.0.0.1` |
+| `LAN_HOSTNAME` | 否 | 证书备用名称，默认 `rehab.local`，需局域网 DNS/hosts 解析 |
 | `APP_PORT` | 否 | HTTP 跳转端口，默认 `8080` |
 | `TLS_PORT` | 是 | 当前固定为 `8443` |
 | `DB_PASSWORD` | 是 | MySQL 业务账号密码，至少 24 字符 |
@@ -94,7 +110,8 @@ deploy/internal/generate-backup-key.sh
 | `JAVA_OPTS` | 否 | 默认 `-Xms256m -Xmx768m` |
 | `TZ` | 否 | 默认 `Asia/Shanghai` |
 
-TLS 证书包含部署时的 IP。部署机 IP 变化后需要轮换证书，并在成员设备重新安装新的 CA。
+TLS 证书包含部署时的 IP 和 `rehab.local`。部署机 IP 变化后需要轮换证书，并在成员设备
+重新安装新的 CA；`rehab.local` 不会由安装脚本修改路由器或成员设备的 DNS。
 
 ## 四、首次启动
 
