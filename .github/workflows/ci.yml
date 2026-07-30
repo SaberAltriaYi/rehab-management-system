@@ -53,8 +53,14 @@ jobs:
       - uses: actions/checkout@v4
       - name: Validate POSIX scripts
         run: |
-          find deploy script -type f -name '*.sh' -print0 \
-            | xargs -0 -n1 sh -n
+          find deploy script -type f -name '*.sh' -print0 |
+            while IFS= read -r -d '' file; do
+              case "$(head -n 1 "$file")" in
+                *bash*) bash -n "$file" ;;
+                *sh*) sh -n "$file" ;;
+                *) echo "Unsupported shell shebang: $file" >&2; exit 1 ;;
+              esac
+            done
           sh -n install.sh
           sh -n rehabctl.sh
       - name: Verify migration checksums
