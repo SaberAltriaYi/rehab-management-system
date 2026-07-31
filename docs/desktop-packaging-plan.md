@@ -178,7 +178,8 @@ macOS 预留：
 
 ## 9. 自动化与验收
 
-新增 `.github/workflows/desktop-release.yml`，支持 `workflow_dispatch` 和 `v*` 标签：
+新增 `.github/workflows/desktop-release.yml`。提交到以 `master` 为目标的 PR 时做完整安装器
+回归；合并后支持 `workflow_dispatch` 手动构建，推送 `v*` 标签时构建并创建 draft Release：
 
 1. JDK 17 下运行康复模块及 Web 安全测试；
 2. 执行隔离后端构建；

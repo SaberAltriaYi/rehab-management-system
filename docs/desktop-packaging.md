@@ -115,7 +115,9 @@ pnpm tauri build --bundles dmg --target universal-apple-darwin
 ```
 
 Windows 安装器必须在 Windows x64 runner 构建；universal DMG 必须在 macOS runner 构建。
-GitHub Actions 工作流是跨平台发布的标准入口。
+GitHub Actions 工作流是跨平台发布的标准入口：面向 `master` 的 PR 自动做完整回归；
+合并后可从 Actions 页面手动运行 `Desktop installers`；推送与版本一致的 `v*` 标签时，
+在两平台都成功后创建 draft GitHub Release。
 
 更多内容：
 

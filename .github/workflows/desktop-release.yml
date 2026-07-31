@@ -29,9 +29,12 @@ jobs:
     name: Test application and prepare runtime
     runs-on: ubuntu-24.04
     timeout-minutes: 60
+    env:
+      # 生产 Compose 明确使用 Asia/Shanghai；上游短信时间戳测试依赖应用时区。
+      TZ: Asia/Shanghai
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Validate release version
         shell: bash
@@ -43,20 +46,20 @@ jobs:
           fi
 
       - name: Set up JDK
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: ${{ env.JAVA_VERSION }}
           cache: maven
 
       - name: Set up pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
         with:
           version: ${{ env.PNPM_VERSION }}
           run_install: false
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
@@ -108,7 +111,7 @@ jobs:
         run: desktop/scripts/test-runtime-e2e.sh
 
       - name: Upload runtime
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: desktop-runtime-${{ github.sha }}
           path: desktop/runtime/1.0.0/
@@ -126,16 +129,16 @@ jobs:
       WINDOWS_TIMESTAMP_URL: ${{ secrets.WINDOWS_TIMESTAMP_URL }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
         with:
           version: ${{ env.PNPM_VERSION }}
           run_install: false
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
@@ -150,7 +153,7 @@ jobs:
           workspaces: desktop/launcher/src-tauri
 
       - name: Download runtime
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v6
         with:
           name: desktop-runtime-${{ github.sha }}
           path: desktop/launcher/src-tauri/resources/runtime/1.0.0
@@ -212,7 +215,7 @@ jobs:
             Set-Content -Encoding utf8 artifacts/BUILD-INFO-windows.txt
 
       - name: Upload Windows installer
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: rehab-management-windows-${{ github.sha }}
           path: artifacts/
@@ -232,16 +235,16 @@ jobs:
       APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
         with:
           version: ${{ env.PNPM_VERSION }}
           run_install: false
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
@@ -258,7 +261,7 @@ jobs:
           workspaces: desktop/launcher/src-tauri
 
       - name: Download runtime
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v6
         with:
           name: desktop-runtime-${{ github.sha }}
           path: desktop/launcher/src-tauri/resources/runtime/1.0.0
@@ -324,7 +327,7 @@ jobs:
           } > artifacts/BUILD-INFO-macos.txt
 
       - name: Upload macOS installer
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: rehab-management-macos-${{ github.sha }}
           path: artifacts/
@@ -341,7 +344,7 @@ jobs:
       contents: write
     steps:
       - name: Download installers
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v6
         with:
           pattern: rehab-management-*-${{ github.sha }}
           path: release
