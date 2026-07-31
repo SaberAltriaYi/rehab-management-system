@@ -6,12 +6,12 @@
 
 | 文件 | 用途 |
 | --- | --- |
-| `01-software-basic-information.md` | 软件名称、版本、环境和待确认登记信息 |
+| `01-software-basic-information.md` | 软件名称、版本、环境和登记信息 |
 | `02-feature-list.md` | V1.0 实际交付功能与明确排除项 |
 | `03-self-developed-code-inventory.md` | 自研候选代码范围与取证方法 |
 | `04-upstream-and-third-party-inventory.md` | 上游及第三方边界 |
 | `05-version-release-checklist.md` | 版本、提交、构建物与发布证据 |
-| `06-ownership-statement.md` | 权属说明草案 |
+| `06-ownership-statement.md` | 权属说明 |
 | `07-database-table-inventory.md` | 34 张康复业务表清单 |
 | `08-test-results.md` | V1.0 验证记录 |
 | `09-application-material-checklist.md` | 正式申报材料人工准备清单 |

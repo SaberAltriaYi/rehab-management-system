@@ -12,6 +12,8 @@
 - Development method: independent development
 - Rights acquisition: original acquisition
 - Rights scope: all rights in the independently created additions
+- Employment status: not employment-created software
+- First-publication status: unpublished
 
 ## Claimed scope
 
@@ -28,6 +30,6 @@ The claim expressly excludes:
 
 The repository retains the upstream MIT License. Registration of original additions does not remove or narrow rights already granted under applicable open-source licenses.
 
-## Remaining confirmation
+## Supporting records
 
-The current information records one natural-person developer, no commission and no collaboration. Before signing the application, confirm that the software was not created as assigned employment work or mainly with an employer's protected material and technical conditions. Keep identity and supporting records with the controlled application file; do not commit identity documents to this public repository.
+The current information records one natural-person developer, no commission, no collaboration, no employment-development relationship and no public release. Keep identity and supporting records with the controlled application file; do not commit identity documents to this repository.

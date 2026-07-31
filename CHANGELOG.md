@@ -33,5 +33,5 @@ All notable product changes are recorded here. Product versions use semantic ver
 
 - V1.0 is intended for trusted internal LAN use.
 - There is no independently delivered appointment-calendar module.
-- Copyright owner 杨玺龙, sole developer status and completion date 2026-07-30 are recorded; first-publication and non-employment-work status still require confirmation.
+- Copyright owner 杨玺龙, sole developer status, completion date 2026-07-30, non-employment status and unpublished status are recorded.
 - SFMA, FMS and NASM-CES method content has no confirmed authorization or other use basis and is excluded from the software-copyright claim and identification materials.

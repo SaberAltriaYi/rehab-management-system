@@ -24,7 +24,7 @@ The names “芋道” and “RuoYi-Vue-Pro” are used only to identify the ups
 
 ## Original additions
 
-Subject to final non-employment-work verification, 杨玺龙 claims only the independently created rehabilitation business code, original report and workflow adaptations, database migrations, tests, security hardening and internal deployment tooling described in `docs/software-copyright/v1.0/03-self-developed-code-inventory.md`.
+杨玺龙 claims only the independently created rehabilitation business code, original report and workflow adaptations, database migrations, tests, security hardening and internal deployment tooling described in `docs/software-copyright/v1.0/03-self-developed-code-inventory.md`. The software is confirmed as independently developed, not employment-created and unpublished.
 
 No ownership is claimed over upstream code, third-party libraries, trademarks, assessment standards, books, clinical methods, or other materials owned by their respective rightsholders. No authorization or other use basis has been confirmed for SFMA, FMS or NASM-CES method content, so those materials are excluded from the claimed and application-identification scope.
 
