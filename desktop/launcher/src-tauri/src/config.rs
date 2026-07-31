@@ -1,7 +1,7 @@
 use crate::error::{LauncherError, LauncherResult};
 use crate::model::{LauncherSettings, VersionState, APP_VERSION};
 use bcrypt::{hash, DEFAULT_COST};
-use directories::ProjectDirs;
+use directories::BaseDirs;
 use rand::distr::{Alphanumeric, SampleString};
 use rcgen::{generate_simple_self_signed, CertifiedKey};
 use serde::{Deserialize, Serialize};
@@ -36,9 +36,11 @@ impl AppPaths {
     }
 
     pub fn platform_default() -> LauncherResult<Self> {
-        let project = ProjectDirs::from("com", "saberaltriayi", "rehab")
+        let base = BaseDirs::new()
             .ok_or_else(|| LauncherError::Internal("无法解析操作系统用户数据目录".to_owned()))?;
-        Ok(Self::from_data_dir(project.data_dir().to_path_buf()))
+        Ok(Self::from_data_dir(
+            base.data_dir().join("com.saberaltriayi.rehab"),
+        ))
     }
 
     pub fn create(&self) -> LauncherResult<()> {
@@ -388,10 +390,10 @@ mod tests {
     #[test]
     fn platform_data_directory_resolves_to_the_application_identifier() {
         let paths = AppPaths::platform_default().unwrap();
-        assert!(paths
-            .data_dir
-            .to_string_lossy()
-            .contains("com.saberaltriayi.rehab"));
+        assert_eq!(
+            paths.data_dir.file_name(),
+            Some(std::ffi::OsStr::new("com.saberaltriayi.rehab"))
+        );
     }
 
     #[test]

@@ -286,20 +286,18 @@ mod tests {
     use crate::runner::test_support::MockRunner;
     use crate::runner::CommandOutput;
     use std::cell::Cell;
+    use tempfile::tempdir;
 
     #[test]
     fn compose_arguments_are_arrays_and_keep_paths_intact() {
-        let context = context_for(
-            PathBuf::from("docker"),
-            Path::new("/tmp/runtime with spaces"),
-            PathBuf::from("/tmp/data with spaces/.env"),
-        );
+        let temp = tempdir().unwrap();
+        let runtime_dir = temp.path().join("runtime with spaces");
+        let env_file = temp.path().join("data with spaces").join(".env");
+        let context = context_for(PathBuf::from("docker"), &runtime_dir, env_file.clone());
         let args = context.compose_args(["up", "-d"]);
         assert_eq!(args[0], "compose");
-        assert!(args.contains(&OsString::from("/tmp/data with spaces/.env")));
-        assert!(args.contains(&OsString::from(
-            "/tmp/runtime with spaces/docker-compose.yml"
-        )));
+        assert!(args.contains(&env_file.into_os_string()));
+        assert!(args.contains(&runtime_dir.join("docker-compose.yml").into_os_string()));
         assert!(!args
             .iter()
             .any(|arg| arg.to_string_lossy().contains("sh -c")));
