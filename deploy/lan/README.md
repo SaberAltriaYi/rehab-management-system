@@ -1,6 +1,6 @@
-# 局域网一键部署
+# 运动康复评估与业务管理系统 V1.0：局域网一键部署
 
-本目录用于把康复管理系统部署到一台中央主机。手机、平板和电脑不安装业务客户端，只需与主机
+本目录用于把运动康复评估与业务管理系统（简称“康复管理系统”）V1.0 部署到一台中央主机。手机、平板和电脑不安装业务客户端，只需与主机
 处于同一可信 Wi-Fi/局域网并使用浏览器访问。
 
 支持的部署主机：
@@ -79,13 +79,13 @@ Release 同时提供压缩包、`.sha256` 和 Sigstore 签名 bundle。先执行
 [Cosign](https://docs.sigstore.dev/cosign/system_config/installation/) 验证签名：
 
 ```bash
-shasum -a 256 -c rehab-management-*.tar.gz.sha256
+shasum -a 256 -c sports-rehab-management-system-1.0.0.tar.gz.sha256
 cosign verify-blob \
-  --bundle rehab-management-*.tar.gz.sigstore.json \
+  --bundle sports-rehab-management-system-1.0.0.tar.gz.sigstore.json \
   --certificate-identity-regexp \
-  'https://github.com/SaberAltriaYi/rehab-management-system/.github/workflows/release.yml@refs/tags/rehab-lan-v.*' \
+  'https://github.com/SaberAltriaYi/rehab-management-system/.github/workflows/release.yml@refs/tags/v1.0.0' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-  rehab-management-*.tar.gz
+  sports-rehab-management-system-1.0.0.tar.gz
 ```
 
 只有校验通过后才解压和运行安装器。

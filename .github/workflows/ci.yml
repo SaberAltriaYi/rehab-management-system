@@ -50,6 +50,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Check repository for sensitive materials
+        run: script/rehab/check-repository-sensitive-materials.sh
       - name: Validate POSIX scripts
         run: |
           find deploy script -type f -name '*.sh' -print0 |

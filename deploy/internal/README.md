@@ -1,4 +1,6 @@
-# 芋道康复管理系统：工作室内部部署手册
+# 运动康复评估与业务管理系统 V1.0：工作室内部部署手册
+
+软件简称：康复管理系统；构建版本：`1.0.0`。
 
 本方案用于单台可信 Mac 主机和少量工作室成员，不对公网开放：
 
@@ -46,10 +48,13 @@ Compose 内部网络通信。AI 在前端、后端和数据库菜单三处关闭
 
 ```bash
 # 后端测试和隔离构建
-mvn -pl yudao-module-rehab test
+mvn -pl yudao-module-rehab -am test
 mvn -pl yudao-framework/yudao-spring-boot-starter-web \
   -Dtest=ApiAccessLogInterceptorTest,GlobalExceptionHandlerTest test
 deploy/internal/build-server-isolated.sh
+
+# 仓库敏感材料检查
+script/rehab/check-repository-sensitive-materials.sh
 
 # 内部前端
 cd yudao-ui/yudao-ui-admin-vue3-app

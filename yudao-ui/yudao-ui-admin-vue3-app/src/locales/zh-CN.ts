@@ -115,7 +115,7 @@ export default {
   },
   login: {
     welcome: '欢迎使用本系统',
-    message: '开箱即用的中后台管理系统',
+    message: '面向工作室成员的运动康复评估与业务管理平台',
     tenantname: '租户名称',
     username: '用户名',
     password: '密码',

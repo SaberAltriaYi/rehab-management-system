@@ -12,10 +12,10 @@
     <artifactId>yudao-module-rehab</artifactId>
     <packaging>jar</packaging>
 
-    <name>${project.artifactId}</name>
+    <name>运动康复评估与业务管理系统 - 康复业务模块</name>
     <description>
-        rehab 模块，康复评估系统的业务底座接入。
-        当前阶段只提供后台菜单、权限和占位接口，后续逐步扩展业务能力。
+        康复业务模块，提供患者档案、病程、评估、报告、训练计划、训练执行、
+        进度记录、复评、随访、通知、风险预警、审计和工作台等完整业务能力。
     </description>
 
     <dependencies>

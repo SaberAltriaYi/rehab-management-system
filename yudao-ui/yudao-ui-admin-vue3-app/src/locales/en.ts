@@ -114,7 +114,7 @@ export default {
   },
   login: {
     welcome: 'Welcome to the system',
-    message: 'Backstage management system',
+    message: 'Sports rehabilitation assessment and business management for studio members',
     tenantname: 'TenantName',
     username: 'Username',
     password: 'Password',

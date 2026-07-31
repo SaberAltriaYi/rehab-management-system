@@ -12,11 +12,10 @@
     <artifactId>yudao-server</artifactId>
     <packaging>jar</packaging>
 
-    <name>${project.artifactId}</name>
+    <name>运动康复评估与业务管理系统 - 服务端</name>
     <description>
-        后端 Server 的主项目，通过引入需要 yudao-module-xxx 的依赖，
-        从而实现提供 RESTful API 给 yudao-ui-admin、yudao-ui-user 等前端项目。
-        本质上来说，它就是个空壳（容器）！
+        运动康复评估与业务管理系统后端服务，集成认证、权限、基础设施、
+        患者管理、评估报告、训练计划、复评随访和业务工作台等 RESTful API。
     </description>
     <url>https://github.com/YunaiV/ruoyi-vue-pro</url>
 

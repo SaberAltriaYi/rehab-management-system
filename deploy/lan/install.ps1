@@ -162,7 +162,7 @@ if (-not (Test-Path $MarkerFile)) {
 
     $caHash = (Get-FileHash -Algorithm SHA256 (Join-Path $CertDir "ca.crt")).Hash.ToLowerInvariant()
     $firstLogin = @(
-        "康复管理系统首次登录信息",
+        "运动康复评估与业务管理系统 V1.0 首次登录信息",
         "",
         "访问地址：https://${BindAddress}:8443",
         "备用主机名：https://rehab.local:8443（需路由器 DNS 或设备 hosts 支持）",
@@ -186,7 +186,7 @@ Invoke-Compose up -d server admin
 Wait-Https $BindAddress
 
 Write-Host ""
-Write-Host "PASS: 康复管理系统局域网部署完成"
+Write-Host "PASS: 运动康复评估与业务管理系统 V1.0 局域网部署完成"
 Write-Host "访问地址：https://${BindAddress}:8443"
 Write-Host "CA 下载：http://${BindAddress}:8080/ca.crt"
 if (Test-Path $FirstLoginFile) {

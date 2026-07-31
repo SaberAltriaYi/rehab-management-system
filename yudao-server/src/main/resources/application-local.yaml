@@ -59,11 +59,11 @@ spring:
           username: root
           password: 123456
           #          username: sa # SQL Server 连接的示例
-          #          password: Yudao@2024 # SQL Server 连接的示例
+          #          password: ${LOCAL_SQLSERVER_PASSWORD:} # SQL Server 密码从本机环境注入
           #          username: SYSDBA # DM 连接的示例
           #          password: SYSDBA001 # DM 连接的示例
           #          username: root # OpenGauss 连接的示例
-          #          password: Yudao@2024 # OpenGauss 连接的示例
+          #          password: ${LOCAL_OPENGAUSS_PASSWORD:} # OpenGauss 密码从本机环境注入
         slave: # 模拟从库，可根据自己需要修改
           lazy: true # 开启懒加载，保证启动速度
           url: jdbc:mysql://127.0.0.1:3306/ruoyi-vue-pro?useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&rewriteBatchedStatements=true&nullCatalogMeansCurrent=true
@@ -222,9 +222,9 @@ wx:
       key-prefix: wa # Redis Key 的前缀
       http-client-type: HttpClient # 采用 HttpClient 请求微信公众号平台
 
---- #################### 芋道相关配置 ####################
+--- #################### 项目相关配置 ####################
 
-# 芋道配置项，设置当前项目所有自定义的配置
+# 项目配置项，保留上游 yudao 配置前缀以兼容现有框架
 yudao:
   captcha:
     enable: false # 本地环境，暂时关闭图片验证码，方便登录等接口的测试；

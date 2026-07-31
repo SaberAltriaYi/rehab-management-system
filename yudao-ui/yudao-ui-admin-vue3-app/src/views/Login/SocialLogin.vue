@@ -10,7 +10,10 @@
         <!-- 左上角的 logo + 系统标题 -->
         <div class="relative flex items-center text-white">
           <img alt="" class="mr-10px h-48px w-48px" src="@/assets/imgs/logo.png" />
-          <span class="text-20px font-bold">{{ underlineToHump(appStore.getTitle) }}</span>
+          <span class="text-20px font-bold">
+            {{ underlineToHump(appStore.getTitle) }}
+            <small class="ml-6px text-12px font-normal">{{ softwareVersion }}</small>
+          </span>
         </div>
         <!-- 左边的背景图 + 欢迎语 -->
         <div class="h-[calc(100%-60px)] flex items-center justify-center">
@@ -36,7 +39,10 @@
         >
           <div class="flex items-center at-2xl:hidden at-xl:hidden">
             <img alt="" class="mr-10px h-48px w-48px" src="@/assets/imgs/logo.png" />
-            <span class="text-20px font-bold">{{ underlineToHump(appStore.getTitle) }}</span>
+            <span class="text-20px font-bold">
+              {{ underlineToHump(appStore.getTitle) }}
+              <small class="ml-6px text-12px font-normal">{{ softwareVersion }}</small>
+            </span>
           </div>
           <div class="flex items-center justify-end space-x-10px h-48px">
             <ThemeSwitch />
@@ -174,6 +180,7 @@ const route = useRoute()
 
 const appStore = useAppStore()
 const { getPrefixCls } = useDesign()
+const softwareVersion = import.meta.env.VITE_APP_VERSION || 'V1.0'
 const prefixCls = getPrefixCls('login')
 const iconHouse = useIcon({ icon: 'ep:house' })
 const iconAvatar = useIcon({ icon: 'ep:avatar' })
@@ -199,9 +206,9 @@ const loginData = reactive({
   captchaEnable: import.meta.env.VITE_APP_CAPTCHA_ENABLE !== 'false',
   tenantEnable: import.meta.env.VITE_APP_TENANT_ENABLE !== 'false',
   loginForm: {
-    tenantName: '芋道源码',
-    username: 'admin',
-    password: 'admin123',
+    tenantName: import.meta.env.VITE_APP_DEFAULT_LOGIN_TENANT || '',
+    username: import.meta.env.VITE_APP_DEFAULT_LOGIN_USERNAME || '',
+    password: import.meta.env.VITE_APP_DEFAULT_LOGIN_PASSWORD || '',
     captchaVerification: '',
     rememberMe: false
   }

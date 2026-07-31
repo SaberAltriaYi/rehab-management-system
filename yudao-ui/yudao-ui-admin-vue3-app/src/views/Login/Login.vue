@@ -10,7 +10,10 @@
         <!-- 左上角的 logo + 系统标题 -->
         <div class="relative flex items-center text-white">
           <img alt="" class="mr-10px h-48px w-48px" src="@/assets/imgs/logo.png" />
-          <span class="text-20px font-bold">{{ underlineToHump(appStore.getTitle) }}</span>
+          <span class="text-20px font-bold">
+            {{ underlineToHump(appStore.getTitle) }}
+            <small class="ml-6px text-12px font-normal">{{ softwareVersion }}</small>
+          </span>
         </div>
         <!-- 左边的背景图 + 欢迎语 -->
         <div class="h-[calc(100%-60px)] flex items-center justify-center">
@@ -37,7 +40,10 @@
         >
           <div class="flex items-center at-2xl:hidden at-xl:hidden">
             <img alt="" class="mr-10px h-48px w-48px" src="@/assets/imgs/logo.png" />
-            <span class="text-20px font-bold" >{{ underlineToHump(appStore.getTitle) }}</span>
+            <span class="text-20px font-bold">
+              {{ underlineToHump(appStore.getTitle) }}
+              <small class="ml-6px text-12px font-normal">{{ softwareVersion }}</small>
+            </span>
           </div>
           <div class="flex items-center justify-end space-x-10px h-48px">
             <ThemeSwitch />
@@ -72,6 +78,7 @@ defineOptions({ name: 'Login' })
 const { t } = useI18n()
 const appStore = useAppStore()
 const { getPrefixCls } = useDesign()
+const softwareVersion = import.meta.env.VITE_APP_VERSION || 'V1.0'
 const prefixCls = getPrefixCls('login')
 </script>
 

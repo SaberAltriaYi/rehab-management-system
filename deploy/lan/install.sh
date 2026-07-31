@@ -164,7 +164,7 @@ if [ ! -f "$MARKER_FILE" ]; then
   CA_SHA256=$(openssl dgst -sha256 "$INTERNAL_DIR/certs/ca.crt" | awk '{print $NF}')
   umask 077
   {
-    echo "康复管理系统首次登录信息"
+    echo "运动康复评估与业务管理系统 V1.0 首次登录信息"
     echo
     echo "访问地址：https://$BIND_ADDRESS:8443"
     echo "备用主机名：https://rehab.local:8443（需路由器 DNS 或设备 hosts 支持）"
@@ -191,7 +191,7 @@ wait_for_https
 "$INTERNAL_DIR/smoke-test.sh"
 
 echo
-echo "PASS: 康复管理系统局域网部署完成"
+echo "PASS: 运动康复评估与业务管理系统 V1.0 局域网部署完成"
 echo "访问地址：https://$BIND_ADDRESS:8443"
 echo "CA 下载：http://$BIND_ADDRESS:8080/ca.crt"
 if [ -f "$FIRST_LOGIN_FILE" ]; then

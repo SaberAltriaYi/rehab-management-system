@@ -3,7 +3,7 @@ name: Build signed LAN release
 on:
   push:
     tags:
-      - "rehab-lan-v*"
+      - "v1.0.0"
 
 permissions:
   contents: write
@@ -27,6 +27,8 @@ jobs:
           node-version: "22"
           cache: pnpm
           cache-dependency-path: yudao-ui/yudao-ui-admin-vue3-app/pnpm-lock.yaml
+      - name: Check repository for sensitive materials
+        run: script/rehab/check-repository-sensitive-materials.sh
       - name: Build frontend
         working-directory: yudao-ui/yudao-ui-admin-vue3-app
         run: |
@@ -41,7 +43,7 @@ jobs:
           -Dtest=PasswordHashCliTest
           -Dsurefire.failIfNoSpecifiedTests=false test
       - name: Build release bundle
-        run: script/rehab/build-lan-release.sh "$GITHUB_REF_NAME"
+        run: script/rehab/build-lan-release.sh 1.0.0
       - uses: sigstore/cosign-installer@v3.9.2
       - name: Sign release bundle
         run: |
@@ -53,13 +55,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          release_flag=
-          case "$GITHUB_REF_NAME" in
-            *-rc*|*-beta*) release_flag=--prerelease ;;
-          esac
           gh release create "$GITHUB_REF_NAME" \
             deploy/lan/release-output/* \
             --verify-tag \
             --generate-notes \
-            $release_flag \
-            --title "康复管理系统局域网版 ${GITHUB_REF_NAME}"
+            --title "运动康复评估与业务管理系统 V1.0"

@@ -3,9 +3,9 @@ set -eu
 
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 PROJECT_DIR=$(CDPATH= cd -- "$SCRIPT_DIR/../.." && pwd)
-VERSION=${1:-rehab-lan-dev}
+VERSION=${1:-1.0.0}
 OUTPUT_DIR=${OUTPUT_DIR:-"$PROJECT_DIR/deploy/lan/release-output"}
-BUNDLE_NAME="rehab-management-${VERSION}"
+BUNDLE_NAME="sports-rehab-management-system-${VERSION}"
 STAGE_ROOT=$(mktemp -d)
 STAGE_DIR="$STAGE_ROOT/$BUNDLE_NAME"
 
@@ -29,6 +29,11 @@ copy_file() {
   cp "$PROJECT_DIR/$source_file" "$destination_file"
 }
 
+[ "$VERSION" = "1.0.0" ] || {
+  echo "FAIL: V1.0 发布包版本必须为 1.0.0" >&2
+  exit 1
+}
+
 [ -f "$PROJECT_DIR/yudao-server/target/yudao-server.jar" ] || {
   echo "FAIL: 缺少后端 JAR" >&2
   exit 1
@@ -41,7 +46,8 @@ copy_file() {
 mkdir -p "$STAGE_DIR" "$OUTPUT_DIR"
 
 for root_file in \
-  .dockerignore DEPLOYMENT_CHECKLIST.md \
+  .dockerignore README.md DEPLOYMENT_CHECKLIST.md \
+  LICENSE NOTICE.md THIRD_PARTY_NOTICES.md COPYRIGHT.md CHANGELOG.md \
   install.sh install.ps1 rehabctl.sh rehabctl.ps1; do
   copy_file "$root_file"
 done
@@ -87,15 +93,16 @@ cp "$PROJECT_DIR/yudao-ui/yudao-ui-admin-vue3-app/pnpm-lock.yaml" \
 cp -R "$PROJECT_DIR/yudao-ui/yudao-ui-admin-vue3-app/dist-internal" \
   "$STAGE_DIR/yudao-ui/yudao-ui-admin-vue3-app/dist-internal"
 
-backend_commit=$(git -C "$PROJECT_DIR" rev-parse HEAD)
-frontend_commit=$(git -C "$PROJECT_DIR/yudao-ui/yudao-ui-admin-vue3-app" rev-parse HEAD 2>/dev/null || echo monorepo)
+source_commit=$(git -C "$PROJECT_DIR" rev-parse HEAD)
 jar_sha=$(sha256_file "$PROJECT_DIR/yudao-server/target/yudao-server.jar")
 {
-  echo "# 康复管理系统局域网发布清单"
+  echo "# 运动康复评估与业务管理系统 V1.0 局域网发布清单"
   echo
-  echo "- 版本：\`$VERSION\`"
-  echo "- 后端/部署提交：\`$backend_commit\`"
-  echo "- 前端提交：\`$frontend_commit\`"
+  echo "- 正式名称：运动康复评估与业务管理系统"
+  echo "- 简称：康复管理系统"
+  echo "- 显示版本：\`V1.0\`"
+  echo "- 构建版本：\`$VERSION\`"
+  echo "- 源代码提交：\`$source_commit\`"
   echo "- JAR SHA-256：\`$jar_sha\`"
   echo "- 数据库迁移：001–019"
   echo "- AI：关闭"

@@ -925,12 +925,12 @@ const previewReport = async (row: any) => {
 
 const exportDocx = async (row: any) => {
   const blob = await exportRehabReportDocx(row.id)
-  download.word(blob, `${row.reportNo || 'rehab-report'}.docx`)
+  download.word(blob, `康复管理系统-V1.0-${row.reportNo || '评估报告'}.docx`)
 }
 
 const exportPdf = async (row: any) => {
   const blob = await exportRehabReportPdf(row.id)
-  download.pdf(blob, `${row.reportNo || 'rehab-report'}.pdf`)
+  download.pdf(blob, `康复管理系统-V1.0-${row.reportNo || '评估报告'}.pdf`)
 }
 
 const openCreatePlan = () => {
