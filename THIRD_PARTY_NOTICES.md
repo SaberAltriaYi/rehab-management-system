@@ -1,4 +1,4 @@
-<!-- Copyright (c) 2026 [软件著作权人名称]. This inventory preserves third-party notices and does not replace component licenses. -->
+<!-- Copyright (c) 2026 杨玺龙. This inventory preserves third-party notices and does not replace component licenses. -->
 
 # Third-Party Notices
 

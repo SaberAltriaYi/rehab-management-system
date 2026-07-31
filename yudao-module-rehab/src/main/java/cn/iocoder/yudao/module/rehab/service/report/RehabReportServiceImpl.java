@@ -71,7 +71,7 @@ public class RehabReportServiceImpl implements RehabReportService {
     private static final DateTimeFormatter REPORT_NO_DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyyMMdd");
     private static final String SOFTWARE_NAME = "运动康复评估与业务管理系统";
     private static final String SOFTWARE_VERSION = "V1.0";
-    private static final String SOFTWARE_COPYRIGHT_HOLDER = "[软件著作权人名称]";
+    private static final String SOFTWARE_COPYRIGHT_HOLDER = "杨玺龙";
     private static final String REPORT_TITLE = "康复综合评估报告";
     private static final String BRANDED_REPORT_TITLE = SOFTWARE_NAME + " " + SOFTWARE_VERSION + " - " + REPORT_TITLE;
 

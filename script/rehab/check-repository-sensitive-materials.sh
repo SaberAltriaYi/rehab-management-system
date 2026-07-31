@@ -1,5 +1,5 @@
 #!/usr/bin/env sh
-# SPDX-FileCopyrightText: 2026 [软件著作权人名称]
+# SPDX-FileCopyrightText: 2026 杨玺龙
 # SPDX-License-Identifier: MIT
 set -eu
 

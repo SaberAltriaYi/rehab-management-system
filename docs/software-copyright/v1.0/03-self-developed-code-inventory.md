@@ -1,4 +1,4 @@
-<!-- Copyright (c) 2026 [软件著作权人名称]. -->
+<!-- Copyright (c) 2026 杨玺龙. -->
 
 # 自研代码清单
 
@@ -18,6 +18,7 @@
 
 - `yudao-framework/`、`yudao-module-system/`、`yudao-module-infra/` 等上游框架通用代码；
 - 前端通用布局、组件库、上游业务页面和 `.image/` 宣传素材；
+- SFMA、FMS、NASM-CES 方法内容目前无授权或其他使用依据；相关协议构建器、评分/分流规则、表单、配置、测试及说明文字不得选入申请鉴别材料，也不得作为原创方法主张；
 - `node_modules`、Maven 缓存、构建产物、压缩包、数据库备份；
 - 许可证、第三方生成代码、第三方字体或图片；
 - 仅改名但没有原创表达的机械变更。
@@ -29,3 +30,17 @@
 3. 将需求记录、原型、数据库设计、测试记录和发布记录与提交日期对应。
 4. 对合作开发、员工职务开发和委托开发分别保存有效的权属文件。
 5. 源程序鉴别材料优先选取连续、可读、能体现核心业务逻辑的自研代码。
+
+## 第三方评估方法排除路径
+
+申请源程序和说明书选页时，至少排除以下路径及其直接生成内容：
+
+- `yudao-module-rehab/.../assessment/RehabSfmaBookProtocol.java`
+- `yudao-module-rehab/.../assessment/RehabSfmaSummaryBuilder.java`
+- `yudao-module-rehab/.../assessment/RehabNasmCesSummaryBuilder.java`
+- 对应的 SFMA/NASM-CES 测试类
+- `src/views/rehab/assessment/components/forms/sfma/`
+- `SfmaForm.vue`、`FmsForm.vue`、`NasmCesForm.vue`
+- `sfmaConfig.ts`、`sfmaBookProtocol.ts`、`nasmCesConfig.ts`
+
+这项排除只限定软著鉴别材料和权利主张，不代表已经完成这些功能在实际使用、展示或分发层面的商标、著作权或专业认证合规审查。

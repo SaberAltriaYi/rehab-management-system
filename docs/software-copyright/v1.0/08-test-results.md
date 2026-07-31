@@ -1,4 +1,4 @@
-<!-- Copyright (c) 2026 [软件著作权人名称]. -->
+<!-- Copyright (c) 2026 杨玺龙. -->
 
 # V1.0 测试结果
 
@@ -9,6 +9,7 @@
 | 检查项 | 命令 | 结果 |
 | --- | --- | --- |
 | 仓库敏感材料 | `script/rehab/check-repository-sensitive-materials.sh` | 通过；未发现受 Git 跟踪的真实凭据、私钥、备份、首次登录文件或未标记患者样本 |
+| 权属信息一致性 | 占位符检索、`package.json` 解析及报告导出回归 | 通过；权利人、开发者、完成日期和包作者已落位，未替换字段为 0；报告导出测试 5/5 通过 |
 | 康复后端测试 | `mvn -B -pl yudao-module-rehab -am test` | JDK 17 下通过；共 723 项，694 项通过、29 项跳过、0 失败、0 错误；其中康复模块 83/83 通过 |
 | 后端隔离发布构建 | `deploy/internal/build-server-isolated.sh` | 通过；22 个 Reactor 模块构建成功并生成可执行 JAR |
 | 前端锁文件安装 | `pnpm install --frozen-lockfile` | 通过；锁文件未被修改 |

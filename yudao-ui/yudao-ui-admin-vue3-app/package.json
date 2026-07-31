@@ -2,7 +2,7 @@
   "name": "sports-rehab-assessment-business-management-system-web",
   "version": "1.0.0",
   "description": "运动康复评估与业务管理系统 Web 管理端",
-  "author": "[软件著作权人名称]",
+  "author": "杨玺龙",
   "private": true,
   "scripts": {
     "i": "pnpm install",

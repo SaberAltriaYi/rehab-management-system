@@ -1,4 +1,4 @@
-<!-- Copyright (c) 2026 [软件著作权人名称]. -->
+<!-- Copyright (c) 2026 杨玺龙. -->
 
 # Changelog
 
@@ -9,7 +9,7 @@ All notable product changes are recorded here. Product versions use semantic ver
 ### Added
 
 - Patient records, episodes, therapist assignment and rehabilitation workflow management.
-- Structured static, NASM-CES, SFMA, FMS, YBT, body-composition and specialist assessments.
+- Structured posture, mobility, movement-screening, balance, body-composition and specialist assessments.
 - Assessment quality control, risk classification, reports, plans, tasks, check-ins, progress, reassessment, follow-up, notifications and audit records.
 - DOCX/PDF report generation and internal operations dashboards.
 - Signed one-click LAN deployment for macOS, Linux, Windows and Docker-compatible NAS hosts.
@@ -33,4 +33,5 @@ All notable product changes are recorded here. Product versions use semantic ver
 
 - V1.0 is intended for trusted internal LAN use.
 - There is no independently delivered appointment-calendar module.
-- Final copyright owner, completion date, first-publication status and contributor assignments require manual confirmation.
+- Copyright owner 杨玺龙, sole developer status and completion date 2026-07-30 are recorded; first-publication and non-employment-work status still require confirmation.
+- SFMA, FMS and NASM-CES method content has no confirmed authorization or other use basis and is excluded from the software-copyright claim and identification materials.

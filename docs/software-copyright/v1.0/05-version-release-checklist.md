@@ -1,4 +1,4 @@
-<!-- Copyright (c) 2026 [软件著作权人名称]. -->
+<!-- Copyright (c) 2026 杨玺龙. -->
 
 # V1.0 版本发布清单
 
@@ -24,6 +24,7 @@
 - [x] AI 关闭，空业务数据库安装后无演示患者。
 - [x] 报告、界面、浏览器元数据、配置和文档版本一致。
 - [x] `NOTICE.md`、`THIRD_PARTY_NOTICES.md`、`COPYRIGHT.md`、`CHANGELOG.md` 随包提供。
+- [ ] 正式软著源程序和说明书选页已排除无使用依据的 SFMA/FMS/NASM-CES 方法内容。
 
 ## 冻结规则
 

@@ -1,4 +1,4 @@
-<!-- Copyright (c) 2026 [软件著作权人名称]. This notice does not alter third-party rights. -->
+<!-- Copyright (c) 2026 杨玺龙. This notice does not alter third-party rights. -->
 
 # Notice
 
@@ -7,7 +7,8 @@
 - Formal name: 运动康复评估与业务管理系统
 - Short name: 康复管理系统
 - Version: V1.0 / 1.0.0
-- Proposed copyright owner: `[软件著作权人名称]`
+- Copyright owner and developer of the original additions: `杨玺龙`
+- Development completed: `2026-07-30`
 
 ## Upstream attribution
 
@@ -23,8 +24,8 @@ The names “芋道” and “RuoYi-Vue-Pro” are used only to identify the ups
 
 ## Original additions
 
-Subject to final authorship and employment/commission verification, the proposed copyright owner claims only the independently created rehabilitation business code, structured assessment implementation, report and workflow adaptations, database migrations, tests, security hardening and internal deployment tooling described in `docs/software-copyright/v1.0/03-self-developed-code-inventory.md`.
+Subject to final non-employment-work verification, 杨玺龙 claims only the independently created rehabilitation business code, original report and workflow adaptations, database migrations, tests, security hardening and internal deployment tooling described in `docs/software-copyright/v1.0/03-self-developed-code-inventory.md`.
 
-No ownership is claimed over upstream code, third-party libraries, trademarks, assessment standards, books, clinical methods, or other materials owned by their respective rightsholders.
+No ownership is claimed over upstream code, third-party libraries, trademarks, assessment standards, books, clinical methods, or other materials owned by their respective rightsholders. No authorization or other use basis has been confirmed for SFMA, FMS or NASM-CES method content, so those materials are excluded from the claimed and application-identification scope.
 
 See `THIRD_PARTY_NOTICES.md` and `COPYRIGHT.md` for additional information.
