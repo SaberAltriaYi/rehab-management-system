@@ -21,8 +21,8 @@
 
 | 平台 | 安装包 | 支持范围 |
 | --- | --- | --- |
-| Windows | `康复管理系统_1.0.0_windows-x64_unsigned-setup.exe` | Windows 10/11 x64 |
-| macOS | `康复管理系统_1.0.0_macos-universal_unsigned.dmg` | Apple Silicon 与 Intel |
+| Windows | `rehab-management-system_1.0.0_windows-x64_unsigned-setup.exe` | Windows 10/11 x64 |
+| macOS | `rehab-management-system_1.0.0_macos-universal_unsigned.dmg` | Apple Silicon 与 Intel |
 
 安装包内已经包含编译后的 Spring Boot 后端、Vue 管理端、Docker Compose、Nginx 配置和数据库
 初始化资源。最终用户不需要安装 JDK、Maven、Node.js 或 pnpm。
@@ -106,7 +106,7 @@ MySQL、Redis、Spring Boot 和 Nginx，以保持现有数据模型、事务、�
 2. 在 PowerShell 中校验：
 
    ```powershell
-   Get-FileHash ".\康复管理系统_1.0.0_windows-x64_unsigned-setup.exe" -Algorithm SHA256
+   Get-FileHash ".\rehab-management-system_1.0.0_windows-x64_unsigned-setup.exe" -Algorithm SHA256
    ```
 
 3. 运行安装器。安装器会创建开始菜单入口，并可选择创建桌面快捷方式。
@@ -123,7 +123,7 @@ Windows 版本不要求 Git Bash，也不要求用户在 WSL 中运行脚本。
 2. 在终端中校验：
 
    ```bash
-   shasum -a 256 "康复管理系统_1.0.0_macos-universal_unsigned.dmg"
+   shasum -a 256 "rehab-management-system_1.0.0_macos-universal_unsigned.dmg"
    ```
 
 3. 打开 DMG，将“康复管理系统”拖入 Applications。
