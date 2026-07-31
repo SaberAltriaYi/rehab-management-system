@@ -60,6 +60,11 @@ application-my.yaml
 /output/
 /script/rehab/output/*
 !/script/rehab/output/.gitkeep
+/deploy/lan/.installed
+/deploy/lan/FIRST_LOGIN.txt
+/deploy/lan/release-output/
+/.playwright-cli/
+/work/
 
 /desktop/runtime/
 /desktop/build/

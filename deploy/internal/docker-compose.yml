@@ -1,4 +1,4 @@
-name: rehab-internal
+name: ${COMPOSE_PROJECT_NAME:-rehab-internal}
 
 services:
   mysql:
@@ -121,6 +121,7 @@ services:
       - "${BIND_ADDRESS:-0.0.0.0}:${APP_PORT:-8080}:80"
       - "${BIND_ADDRESS:-0.0.0.0}:${TLS_PORT:-8443}:443"
     volumes:
+      - ./certs/ca.crt:/etc/nginx/tls/ca.crt:ro
       - ./certs/server.crt:/etc/nginx/tls/server.crt:ro
       - ./certs/server.key:/etc/nginx/tls/server.key:ro
     depends_on:

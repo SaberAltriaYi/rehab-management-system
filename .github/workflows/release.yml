@@ -1,0 +1,62 @@
+name: Build signed LAN release
+
+on:
+  push:
+    tags:
+      - "v1.0.0"
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10.11.0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: pnpm
+          cache-dependency-path: yudao-ui/yudao-ui-admin-vue3-app/pnpm-lock.yaml
+      - name: Check repository for sensitive materials
+        run: script/rehab/check-repository-sensitive-materials.sh
+      - name: Build frontend
+        working-directory: yudao-ui/yudao-ui-admin-vue3-app
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build:internal
+          pnpm audit:prod
+      - name: Build backend
+        run: deploy/internal/build-server-isolated.sh
+      - name: Test bootstrap password tool
+        run: >-
+          mvn -B -pl yudao-server -am
+          -Dtest=PasswordHashCliTest
+          -Dsurefire.failIfNoSpecifiedTests=false test
+      - name: Build release bundle
+        run: script/rehab/build-lan-release.sh 1.0.0
+      - uses: sigstore/cosign-installer@v3.9.2
+      - name: Sign release bundle
+        run: |
+          bundle=$(find deploy/lan/release-output -maxdepth 1 -name '*.tar.gz' -print -quit)
+          cosign sign-blob --yes \
+            --bundle "${bundle}.sigstore.json" \
+            "$bundle"
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            deploy/lan/release-output/* \
+            --verify-tag \
+            --generate-notes \
+            --title "运动康复评估与业务管理系统 V1.0"

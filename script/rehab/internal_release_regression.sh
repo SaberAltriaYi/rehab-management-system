@@ -5,6 +5,7 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 PROJECT_DIR=$(CDPATH= cd -- "$SCRIPT_DIR/../.." && pwd)
 ADMIN_DIR="$PROJECT_DIR/yudao-ui/yudao-ui-admin-vue3-app"
 
+"$PROJECT_DIR/script/rehab/check-repository-sensitive-materials.sh"
 "$PROJECT_DIR/deploy/internal/preflight.sh"
 "$PROJECT_DIR/deploy/internal/check-database.sh"
 "$PROJECT_DIR/deploy/internal/smoke-test.sh"
@@ -20,4 +21,4 @@ if rg -l -i '@form-create/(designer|element-ui|component-wangeditor)|wangeditor[
   exit 1
 fi
 
-echo "PASS: 康复内部版只读发布回归通过"
+echo "PASS: 运动康复评估与业务管理系统 V1.0 只读发布回归通过"

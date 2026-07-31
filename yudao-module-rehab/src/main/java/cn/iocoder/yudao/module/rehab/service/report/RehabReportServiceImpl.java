@@ -69,6 +69,11 @@ import static cn.iocoder.yudao.module.rehab.enums.ErrorCodeConstants.*;
 public class RehabReportServiceImpl implements RehabReportService {
 
     private static final DateTimeFormatter REPORT_NO_DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyyMMdd");
+    private static final String SOFTWARE_NAME = "运动康复评估与业务管理系统";
+    private static final String SOFTWARE_VERSION = "V1.0";
+    private static final String SOFTWARE_COPYRIGHT_HOLDER = "杨玺龙";
+    private static final String REPORT_TITLE = "康复综合评估报告";
+    private static final String BRANDED_REPORT_TITLE = SOFTWARE_NAME + " " + SOFTWARE_VERSION + " - " + REPORT_TITLE;
 
     @Value("${yudao.rehab.storage-path:./data/rehab}")
     private String storagePath;
@@ -648,7 +653,7 @@ public class RehabReportServiceImpl implements RehabReportService {
                 .collect(Collectors.toList());
 
         List<Map<String, Object>> sections = new ArrayList<>();
-        sections.add(section(1, "封面页", "康复综合评估报告（V1）"));
+        sections.add(section(1, "封面页", BRANDED_REPORT_TITLE));
         sections.add(section(2, "基本信息与主诉", StrUtil.blankToDefault(patient.getChiefComplaint(), "未提供/数据不足")));
         sections.add(section(3, "数据来源与可用性", describeDataAvailability(moduleMap, missingModules)));
         sections.add(section(4, "总览摘要", buildOverviewSummary(assessment, moduleMap, missingModules)));
@@ -1115,7 +1120,7 @@ public class RehabReportServiceImpl implements RehabReportService {
                 .append("h1{font-size:24px;margin:0 0 8px;}h2{font-size:18px;margin-top:20px;}pre{white-space:pre-wrap;background:#f6f8fa;padding:12px;border-radius:6px;}")
                 .append(".meta{color:#6b7280;font-size:13px;margin-bottom:16px;}")
                 .append("</style></head><body>");
-        html.append("<h1>康复综合评估报告</h1>")
+        html.append("<h1>").append(BRANDED_REPORT_TITLE).append("</h1>")
                 .append("<div class=\"meta\">报告编号：")
                 .append(StrUtil.blankToDefault((String) payload.get("reportNo"), "-"))
                 .append("；生成时间：")
@@ -1140,9 +1145,11 @@ public class RehabReportServiceImpl implements RehabReportService {
         FileUtil.mkParentDirs(target);
 
         try (XWPFDocument document = new XWPFDocument()) {
+            document.getProperties().getCoreProperties().setTitle(BRANDED_REPORT_TITLE);
+            document.getProperties().getCoreProperties().setCreator(SOFTWARE_COPYRIGHT_HOLDER);
             XWPFParagraph title = document.createParagraph();
             XWPFRun titleRun = title.createRun();
-            titleRun.setText("康复综合评估报告");
+            titleRun.setText(BRANDED_REPORT_TITLE);
             titleRun.setBold(true);
             titleRun.setFontSize(16);
 
@@ -1180,12 +1187,13 @@ public class RehabReportServiceImpl implements RehabReportService {
         try (PDDocument document = new PDDocument();
              PdfFontResource fontResource = loadPdfFont(document)) {
             PDDocumentInformation information = document.getDocumentInformation();
-            information.setTitle("康复综合评估报告");
-            information.setSubject("康复评估报告");
-            information.setCreator("康复管理系统");
+            information.setTitle(BRANDED_REPORT_TITLE);
+            information.setSubject(REPORT_TITLE);
+            information.setAuthor(SOFTWARE_COPYRIGHT_HOLDER);
+            information.setCreator(SOFTWARE_NAME + " " + SOFTWARE_VERSION);
 
             List<PdfTextLine> lines = new ArrayList<>();
-            lines.add(PdfTextLine.title("康复综合评估报告"));
+            lines.add(PdfTextLine.title(BRANDED_REPORT_TITLE));
             lines.add(PdfTextLine.body("报告编号："
                     + StrUtil.blankToDefault((String) payload.get("reportNo"), "-")));
             lines.add(PdfTextLine.body("生成时间："

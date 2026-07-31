@@ -29,12 +29,12 @@
 <!--        <module>yudao-module-ai</module>-->
     </modules>
 
-    <name>${project.artifactId}</name>
-    <description>芋道项目基础脚手架</description>
+    <name>运动康复评估与业务管理系统</name>
+    <description>运动康复评估、训练干预、复评随访与工作室业务管理系统</description>
     <url>https://github.com/YunaiV/ruoyi-vue-pro</url>
 
     <properties>
-        <revision>2026.01-jdk8-SNAPSHOT</revision>
+        <revision>1.0.0</revision>
         <!-- Maven 相关 -->
         <java.version>1.8</java.version>
         <maven.compiler.source>${java.version}</maven.compiler.source>
