@@ -57,6 +57,8 @@ printf '%s\n' 'SELECT 1;' > "${FIRST_START_SQL_PATH}"
 printf '%s\n' '[client]' 'user=root' "password=${MYSQL_ROOT_PASSWORD}" \
   > "${MYSQL_CLIENT_CONFIG_PATH}"
 chmod 600 "${TEST_DIR}"/*
+# MySQL 官方入口切换为 mysql 用户后读取初始化 SQL；文件不含明文凭据。
+chmod 644 "${FIRST_START_SQL_PATH}"
 
 docker compose --project-name "${PROJECT_NAME}" --file "${COMPOSE_FILE}" \
   build server admin

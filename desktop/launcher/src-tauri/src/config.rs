@@ -261,7 +261,9 @@ fn write_admin_credentials_sql(paths: &AppPaths, password: &str) -> LauncherResu
          WHERE tenant_id = 1 AND username = 'admin' AND deleted = b'0';\n",
         hashed.replace('\'', "''")
     );
-    write_private(
+    // MySQL 官方镜像以 mysql 用户读取 /docker-entrypoint-initdb.d。
+    // 此文件只包含 bcrypt 单向哈希，不含生成的管理员明文密码。
+    write_container_readable(
         &paths
             .config_dir
             .join("first-start/999-runtime-credentials.sql"),
@@ -283,6 +285,16 @@ fn ensure_tls(paths: &AppPaths) -> LauncherResult<()> {
 }
 
 pub fn write_private(path: &Path, bytes: &[u8]) -> LauncherResult<()> {
+    write_with_unix_mode(path, bytes, 0o600)
+}
+
+fn write_container_readable(path: &Path, bytes: &[u8]) -> LauncherResult<()> {
+    write_with_unix_mode(path, bytes, 0o644)
+}
+
+fn write_with_unix_mode(path: &Path, bytes: &[u8], unix_mode: u32) -> LauncherResult<()> {
+    #[cfg(not(unix))]
+    let _ = unix_mode;
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
     }
@@ -291,7 +303,7 @@ pub fn write_private(path: &Path, bytes: &[u8]) -> LauncherResult<()> {
     #[cfg(unix)]
     {
         use std::os::unix::fs::OpenOptionsExt;
-        options.mode(0o600);
+        options.mode(unix_mode);
     }
     let mut file = options.open(path)?;
     file.write_all(bytes)?;
@@ -299,7 +311,7 @@ pub fn write_private(path: &Path, bytes: &[u8]) -> LauncherResult<()> {
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(path, fs::Permissions::from_mode(0o600))?;
+        fs::set_permissions(path, fs::Permissions::from_mode(unix_mode))?;
     }
     Ok(())
 }
@@ -348,6 +360,20 @@ mod tests {
             .and_then(|value| value.split('\'').next())
             .unwrap();
         assert!(bcrypt::verify(&admin, password_hash).unwrap());
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = fs::metadata(
+                paths
+                    .config_dir
+                    .join("first-start/999-runtime-credentials.sql"),
+            )
+            .unwrap()
+            .permissions()
+            .mode()
+                & 0o777;
+            assert_eq!(mode, 0o644);
+        }
     }
 
     #[test]
