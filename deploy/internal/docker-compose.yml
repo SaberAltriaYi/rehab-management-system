@@ -36,6 +36,7 @@ services:
       - ../../sql/mysql/rehab-step10-integrity-v1.sql:/docker-entrypoint-initdb.d/99-rehab-integrity.sql:ro
       - ../../sql/mysql/rehab-step11-auth-hardening-v1.sql:/docker-entrypoint-initdb.d/100-auth-hardening.sql:ro
       - ../../sql/mysql/rehab-step12-internal-login-client-v1.sql:/docker-entrypoint-initdb.d/105-internal-login-client.sql:ro
+      - ../../sql/mysql/rehab-step13-disable-undelivered-menus-v1.sql:/docker-entrypoint-initdb.d/108-disable-undelivered-menus.sql:ro
       - ./init-schema-history.sql:/docker-entrypoint-initdb.d/110-schema-history.sql:ro
     healthcheck:
       test:

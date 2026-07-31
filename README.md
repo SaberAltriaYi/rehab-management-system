@@ -4,6 +4,30 @@
  <img src="https://img.shields.io/github/license/YunaiV/ruoyi-vue-pro"/>
 </p>
 
+## 运动康复评估与业务管理系统 V1.0
+
+本仓库在芋道 `ruoyi-vue-pro` 开源项目基础上二次开发，面向工作室内部的患者管理、康复评估、
+训练计划、执行随访、复评和业务管理。上游 MIT License、作者信息及历史版权保持不变。
+
+### Windows 与 macOS 安装
+
+桌面版采用 **Tauri v2 启动器 + 本机 Docker Compose 服务**。安装包内已包含构建后的后端
+JAR、内部版前端和最小运行资源，普通用户不需要安装 Java、Maven、Node.js 或 pnpm；但
+V1.0 仍需要预先安装并启动 Docker Desktop，因为 MySQL、Redis、Spring Boot 和 Nginx
+继续以固定版本容器运行，数据库没有改成嵌入式数据库。
+
+1. 从 GitHub Actions 的 `Desktop installers` 工作流下载 Windows x64 安装器或 macOS
+   universal DMG。
+2. 核对同一 artifact 中的 SHA-256。
+3. 安装并启动 Docker Desktop，确认 Compose v2 可用。
+4. 打开“康复管理系统”，点击“启动服务”，等待四项服务全部显示正常。
+5. 使用租户“工作室内部”、账号 `admin` 和启动器显示的随机初始管理员密码登录，并立即
+   修改密码。
+
+桌面版默认只监听 `127.0.0.1`，不会上传患者数据、遥测或日志。普通更新和卸载不删除
+MySQL、Redis、康复附件、备份或日志。完整安装、备份、更新和故障处理见
+[桌面版使用与部署说明](docs/desktop-packaging.md)。
+
 **严肃声明：现在、未来都不会有商业版本，所有代码全部开源!！**
 
 **「我喜欢写代码，乐此不疲」**  

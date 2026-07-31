@@ -1,0 +1,40 @@
+[package]
+name = "rehab-management-launcher"
+version = "1.0.0"
+description = "康复管理系统桌面启动器"
+authors = ["杨玺龙"]
+edition = "2021"
+license = "MIT"
+rust-version = "1.77.2"
+
+[lib]
+name = "rehab_management_launcher"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[[bin]]
+name = "rehab-management-launcher"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+age = "0.11"
+bcrypt = "0.17"
+chrono = { version = "0.4", features = ["serde"] }
+directories = "6"
+fs2 = "0.4"
+rand = "0.9"
+rcgen = "0.14"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+tauri = { version = "2", features = [] }
+tauri-plugin-opener = "2"
+tauri-plugin-single-instance = "2"
+thiserror = "2"
+url = "2"
+walkdir = "2"
+
+[dev-dependencies]
+tempfile = "3"

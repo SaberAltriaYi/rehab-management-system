@@ -1,0 +1,43 @@
+# 桌面版发布检查清单
+
+## 源码与安全
+
+- [ ] 分支基于目标 `master`，版本、bundle identifier 和发布标签一致。
+- [ ] 未提交 `.env`、初始密码、私钥、证书、备份、患者记录、Token 或签名凭据。
+- [ ] 前端 `build:internal` 保持 AI 和未交付模块关闭。
+- [ ] Compose 默认只绑定 `127.0.0.1`，所有镜像固定版本且无 `latest`。
+- [ ] 普通启动、停止、重启、更新和卸载不删除卷。
+- [ ] 脱敏数据库快照包含迁移账本但不含演示患者、演示账号或云存储密钥。
+
+## 自动化检查
+
+- [ ] 康复模块后端测试通过。
+- [ ] Web 安全相关测试通过。
+- [ ] 隔离后端构建通过。
+- [ ] 内部前端构建和生产依赖审计通过。
+- [ ] Rust 单元测试、启动器前端测试、资源工具测试通过。
+- [ ] `cargo audit` 无 vulnerability；逐项复核 target-specific / unmaintained 警告。
+- [ ] 最小运行资源完整性和 SHA-256 检查通过。
+- [ ] 在无现存 `rehab-desktop-*` 卷的隔离 Docker 主机运行 `desktop/scripts/test-runtime-e2e.sh`。
+- [ ] Windows x64 CI 生成 NSIS。
+- [ ] macOS CI 生成 universal DMG。
+
+## 安装与数据验收
+
+- [ ] Docker 缺失、daemon 停止、Compose 缺失时中文指引正确。
+- [ ] 首次启动生成不同的高强度密码和本机 TLS。
+- [ ] 端口冲突可发现并可在停止服务后修改。
+- [ ] MySQL、Redis、后端和管理端健康后才能打开系统。
+- [ ] 新建患者→评估→训练计划→执行/随访→复评流程通过。
+- [ ] 日志和诊断不泄露密码、Token、手机号或患者字段。
+- [ ] 加密备份可在隔离环境恢复并核对附件。
+- [ ] 更新、重装和普通卸载后四个命名卷保持不变。
+- [ ] 危险删除必须精确确认且只删除固定应用数据。
+
+## 正式发布人工项
+
+- [ ] Windows 安装器 Authenticode 签名和时间戳有效。
+- [ ] macOS Developer ID 签名、公证和 stapling 有效。
+- [ ] 两个平台在干净设备完成安装、启动、更新、卸载回归。
+- [ ] Release 包含安装器、SHA256SUMS、BUILD-INFO 和 Git commit SHA。
+- [ ] GitHub Release 保持 draft，直到权利人完成最终验收。
