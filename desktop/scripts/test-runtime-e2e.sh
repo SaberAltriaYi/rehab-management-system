@@ -69,7 +69,7 @@ for attempt in $(seq 1 90); do
   states="$(docker compose --project-name "${PROJECT_NAME}" --file "${COMPOSE_FILE}" \
     ps --format json 2>/dev/null || true)"
   healthy_count="$(
-    (printf '%s' "${states}" | rg -o '"Health":"healthy"' || true) |
+    (printf '%s' "${states}" | grep -o '"Health":"healthy"' || true) |
       wc -l |
       tr -d ' '
   )"
@@ -93,7 +93,7 @@ index_html="$(
     --cacert "${TLS_CERT_PATH}" \
     "https://127.0.0.1:${TLS_PORT}/"
 )"
-printf '%s' "${index_html}" | rg -q '康复管理系统'
+printf '%s' "${index_html}" | grep -q '康复管理系统'
 tenant_response="$(
   curl --fail --silent --show-error \
     --cacert "${TLS_CERT_PATH}" \
