@@ -1,392 +1,434 @@
-<p align="center">
- <img src="https://img.shields.io/badge/Spring%20Boot-2.7.18-blue.svg" alt="Downloads">
- <img src="https://img.shields.io/badge/Vue-3.2-blue.svg" alt="Downloads">
- <img src="https://img.shields.io/github/license/YunaiV/ruoyi-vue-pro"/>
-</p>
+# 运动康复评估与业务管理系统
+
+简称：**康复管理系统**
+
+版本：**V1.0 / 1.0.0**
+
+这是一个面向运动康复工作室内部使用的本地管理系统，覆盖患者建档、康复周期、评估、报告、
+训练计划、训练执行、进度追踪、风险提醒、随访和复评等业务。
 
-**严肃声明：现在、未来都不会有商业版本，所有代码全部开源!！**
+项目基于芋道 `ruoyi-vue-pro` 二次开发。康复业务、桌面启动器、内部部署、安全加固和发布流程
+由本项目补充；上游作者、版权信息及 MIT License 保持不变。
 
-**「我喜欢写代码，乐此不疲」**  
-**「我喜欢做开源，以此为乐」**
+> 本系统用于康复评估和业务记录，不替代医疗诊断。当前版本默认关闭 AI、商城、支付、IoT、
+> BPM 等未交付模块，不包含遥测、广告、第三方统计或患者数据云上传。
+
+## 下载桌面安装包
 
-我 🐶 在上海艰苦奋斗，早中晚在 top3 大厂认真搬砖，夜里为开源做贡献。
+桌面测试版发布页：
 
-如果这个项目让你有所收获，记得 Star 关注哦，这对我是非常不错的鼓励与支持。
+[下载康复管理系统 V1.0 桌面预发布版](https://github.com/SaberAltriaYi/rehab-management-system/releases/tag/desktop-v1.0.0-preview.1)
 
-## 🐶 新手必读
+| 平台 | 安装包 | 支持范围 |
+| --- | --- | --- |
+| Windows | `rehab-management-system_1.0.0_windows-x64_unsigned-setup.exe` | Windows 10/11 x64 |
+| macOS | `rehab-management-system_1.0.0_macos-universal_unsigned.dmg` | Apple Silicon 与 Intel |
 
-* 演示地址【Vue3 + element-plus】：<http://dashboard-vue3.yudao.iocoder.cn>
-* 演示地址【Vue3 + vben(ant-design-vue)】：<http://dashboard-vben.yudao.iocoder.cn>
-* 演示地址【Vue2 + element-ui】：<http://dashboard.yudao.iocoder.cn>
-* 启动文档：<https://doc.iocoder.cn/quick-start/>
-* 视频教程：<https://doc.iocoder.cn/video/>
+安装包内已经包含编译后的 Spring Boot 后端、Vue 管理端、Docker Compose、Nginx 配置和数据库
+初始化资源。最终用户不需要安装 JDK、Maven、Node.js 或 pnpm。
 
-## 🐰 版本说明
+### 当前预发布版说明
 
-| 版本                                                                  | JDK 8 + Spring Boot 2.7                                                   | JDK 17/21 + Spring Boot 3.2                                                           |
-|---------------------------------------------------------------------|---------------------------------------------------------------------------|---------------------------------------------------------------------------------------|
-| 【完整版】[ruoyi-vue-pro](https://gitee.com/zhijiantianya/ruoyi-vue-pro) | [`master`](https://gitee.com/zhijiantianya/ruoyi-vue-pro/tree/master/) 分支 | [`master-jdk17`](https://gitee.com/zhijiantianya/ruoyi-vue-pro/tree/master-jdk17/) 分支 |
-| 【精简版】[yudao-boot-mini](https://gitee.com/yudaocode/yudao-boot-mini) | [`master`](https://gitee.com/yudaocode/yudao-boot-mini/tree/master/) 分支   | [`master-jdk17`](https://gitee.com/yudaocode/yudao-boot-mini/tree/master-jdk17/) 分支   |
+当前安装包尚未完成 Windows Authenticode 签名和 Apple Developer ID 公证，因此文件名带
+`_unsigned`，Windows SmartScreen 或 macOS Gatekeeper 可能显示安全提醒。它们只用于可信
+工作室内部测试，不建议作为公开生产发行包传播。
 
-* 【完整版】：包括系统功能、基础设施、会员中心、数据报表、工作流程、商城系统、微信公众号、CRM、ERP 等功能
-* 【精简版】：只包括系统功能、基础设施功能，不包括会员中心、数据报表、工作流程、商城系统、微信公众号、CRM、ERP 等功能
+下载后请同时下载发布页中的 `SHA256SUMS.txt` 并校验文件。不要使用来源不明或校验不一致的
+安装包。
 
-可参考 [《迁移文档》](https://doc.iocoder.cn/migrate-module/) ，只需要 5-10 分钟，即可将【完整版】按需迁移到【精简版】
+## 主要功能
 
-## 🐯 平台简介
+| 模块 | 功能 |
+| --- | --- |
+| 工作台 | 我的患者、待复评、高风险、低依从性及近期业务概览 |
+| 患者管理 | 患者档案、标签、状态、治疗师归属、附件和操作记录 |
+| 康复周期 | 以 Episode 管理一次完整康复周期及阶段流转 |
+| 康复评估 | 静态评估、身体成分、NASM-CES、SFMA、FMS、YBT、OpenCap、观察和综合评估 |
+| SFMA | 按顶层动作筛查、分解评估和纠正方向记录评估过程 |
+| 评估报告 | 汇总模块结果、风险、结论及建议，支持报告生成与导出 |
+| 训练计划 | 为患者和康复周期创建、调整、复制、启用和归档计划 |
+| 训练任务 | 将计划拆分为可执行训练任务，管理动作、频次和完成要求 |
+| 训练打卡 | 记录训练完成、疼痛、不适、备注及依从性 |
+| 进度追踪 | 汇总任务执行、训练完成率和近期康复趋势 |
+| 复评管理 | 复评触发、到期提醒、复测结果和前后变化对照 |
+| 风险提醒 | 疼痛、低依从性、待复评和持续高风险提醒 |
+| 随访通知 | 记录随访备注，向患者侧生成可读提醒 |
+| 后台管理 | 用户、角色、菜单、部门、租户、日志、文件和系统配置 |
+| 审计与权限 | 登录认证、租户隔离、患者可见范围、操作日志和最小权限控制 |
 
-**芋道**，以开发者为中心，打造中国第一流的快速开发平台，全部开源，个人与企业可 100% 免费使用。
+当前没有独立预约模块。可交付业务链路为：
 
-> 有任何问题，或者想要的功能，可以在 _Issues_ 中提给艿艿。
->
-> 😜 给项目点点 Star 吧，这对我们真的很重要！
+```text
+患者建档
+  → 创建康复周期 Episode
+  → 完成初评/专项评估
+  → 审核并导出评估报告
+  → 制定训练计划
+  → 下发训练任务
+  → 训练打卡与随访
+  → 查看进度和风险
+  → 触发复评
+  → 调整计划或结束康复周期
+```
 
-![架构图](/.image/common/ruoyi-vue-pro-architecture.png)
+## 技术架构
 
-* Java 后端：`master` 分支为 JDK 8 + Spring Boot 2.7，`master-jdk17` 分支为 JDK 17/21 + Spring Boot 3.2
-* 管理后台的电脑端：Vue3 提供 `element-plus`、`vben(ant-design-vue)` 两个版本，Vue2 提供 `element-ui` 版本
-* 管理后台的移动端：采用 `uni-app` 方案，一份代码多终端适配，同时支持 APP、小程序、H5！
-* 后端采用 Spring Boot 多模块架构、MySQL + MyBatis Plus、Redis + Redisson
-* 数据库可使用 MySQL、Oracle、PostgreSQL、SQL Server、MariaDB、国产达梦 DM、TiDB 等
-* 消息队列可使用 Event、Redis、RabbitMQ、Kafka、RocketMQ 等
-* 权限认证使用 Spring Security & Token & Redis，支持多终端、多种用户的认证系统，支持 SSO 单点登录
-* 支持加载动态权限菜单，按钮级别权限控制，Redis 缓存提升性能
-* 支持 SaaS 多租户，可自定义每个租户的权限，提供透明化的多租户底层封装
-* 工作流使用 Flowable，支持动态表单、在线设计流程、会签 / 或签、多种任务分配方式
-* 高效率开发，使用代码生成器可以一键生成 Java、Vue 前后端代码、SQL 脚本、接口文档，支持单表、树表、主子表
-* 实时通信，采用 Spring WebSocket 实现，内置 Token 身份校验，支持 WebSocket 集群
-* 集成微信小程序、微信公众号、企业微信、钉钉等三方登陆，集成支付宝、微信等支付与退款
-* 集成阿里云、腾讯云等短信渠道，集成 MinIO、阿里云、腾讯云、七牛云等云存储服务
-* 集成报表设计器、大屏设计器，通过拖拽即可生成酷炫的报表与大屏
+| 层级 | 技术 |
+| --- | --- |
+| 桌面启动器 | Tauri v2、Rust、TypeScript、Vite |
+| 管理端 | Vue 3、Vite、Element Plus、Pinia |
+| 后端 | Java 8、Spring Boot 2.7.18、Maven 多模块 |
+| 权限与会话 | Spring Security、Token、Redis、多租户 |
+| 数据库 | MySQL 8.4 |
+| 缓存 | Redis 7.4 |
+| 网关与静态资源 | Nginx 1.30 |
+| 容器编排 | Docker Compose v2 |
+| 自动化发布 | GitHub Actions、NSIS、DMG |
 
-##  🐳 项目关系
+桌面安装包不是把 MySQL 或 Redis 改成嵌入式数据库。V1.0 继续使用 Docker Compose 运行
+MySQL、Redis、Spring Boot 和 Nginx，以保持现有数据模型、事务、迁移脚本和部署方式。
 
-![架构演进](/.image/common/yudao-roadmap.png)
+## 桌面版安装
 
-三个项目的功能对比，可见社区共同整理的 [国产开源项目对比](https://www.yuque.com/xiatian-bsgny/lm0ec1/wqf8mn) 表格。
+### 前置条件
 
-### 后端项目
+1. 安装当前受支持的 Docker Desktop。
+2. 启动 Docker Desktop，并等待 Engine Running。
+3. 确认 `docker compose version` 可以正常执行。
+4. 建议至少 2 核 CPU、4 GB 可用内存和 20 GB 可用磁盘。
+5. 首次启动需要能够访问 Docker 镜像仓库。
 
-| 项目                                                              | Star                                                                                                                                                                                                                                                                                             | 简介                          |
-|-----------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------------------------|
-| [ruoyi-vue-pro](https://gitee.com/zhijiantianya/ruoyi-vue-pro)  | [![Gitee star](https://gitee.com/zhijiantianya/ruoyi-vue-pro/badge/star.svg?theme=white)](https://gitee.com/zhijiantianya/ruoyi-vue-pro) [![GitHub stars](https://img.shields.io/github/stars/YunaiV/ruoyi-vue-pro.svg?style=social&label=Stars)](https://github.com/YunaiV/ruoyi-vue-pro)       | 基于 Spring Boot 多模块架构        |
-| [yudao-cloud](https://gitee.com/zhijiantianya/yudao-cloud)      | [![Gitee star](https://gitee.com/zhijiantianya/yudao-cloud/badge/star.svg?theme=white)](https://gitee.com/zhijiantianya/yudao-cloud) [![GitHub stars](https://img.shields.io/github/stars/YunaiV/yudao-cloud.svg?style=social&label=Stars)](https://github.com/YunaiV/yudao-cloud)               | 基于 Spring Cloud 微服务架构       |
-| [Spring-Boot-Labs](https://gitee.com/yudaocode/SpringBoot-Labs) | [![Gitee star](https://gitee.com/yudaocode/SpringBoot-Labs/badge/star.svg?theme=white)](https://gitee.com/zhijiantianya/yudao-cloud) [![GitHub stars](https://img.shields.io/github/stars/yudaocode/SpringBoot-Labs.svg?style=social&label=Stars)](https://github.com/yudaocode/SpringBoot-Labs) | 系统学习 Spring Boot & Cloud 专栏 |
+启动器只检测 Docker，不会静默下载或安装 Docker Desktop。
 
-### 前端项目
+### Windows
 
-| 项目                                                                         | Star                                                                                                                                                                                                                                                                                                                     | 简介                                     |
-|----------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------------------------------------|
-| [yudao-ui-admin-vue3](https://gitee.com/yudaocode/yudao-ui-admin-vue3)     | [![Gitee star](https://gitee.com/yudaocode/yudao-ui-admin-vue3/badge/star.svg?theme=white)](https://gitee.com/yudaocode/yudao-ui-admin-vue3) [![GitHub stars](https://img.shields.io/github/stars/yudaocode/yudao-ui-admin-vue3.svg?style=social&label=Stars)](https://github.com/yudaocode/yudao-ui-admin-vue3)         | 基于 Vue3 + element-plus 实现的管理后台         |
-| [yudao-ui-admin-vben](https://gitee.com/yudaocode/yudao-ui-admin-vben)     | [![Gitee star](https://gitee.com/yudaocode/yudao-ui-admin-vben/badge/star.svg?theme=white)](https://gitee.com/yudaocode/yudao-ui-admin-vben) [![GitHub stars](https://img.shields.io/github/stars/yudaocode/yudao-ui-admin-vben.svg?style=social&label=Stars)](https://github.com/yudaocode/yudao-ui-admin-vben)         | 基于 Vue3 + vben(ant-design-vue) 实现的管理后台 |
-| [yudao-mall-uniapp](https://gitee.com/yudaocode/yudao-mall-uniapp)         | [![Gitee star](https://gitee.com/yudaocode/yudao-mall-uniapp/badge/star.svg?theme=white)](https://gitee.com/yudaocode/yudao-mall-uniapp) [![GitHub stars](https://img.shields.io/github/stars/yudaocode/yudao-mall-uniapp.svg?style=social&label=Stars)](https://github.com/yudaocode/yudao-mall-uniapp)                 | 基于 uni-app 实现的商城小程序                    |
-| [yudao-ui-admin-vue2](https://gitee.com/yudaocode/yudao-ui-admin-vue2)     | [![Gitee star](https://gitee.com/yudaocode/yudao-ui-admin-vue2/badge/star.svg?theme=white)](https://gitee.com/yudaocode/yudao-ui-admin-vue2) [![GitHub stars](https://img.shields.io/github/stars/yudaocode/yudao-ui-admin-vue2.svg?style=social&label=Stars)](https://github.com/yudaocode/yudao-ui-admin-vue2)         | 基于 Vue2 + element-ui 实现的管理后台           |
-| [yudao-ui-admin-uniapp](https://gitee.com/yudaocode/yudao-ui-admin-uniapp) | [![Gitee star](https://gitee.com/yudaocode/yudao-ui-admin-uniapp/badge/star.svg?theme=white)](https://gitee.com/yudaocode/yudao-ui-admin-uniapp) [![GitHub stars](https://img.shields.io/github/stars/yudaocode/yudao-ui-admin-uniapp.svg?style=social&label=Stars)](https://github.com/yudaocode/yudao-ui-admin-uniapp) | 基于 Vue2 + element-ui 实现的管理后台           |
-| [yudao-ui-go-view](https://gitee.com/yudaocode/yudao-ui-go-view)           | [![Gitee star](https://gitee.com/yudaocode/yudao-ui-go-view/badge/star.svg?theme=white)](https://gitee.com/yudaocode/yudao-ui-go-view) [![GitHub stars](https://img.shields.io/github/stars/yudaocode/yudao-ui-go-view.svg?style=social&label=Stars)](https://github.com/yudaocode/yudao-ui-go-view)                     | 基于 Vue3 + naive-ui 实现的大屏报表             |
+1. 从发布页下载 Windows `.exe` 和 `SHA256SUMS.txt`。
+2. 在 PowerShell 中校验：
 
-## 😎 开源协议
+   ```powershell
+   Get-FileHash ".\rehab-management-system_1.0.0_windows-x64_unsigned-setup.exe" -Algorithm SHA256
+   ```
 
-**为什么推荐使用本项目？**
-
-① 本项目采用比 Apache 2.0 更宽松的 [MIT License](https://gitee.com/zhijiantianya/ruoyi-vue-pro/blob/master/LICENSE) 开源协议，个人与企业可 100% 免费使用，不用保留类作者、Copyright 信息。
+3. 运行安装器。安装器会创建开始菜单入口，并可选择创建桌面快捷方式。
+4. 启动 Docker Desktop。
+5. 从开始菜单打开“康复管理系统”。
 
-② 代码全部开源，不会像其他项目一样，只开源部分代码，让你无法了解整个项目的架构设计。[国产开源项目对比](https://www.yuque.com/xiatian-bsgny/lm0ec1/wqf8mn)
+Windows 版本不要求 Git Bash，也不要求用户在 WSL 中运行脚本。
 
-![开源项目对比](/.image/common/project-vs.png)
+详细说明见 [Windows 安装与卸载](docs/desktop-install-windows.md)。
 
-③ 代码整洁、架构整洁，遵循《阿里巴巴 Java 开发手册》规范，代码注释详细，113770 行 Java 代码，42462 行代码注释。
-
-## 🤝 项目外包
-
-我们也是接外包滴，如果你有项目想要外包，可以微信联系【**Aix9975**】。
-
-团队包含专业的项目经理、架构师、前端工程师、后端工程师、测试工程师、运维工程师，可以提供全流程的外包服务。
-
-项目可以是商城、SCRM 系统、OA 系统、物流系统、ERP 系统、CMS 系统、HIS 系统、支付系统、IM 聊天、微信公众号、微信小程序等等。
-
-## 🐼 内置功能
-
-系统内置多种多种业务功能，可以用于快速你的业务系统：
-
-![功能分层](/.image/common/ruoyi-vue-pro-biz.png)
-
-* 通用模块（必选）：系统功能、基础设施
-* 通用模块（可选）：工作流程、支付系统、数据报表、会员中心
-* 业务系统（按需）：ERP 系统、CRM 系统、商城系统、微信公众号、AI 大模型
-
-> 友情提示：本项目基于 RuoYi-Vue 修改，**重构优化**后端的代码，**美化**前端的界面。
->
-> * 额外新增的功能，我们使用 🚀 标记。
-> * 重新实现的功能，我们使用 ⭐️ 标记。
-
-🙂 所有功能，都通过 **单元测试** 保证高质量。
-
-### 系统功能
-
-|     | 功能    | 描述                              |
-|-----|-------|---------------------------------|
-|     | 用户管理  | 用户是系统操作者，该功能主要完成系统用户配置          |
-| ⭐️  | 在线用户  | 当前系统中活跃用户状态监控，支持手动踢下线           |
-|     | 角色管理  | 角色菜单权限分配、设置角色按机构进行数据范围权限划分      |
-|     | 菜单管理  | 配置系统菜单、操作权限、按钮权限标识等，本地缓存提供性能    |
-|     | 部门管理  | 配置系统组织机构（公司、部门、小组），树结构展现支持数据权限  |
-|     | 岗位管理  | 配置系统用户所属担任职务                    |
-| 🚀  | 租户管理  | 配置系统租户，支持 SaaS 场景下的多租户功能        |
-| 🚀  | 租户套餐  | 配置租户套餐，自定每个租户的菜单、操作、按钮的权限       |
-|     | 字典管理  | 对系统中经常使用的一些较为固定的数据进行维护          |
-| 🚀  | 短信管理  | 短信渠道、短息模板、短信日志，对接阿里云、腾讯云等主流短信平台 |
-| 🚀  | 邮件管理  | 邮箱账号、邮件模版、邮件发送日志，支持所有邮件平台       |
-| 🚀  | 站内信   | 系统内的消息通知，提供站内信模版、站内信消息          |
-| 🚀  | 操作日志  | 系统正常操作日志记录和查询，集成 Swagger 生成日志内容 |
-| ⭐️  | 登录日志  | 系统登录日志记录查询，包含登录异常               |
-| 🚀  | 错误码管理 | 系统所有错误码的管理，可在线修改错误提示，无需重启服务     |
-|     | 通知公告  | 系统通知公告信息发布维护                    |
-| 🚀  | 敏感词   | 配置系统敏感词，支持标签分组                  |
-| 🚀  | 应用管理  | 管理 SSO 单点登录的应用，支持多种 OAuth2 授权方式 |
-| 🚀  | 地区管理  | 展示省份、城市、区镇等城市信息，支持 IP 对应城市      |
-
-![功能图](/.image/common/system-feature.png)
-
-### 工作流程
-
-![功能图](/.image/common/bpm-feature.png)
-
-基于 Flowable 构建，可支持信创（国产）数据库，满足中国特色流程操作：
-
-| BPMN 设计器                     | 钉钉/飞书设计器                       |
-|------------------------------|--------------------------------|
-| ![](/.image/工作流设计器-bpmn.jpg) | ![](/.image/工作流设计器-simple.jpg) |
-
-> 历经头部企业生产验证，工作流引擎须标配仿钉钉/飞书 + BPMN 双设计器！！！
->
-> 前者支持轻量配置简单流程，后者实现复杂场景深度编排
-
-| 功能列表       | 功能描述                                                                                | 是否完成 |
-|------------|-------------------------------------------------------------------------------------|------|
-| SIMPLE 设计器 | 仿钉钉/飞书设计器，支持拖拽搭建表单流程，10 分钟快速完成审批流程配置                                                | ✅    |
-| BPMN 设计器   | 基于 BPMN 标准开发，适配复杂业务场景，满足多层级审批及流程自动化需求                                               | ✅    |
-| 会签         | 同一个审批节点设置多个人（如 A、B、C 三人，三人会同时收到待办任务），需全部同意之后，审批才可到下一审批节点                            | ✅    |
-| 或签         | 同一个审批节点设置多个人，任意一个人处理后，就能进入下一个节点                                                     | ✅    |
-| 依次审批       | （顺序会签）同一个审批节点设置多个人（如 A、B、C 三人），三人按顺序依次收到待办，即 A 先审批，A 提交后 B 才能审批，需全部同意之后，审批才可到下一审批节点 | ✅    |
-| 抄送         | 将审批结果通知给抄送人，同一个审批默认排重，不重复抄送给同一人                                                     | ✅    |
-| 驳回         | （退回）将审批重置发送给某节点，重新审批。可驳回至发起人、上一节点、任意节点                                              | ✅    |
-| 转办         | A 转给其 B 审批，B 审批后，进入下一节点                                                             | ✅    |
-| 委派         | A 转给其 B 审批，B 审批后，转给 A，A 继续审批后进入下一节点                                                 | ✅    |
-| 加签         | 允许当前审批人根据需要，自行增加当前节点的审批人，支持向前、向后加签                                                  | ✅    |
-| 减签         | （取消加签）在当前审批人操作之前，减少审批人                                                              | ✅    |
-| 撤销         | （取消流程）流程发起人，可以对流程进行撤销处理                                                             | ✅    |
-| 终止         | 系统管理员，在任意节点终止流程实例                                                                   | ✅    |
-| 表单权限       | 支持拖拉拽配置表单，每个审批节点可配置只读、编辑、隐藏权限                                                       | ✅    |
-| 超时审批       | 配置超时审批时间，超时后自动触发审批通过、不通过、驳回等操作                                                      | ✅    |
-| 自动提醒       | 配置提醒时间，到达时间后自动触发短信、邮箱、站内信等通知提醒，支持自定义重复提醒频次                                          | ✅    |
-| 父子流程       | 主流程设置子流程节点，子流程节点会自动触发子流程。子流程结束后，主流程才会执行（继续往下下执行），支持同步子流程、异步子流程                      | ✅    |
-| 条件分支       | （排它分支）用于在流程中实现决策，即根据条件选择一个分支执行                                                      | ✅    |
-| 并行分支       | 允许将流程分成多条分支，不进行条件判断，所有分支都会执行                                                        | ✅    |
-| 包容分支       | （条件分支 + 并行分支的结合体）允许基于条件选择多条分支执行，但如果没有任何一个分支满足条件，则可以选择默认分支                           | ✅    |
-| 路由分支       | 根据条件选择一个分支执行（重定向到指定配置节点），也可以选择默认分支执行（继续往下执行）                                        | ✅    |
-| 触发节点       | 执行到该节点，触发 HTTP 请求、HTTP 回调、更新数据、删除数据等                                                | ✅    |
-| 延迟节点       | 执行到该节点，审批等待一段时间再执行，支持固定时长、固定日期等                                                     | ✅    |
-| 拓展设置       | 流程前置/后置通知，节点（任务）前置、后置通知，流程报表，自动审批去重，自定流程编号、标题、摘要，流程报表等                              | ✅    |
-
-### 支付系统
-
-|     | 功能   | 描述                        |
-|-----|------|---------------------------|
-| 🚀  | 应用信息 | 配置商户的应用信息，对接支付宝、微信等多个支付渠道 |
-| 🚀  | 支付订单 | 查看用户发起的支付宝、微信等的【支付】订单     |
-| 🚀  | 退款订单 | 查看用户发起的支付宝、微信等的【退款】订单     |
-| 🚀  | 回调通知 | 查看支付回调业务的【支付】【退款】的通知结果    |
-| 🚀  | 接入示例 | 提供接入支付系统的【支付】【退款】的功能实战    |
-
-### 基础设施
-
-|     | 功能        | 描述                                           |
-|-----|-----------|----------------------------------------------|
-| 🚀  | 代码生成      | 前后端代码的生成（Java、Vue、SQL、单元测试），支持 CRUD 下载       |
-| 🚀  | 系统接口      | 基于 Swagger 自动生成相关的 RESTful API 接口文档          |
-| 🚀  | 数据库文档     | 基于 Screw 自动生成数据库文档，支持导出 Word、HTML、MD 格式      |
-|     | 表单构建      | 拖动表单元素生成相应的 HTML 代码，支持导出 JSON、Vue 文件         |
-| 🚀  | 配置管理      | 对系统动态配置常用参数，支持 SpringBoot 加载                 |
-| ⭐️  | 定时任务      | 在线（添加、修改、删除)任务调度包含执行结果日志                     |
-| 🚀  | 文件服务      | 支持将文件存储到 S3（MinIO、阿里云、腾讯云、七牛云）、本地、FTP、数据库等   | 
-| 🚀  | WebSocket | 提供 WebSocket 接入示例，支持一对一、一对多发送方式              | 
-| 🚀  | API 日志    | 包括 RESTful API 访问日志、异常日志两部分，方便排查 API 相关的问题   |
-|     | MySQL 监控  | 监视当前系统数据库连接池状态，可进行分析SQL找出系统性能瓶颈              |
-|     | Redis 监控  | 监控 Redis 数据库的使用情况，使用的 Redis Key 管理           |
-| 🚀  | 消息队列      | 基于 Redis 实现消息队列，Stream 提供集群消费，Pub/Sub 提供广播消费 |
-| 🚀  | Java 监控   | 基于 Spring Boot Admin 实现 Java 应用的监控           |
-| 🚀  | 链路追踪      | 接入 SkyWalking 组件，实现链路追踪                      |
-| 🚀  | 日志中心      | 接入 SkyWalking 组件，实现日志中心                      |
-| 🚀  | 服务保障      | 基于 Redis 实现分布式锁、幂等、限流功能，满足高并发场景              |
-| 🚀  | 日志服务      | 轻量级日志中心，查看远程服务器的日志                           |
-| 🚀  | 单元测试      | 基于 JUnit + Mockito 实现单元测试，保证功能的正确性、代码的质量等    |
-
-![功能图](/.image/common/infra-feature.png)
-
-### 数据报表
-
-|     | 功能    | 描述                 |
-|-----|-------|--------------------|
-| 🚀  | 报表设计器 | 支持数据报表、图形报表、打印设计等  |
-| 🚀  | 大屏设计器 | 拖拽生成数据大屏，内置几十种图表组件 |
-
-### 微信公众号
-
-|    | 功能     | 描述                            |
-|----|--------|-------------------------------|
-| 🚀 | 账号管理   | 配置接入的微信公众号，可支持多个公众号           |
-| 🚀 | 数据统计   | 统计公众号的用户增减、累计用户、消息概况、接口分析等数据  |
-| 🚀 | 粉丝管理   | 查看已关注、取关的粉丝列表，可对粉丝进行同步、打标签等操作 |
-| 🚀 | 消息管理   | 查看粉丝发送的消息列表，可主动回复粉丝消息         |
-| 🚀 | 模版消息   | 配置和发送模版消息，用于向粉丝推送通知类消息        |
-| 🚀 | 自动回复   | 自动回复粉丝发送的消息，支持关注回复、消息回复、关键字回复 |
-| 🚀 | 标签管理   | 对公众号的标签进行创建、查询、修改、删除等操作       |
-| 🚀 | 菜单管理   | 自定义公众号的菜单，也可以从公众号同步菜单         |
-| 🚀 | 素材管理   | 管理公众号的图片、语音、视频等素材，支持在线播放语音、视频 |
-| 🚀 | 图文草稿箱  | 新增常用的图文素材到草稿箱，可发布到公众号         |
-| 🚀 | 图文发表记录 | 查看已发布成功的图文素材，支持删除操作           |
-
-### 商城系统
-
-演示地址：<https://doc.iocoder.cn/mall-preview/>
-
-![功能图](/.image/common/mall-feature.png)
-
-![功能图](/.image/common/mall-preview.png)
-
-### 会员中心
-
-|     | 功能   | 描述                               |
-|-----|------|----------------------------------|
-| 🚀  | 会员管理 | 会员是 C 端的消费者，该功能用于会员的搜索与管理        |
-| 🚀  | 会员标签 | 对会员的标签进行创建、查询、修改、删除等操作           |
-| 🚀  | 会员等级 | 对会员的等级、成长值进行管理，可用于订单折扣等会员权益      |
-| 🚀  | 会员分组 | 对会员进行分组，用于用户画像、内容推送等运营手段         |
-| 🚀  | 积分签到 | 回馈给签到、消费等行为的积分，会员可订单抵现、积分兑换等途径消耗 |
-
-### ERP 系统
-
-演示地址：<https://doc.iocoder.cn/erp-preview/>
-
-![功能图](/.image/common/erp-feature.png)
-
-### CRM 系统
-
-演示地址：<https://doc.iocoder.cn/crm-preview/>
-
-![功能图](/.image/common/crm-feature.png)
-
-### AI 大模型
-
-演示地址：<https://doc.iocoder.cn/ai-preview/>
-
-![功能图](/.image/common/ai-feature.png)
-
-![功能图](/.image/common/ai-preview.gif)
-
-## 🐨 技术栈
-
-### 模块
-
-| 项目                    | 说明                 |
-|-----------------------|--------------------|
-| `yudao-dependencies`  | Maven 依赖版本管理       |
-| `yudao-framework`     | Java 框架拓展          |
-| `yudao-server`        | 管理后台 + 用户 APP 的服务端 |
-| `yudao-module-system` | 系统功能的 Module 模块    |
-| `yudao-module-member` | 会员中心的 Module 模块    |
-| `yudao-module-infra`  | 基础设施的 Module 模块    |
-| `yudao-module-bpm`    | 工作流程的 Module 模块    |
-| `yudao-module-pay`    | 支付系统的 Module 模块    |
-| `yudao-module-mall`   | 商城系统的 Module 模块    |
-| `yudao-module-erp`    | ERP 系统的 Module 模块  |
-| `yudao-module-crm`    | CRM 系统的 Module 模块  |
-| `yudao-module-ai`     | AI 大模型的 Module 模块  |
-| `yudao-module-mp`     | 微信公众号的 Module 模块   |
-| `yudao-module-report` | 大屏报表 Module 模块     |
-
-### 框架
-
-| 框架                                                                                          | 说明               | 版本             | 学习指南                                                           |
-|---------------------------------------------------------------------------------------------|------------------|----------------|----------------------------------------------------------------|
-| [Spring Boot](https://spring.io/projects/spring-boot)                                       | 应用开发框架           | 2.7.18         | [文档](https://github.com/YunaiV/SpringBoot-Labs)                |
-| [MySQL](https://www.mysql.com/cn/)                                                          | 数据库服务器           | 5.7 / 8.0+     |                                                                |
-| [Druid](https://github.com/alibaba/druid)                                                   | JDBC 连接池、监控组件    | 1.2.23         | [文档](http://www.iocoder.cn/Spring-Boot/datasource-pool/?yudao) |
-| [MyBatis Plus](https://mp.baomidou.com/)                                                    | MyBatis 增强工具包    | 3.5.7          | [文档](http://www.iocoder.cn/Spring-Boot/MyBatis/?yudao)         |
-| [Dynamic Datasource](https://dynamic-datasource.com/)                                       | 动态数据源            | 3.6.1          | [文档](http://www.iocoder.cn/Spring-Boot/datasource-pool/?yudao) |
-| [Redis](https://redis.io/)                                                                  | key-value 数据库    | 5.0 / 6.0 /7.0 |                                                                |
-| [Redisson](https://github.com/redisson/redisson)                                            | Redis 客户端        | 3.32.0         | [文档](http://www.iocoder.cn/Spring-Boot/Redis/?yudao)           |
-| [Spring MVC](https://github.com/spring-projects/spring-framework/tree/master/spring-webmvc) | MVC 框架           | 5.3.24         | [文档](http://www.iocoder.cn/SpringMVC/MVC/?yudao)               |
-| [Spring Security](https://github.com/spring-projects/spring-security)                       | Spring 安全框架      | 5.7.11         | [文档](http://www.iocoder.cn/Spring-Boot/Spring-Security/?yudao) |
-| [Hibernate Validator](https://github.com/hibernate/hibernate-validator)                     | 参数校验组件           | 6.2.5          | [文档](http://www.iocoder.cn/Spring-Boot/Validation/?yudao)      |
-| [Flowable](https://github.com/flowable/flowable-engine)                                     | 工作流引擎            | 6.8.0          | [文档](https://doc.iocoder.cn/bpm/)                              |
-| [Quartz](https://github.com/quartz-scheduler)                                               | 任务调度组件           | 2.3.2          | [文档](http://www.iocoder.cn/Spring-Boot/Job/?yudao)             |
-| [Springdoc](https://springdoc.org/)                                                         | Swagger 文档       | 1.7.0          | [文档](http://www.iocoder.cn/Spring-Boot/Swagger/?yudao)         |
-| [SkyWalking](https://skywalking.apache.org/)                                                | 分布式应用追踪系统        | 8.12.0         | [文档](http://www.iocoder.cn/Spring-Boot/SkyWalking/?yudao)      |
-| [Spring Boot Admin](https://github.com/codecentric/spring-boot-admin)                       | Spring Boot 监控平台 | 2.7.10         | [文档](http://www.iocoder.cn/Spring-Boot/Admin/?yudao)           |
-| [Jackson](https://github.com/FasterXML/jackson)                                             | JSON 工具库         | 2.13.5         |                                                                |
-| [MapStruct](https://mapstruct.org/)                                                         | Java Bean 转换     | 1.6.3          | [文档](http://www.iocoder.cn/Spring-Boot/MapStruct/?yudao)       |
-| [Lombok](https://projectlombok.org/)                                                        | 消除冗长的 Java 代码    | 1.18.34        | [文档](http://www.iocoder.cn/Spring-Boot/Lombok/?yudao)          |
-| [JUnit](https://junit.org/junit5/)                                                          | Java 单元测试框架      | 5.8.2          | -                                                              |
-| [Mockito](https://github.com/mockito/mockito)                                               | Java Mock 框架     | 4.8.0          | -                                                              |
-
-## 🐷 演示图
-
-### 系统功能
-
-| 模块       | biu                         | biu                       | biu                      |
-|----------|-----------------------------|---------------------------|--------------------------|
-| 登录 & 首页  | ![登录](/.image/登录.jpg)       | ![首页](/.image/首页.jpg)     | ![个人中心](/.image/个人中心.jpg) |
-| 用户 & 应用  | ![用户管理](/.image/用户管理.jpg)   | ![令牌管理](/.image/令牌管理.jpg) | ![应用管理](/.image/应用管理.jpg) |
-| 租户 & 套餐  | ![租户管理](/.image/租户管理.jpg)   | ![租户套餐](/.image/租户套餐.png) | -                        |
-| 部门 & 岗位  | ![部门管理](/.image/部门管理.jpg)   | ![岗位管理](/.image/岗位管理.jpg) | -                        |
-| 菜单 & 角色  | ![菜单管理](/.image/菜单管理.jpg)   | ![角色管理](/.image/角色管理.jpg) | -                        |
-| 审计日志     | ![操作日志](/.image/操作日志.jpg)   | ![登录日志](/.image/登录日志.jpg) | -                        |
-| 短信       | ![短信渠道](/.image/短信渠道.jpg)   | ![短信模板](/.image/短信模板.jpg) | ![短信日志](/.image/短信日志.jpg) |
-| 字典 & 敏感词 | ![字典类型](/.image/字典类型.jpg)   | ![字典数据](/.image/字典数据.jpg) | ![敏感词](/.image/敏感词.jpg)  |
-| 错误码 & 通知 | ![错误码管理](/.image/错误码管理.jpg) | ![通知公告](/.image/通知公告.jpg) | -                        |
-
-### 工作流程
-
-| 模块      | biu                             | biu                             | biu                             |
-|---------|---------------------------------|---------------------------------|---------------------------------|
-| 流程模型    | ![流程模型-列表](/.image/流程模型-列表.jpg) | ![流程模型-设计](/.image/流程模型-设计.jpg) | ![流程模型-定义](/.image/流程模型-定义.jpg) |
-| 表单 & 分组 | ![流程表单](/.image/流程表单.jpg)       | ![用户分组](/.image/用户分组.jpg)       | -                               |
-| 我的流程    | ![我的流程-列表](/.image/我的流程-列表.jpg) | ![我的流程-发起](/.image/我的流程-发起.jpg) | ![我的流程-详情](/.image/我的流程-详情.jpg) |
-| 待办 & 已办 | ![任务列表-审批](/.image/任务列表-审批.jpg) | ![任务列表-待办](/.image/任务列表-待办.jpg) | ![任务列表-已办](/.image/任务列表-已办.jpg) |
-| OA 请假   | ![OA请假-列表](/.image/OA请假-列表.jpg) | ![OA请假-发起](/.image/OA请假-发起.jpg) | ![OA请假-详情](/.image/OA请假-详情.jpg) |
-
-### 基础设施
-
-| 模块            | biu                           | biu                         | biu                       |
-|---------------|-------------------------------|-----------------------------|---------------------------|
-| 代码生成          | ![代码生成](/.image/代码生成.jpg)     | ![生成效果](/.image/生成效果.jpg)   | -                         |
-| 文档            | ![系统接口](/.image/系统接口.jpg)     | ![数据库文档](/.image/数据库文档.jpg) | -                         |
-| 文件 & 配置       | ![文件配置](/.image/文件配置.jpg)     | ![文件管理](/.image/文件管理2.jpg)  | ![配置管理](/.image/配置管理.jpg) |
-| 定时任务          | ![定时任务](/.image/定时任务.jpg)     | ![任务日志](/.image/任务日志.jpg)   | -                         |
-| API 日志        | ![访问日志](/.image/访问日志.jpg)     | ![错误日志](/.image/错误日志.jpg)   | -                         |
-| MySQL & Redis | ![MySQL](/.image/MySQL.jpg)   | ![Redis](/.image/Redis.jpg) | -                         |
-| 监控平台          | ![Java监控](/.image/Java监控.jpg) | ![链路追踪](/.image/链路追踪.jpg)   | ![日志中心](/.image/日志中心.jpg) |
-
-### 支付系统
-
-| 模块      | biu                       | biu                             | biu                             |
-|---------|---------------------------|---------------------------------|---------------------------------|
-| 商家 & 应用 | ![商户信息](/.image/商户信息.jpg) | ![应用信息-列表](/.image/应用信息-列表.jpg) | ![应用信息-编辑](/.image/应用信息-编辑.jpg) |
-| 支付 & 退款 | ![支付订单](/.image/支付订单.jpg) | ![退款订单](/.image/退款订单.jpg)       | ---                             |
-### 数据报表
-
-| 模块    | biu                             | biu                             | biu                                   |
-|-------|---------------------------------|---------------------------------|---------------------------------------|
-| 报表设计器 | ![数据报表](/.image/报表设计器-数据报表.jpg) | ![图形报表](/.image/报表设计器-图形报表.jpg) | ![报表设计器-打印设计](/.image/报表设计器-打印设计.jpg) |
-| 大屏设计器 | ![大屏列表](/.image/大屏设计器-列表.jpg)   | ![大屏预览](/.image/大屏设计器-预览.jpg)   | ![大屏编辑](/.image/大屏设计器-编辑.jpg)         |
-
-### 移动端（管理后台）
-
-| biu                              | biu                              | biu                              |
-|----------------------------------|----------------------------------|----------------------------------|
-| ![](/.image/admin-uniapp/01.png) | ![](/.image/admin-uniapp/02.png) | ![](/.image/admin-uniapp/03.png) |
-| ![](/.image/admin-uniapp/04.png) | ![](/.image/admin-uniapp/05.png) | ![](/.image/admin-uniapp/06.png) |
-| ![](/.image/admin-uniapp/07.png) | ![](/.image/admin-uniapp/08.png) | ![](/.image/admin-uniapp/09.png) |
-
-目前已经实现登录、我的、工作台、编辑资料、头像修改、密码修改、常见问题、关于我们等基础功能。
+### macOS
+
+1. 从发布页下载 universal DMG 和 `SHA256SUMS.txt`。
+2. 在终端中校验：
+
+   ```bash
+   shasum -a 256 "rehab-management-system_1.0.0_macos-universal_unsigned.dmg"
+   ```
+
+3. 打开 DMG，将“康复管理系统”拖入 Applications。
+4. 启动 Docker Desktop。
+5. 从 Applications 打开“康复管理系统”。
+
+详细说明见 [macOS 安装与卸载](docs/desktop-install-macos.md)。
+
+不要通过全局关闭 Gatekeeper 或 TLS 校验来部署正式版本。
+
+## 第一次启动
+
+首次点击“启动服务”时，启动器会：
+
+1. 检查 Docker CLI、Docker daemon 和 Compose v2。
+2. 校验并复制安装包内的 V1.0.0 运行资源。
+3. 生成彼此不同的 MySQL 业务密码、MySQL root 密码和 Redis 密码。
+4. 生成备份加密口令和本机 TLS 证书。
+5. 检查默认端口 `8080` 和 `8443`；冲突时提示修改端口。
+6. 拉取固定版本、固定摘要的基础镜像。
+7. 创建 MySQL、Redis、康复附件和日志数据卷。
+8. 初始化空数据库并执行 19 个受校验迁移版本。
+9. 启动 MySQL、Redis、后端和管理端并等待健康检查。
+10. 显示首次登录信息。
+
+默认登录信息：
+
+| 项目 | 内容 |
+| --- | --- |
+| 租户 | `工作室内部` |
+| 用户名 | `admin` |
+| 初始密码 | 由启动器随机生成并仅在首次启动阶段显示 |
+| 默认地址 | `https://127.0.0.1:8443` |
+
+首次登录后必须立即修改管理员密码，并为每位成员创建独立账号、角色和最小权限。日常工作不要
+共用管理员账号。
+
+首次浏览器访问可能出现本机证书提醒。长期使用时应将用户数据目录下
+`config/tls/server.crt` 加入本机受信任证书存储，不要关闭浏览器 TLS 校验。
+
+## 启动器使用
+
+启动器主页提供：
+
+- Docker、MySQL、Redis、后端和管理端状态；
+- 启动、停止和重启服务；
+- 服务健康后打开管理系统；
+- 修改本机 HTTP/HTTPS 端口；
+- 查看经过敏感信息脱敏的近期日志；
+- 打开用户数据目录；
+- 创建数据库和附件加密备份；
+- 复制不含密码、Token 和患者记录的诊断信息；
+- 查看最近备份和最近错误；
+- 通过精确确认文字执行彻底删除。
+
+关闭启动器默认不会停止后台服务。普通停止使用 `docker compose stop`，不会删除数据卷。
+
+## 数据位置
+
+应用配置、证书、日志索引和备份位于操作系统用户数据目录：
+
+```text
+Windows: %APPDATA%\com.saberaltriayi.rehab\
+macOS:   ~/Library/Application Support/com.saberaltriayi.rehab/
+```
+
+业务数据使用以下 Docker named volumes：
+
+```text
+rehab-desktop-mysql-data
+rehab-desktop-redis-data
+rehab-desktop-rehab-data
+rehab-desktop-server-logs
+```
+
+安装目录不保存数据库和患者附件。重启、普通更新、重装和卸载桌面程序都不会删除这些卷。
+
+## 备份、更新与卸载
+
+### 创建备份
+
+在四个服务全部健康时点击“创建备份”。备份输出到用户数据目录的 `backups/`：
+
+```text
+rehab-<UTC时间>.sql.age
+rehab-<UTC时间>-attachments.tar.gz.age
+rehab-<UTC时间>.json
+```
+
+备份包含患者数据，必须存放在受控加密介质。备份文件和解密口令应分开保存，不得上传到公开
+Issue、网盘或 Git 仓库。
+
+### 更新
+
+1. 在旧版本启动器中创建备份。
+2. 退出启动器，但不删除数据。
+3. 安装新版本。
+4. 启动服务并完成健康检查。
+5. 核对登录、患者数量、评估、附件和迁移账本。
+
+升级不会自动回滚数据库迁移。失败时应保留旧数据卷、日志和升级前备份。
+
+### 卸载
+
+正常卸载只删除桌面程序，默认保留数据库、Redis、附件、日志和备份。只有在启动器仍可运行、
+Docker 正常，并且用户完成危险区二次确认时，才允许删除全部本地数据。
+
+禁止将以下命令作为普通停止或卸载操作：
+
+```bash
+docker compose down -v
+```
+
+完整说明见 [备份与迁移](docs/desktop-backup-migration.md)。
+
+## 局域网部署
+
+桌面 V1.0 默认只监听 `127.0.0.1`，不接受 `0.0.0.0`，也不自动配置局域网或路由器端口
+转发。
+
+需要同一 Wi-Fi/局域网访问时，使用经过独立验收的 `deploy/internal/` 方案：
+
+```bash
+cp deploy/internal/.env.example deploy/internal/.env
+chmod 600 deploy/internal/.env
+
+deploy/internal/generate-tls.sh
+deploy/internal/generate-backup-key.sh
+deploy/internal/preflight.sh
+
+docker compose --env-file deploy/internal/.env \
+  -f deploy/internal/docker-compose.yml up -d --build
+
+deploy/internal/check-database.sh
+deploy/internal/smoke-test.sh
+```
+
+必须选择部署机明确的私网 IPv4，禁止使用 `0.0.0.0`，并在成员设备安装局域网 CA。不要配置
+公网端口转发。
+
+详细说明见 [工作室内部部署手册](deploy/internal/README.md)。
+
+## 本地开发
+
+### 开发环境
+
+- JDK 17 LTS（编译目标兼容 Java 8）
+- Maven 3.9
+- Node.js 20 或 22
+- pnpm 10.15.1
+- Rust stable
+- Docker Desktop / Docker Engine + Compose v2
+
+### 后端测试与构建
+
+```bash
+mvn -B -ntp -pl yudao-module-rehab -am test
+
+mvn -B -ntp \
+  -pl yudao-framework/yudao-spring-boot-starter-web \
+  -am \
+  -Dtest=ApiAccessLogInterceptorTest,GlobalExceptionHandlerTest \
+  -Dsurefire.failIfNoSpecifiedTests=false \
+  test
+
+deploy/internal/build-server-isolated.sh
+```
+
+后端产物：
+
+```text
+yudao-server/target/yudao-server.jar
+```
+
+### 内部管理端
+
+```bash
+cd yudao-ui/yudao-ui-admin-vue3-app
+pnpm install --frozen-lockfile
+pnpm build:internal
+```
+
+前端产物：
+
+```text
+yudao-ui/yudao-ui-admin-vue3-app/dist-internal/
+```
+
+### 桌面启动器
+
+```bash
+cd desktop/launcher
+pnpm install --frozen-lockfile
+pnpm test
+pnpm cargo:test
+```
+
+Windows 安装器：
+
+```powershell
+pnpm tauri build --bundles nsis --target x86_64-pc-windows-msvc
+```
+
+macOS universal DMG：
+
+```bash
+pnpm tauri build --bundles dmg --target universal-apple-darwin
+```
+
+### 最小运行资源
+
+```bash
+node desktop/scripts/build-sanitized-bootstrap.mjs
+node desktop/scripts/build-runtime.mjs
+node desktop/scripts/check-runtime.mjs desktop/runtime/1.0.0
+```
+
+只允许在没有现存 `rehab-desktop-*` 数据卷的隔离 Docker 环境运行真实端到端测试：
+
+```bash
+desktop/scripts/test-runtime-e2e.sh
+```
+
+## GitHub Actions 发布
+
+工作流文件：`.github/workflows/desktop-release.yml`
+
+支持：
+
+- Actions 页面手动运行；
+- 向 `master` 提交 Pull Request 时验证；
+- 推送 `v*` 标签时构建两个平台；
+- 先运行后端测试、前端构建和真实 Docker E2E；
+- Windows runner 生成 NSIS；
+- macOS runner 生成 universal DMG；
+- 上传安装包、SHA-256 和构建信息；
+- 标签构建全部通过后创建 draft Release；
+- 没有签名 Secret 时仍生成明确标记为 unsigned 的测试构建。
+
+正式发布前的签名配置见 [桌面签名与公证](docs/desktop-signing.md)。
+
+## 项目目录
+
+```text
+.
+├── desktop/
+│   ├── launcher/                 # Tauri v2 桌面启动器
+│   ├── runtime-template/         # 最小 Docker 运行模板
+│   ├── scripts/                  # 运行资源构建、检查和 E2E
+│   └── sql/                      # 脱敏空库处理
+├── deploy/internal/              # 局域网内部部署与运维
+├── docs/                         # 桌面安装、签名、备份和排障文档
+├── sql/mysql/                    # MySQL 基线与迁移入口
+├── yudao-module-rehab/           # 康复业务后端模块
+├── yudao-server/                 # Spring Boot 启动模块
+└── yudao-ui/
+    └── yudao-ui-admin-vue3-app/  # Vue 3 内部管理端
+```
+
+## 安全与隐私
+
+- 默认仅绑定 `127.0.0.1`；
+- 不添加遥测、广告、第三方统计或患者数据上传；
+- 三个基础设施密码彼此不同，首次启动随机生成；
+- 密码、Token、患者字段和手机号不会进入诊断信息；
+- 配置和密钥保存在用户数据目录，而非安装目录；
+- Docker 镜像固定版本和摘要，不使用 `latest`；
+- 患者附件限制文件类型、文件名和大小；
+- 正常操作不会执行 `docker compose down -v`；
+- 数据删除必须二次确认并输入精确确认文字；
+- AI、商城、支付、IoT、BPM 默认关闭；
+- 数据库迁移使用固定校验和账本，不假设可以自动回滚。
+
+如需报告安全问题，请不要在公开 Issue 附加数据库、原始日志、截图、备份、密码、Token 或真实
+患者信息。
+
+## 已知限制
+
+- 桌面版仍需要 Docker Desktop；
+- 首次运行需要下载固定基础镜像；
+- V1.0 桌面启动器仅支持本机访问；
+- 没有独立预约模块；
+- 没有自动更新服务；
+- 数据恢复属于受控管理员流程，不在主页提供一键恢复；
+- 当前发布为 unsigned 预览版，正式分发仍需 Windows 签名及 macOS 公证；
+- 患者字段未做数据库列级加密，部署主机必须启用磁盘加密、账号隔离和加密备份。
+
+## 相关文档
+
+- [桌面版使用与部署](docs/desktop-packaging.md)
+- [Windows 安装与卸载](docs/desktop-install-windows.md)
+- [macOS 安装与卸载](docs/desktop-install-macos.md)
+- [备份与迁移](docs/desktop-backup-migration.md)
+- [签名与公证](docs/desktop-signing.md)
+- [故障排查](docs/desktop-troubleshooting.md)
+- [发布检查清单](docs/desktop-release-checklist.md)
+- [局域网部署](deploy/internal/README.md)
+
+## 上游与许可证
+
+本项目基于以下开源项目进行二次开发：
+
+- 芋道 `ruoyi-vue-pro`：<https://github.com/YunaiV/ruoyi-vue-pro>
+- 芋道开发文档：<https://doc.iocoder.cn/>
+
+本项目保留上游作者、提交历史、版权与许可证信息，具体许可条款见 [LICENSE](LICENSE)。
+
+使用、修改和分发前请同时遵守仓库中保留的上游许可证及第三方许可证。

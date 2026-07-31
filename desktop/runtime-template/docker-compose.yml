@@ -1,0 +1,130 @@
+name: rehab-desktop
+
+services:
+  mysql:
+    image: mysql:8.4.10@sha256:8dbcf531a03aade657e181b9cf2f1d1803ce621a1d55610cb44cb531ab7d7db6
+    restart: unless-stopped
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --default-time-zone=+08:00
+    environment:
+      TZ: ${TZ:-Asia/Shanghai}
+      MYSQL_DATABASE: ${DB_NAME:-ruoyi-vue-pro}
+      MYSQL_USER: ${DB_USERNAME:-yudao}
+      MYSQL_PASSWORD: ${DB_PASSWORD:?缺少 DB_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?缺少 MYSQL_ROOT_PASSWORD}
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./sql/desktop-bootstrap.sql:/docker-entrypoint-initdb.d/010-desktop-bootstrap.sql:ro
+      - ${FIRST_START_SQL_PATH:?缺少 FIRST_START_SQL_PATH}:/docker-entrypoint-initdb.d/999-runtime-credentials.sql:ro
+      - ${MYSQL_CLIENT_CONFIG_PATH:?缺少 MYSQL_CLIENT_CONFIG_PATH}:/run/rehab-secrets/mysql-client.cnf:ro
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - mysqladmin ping -h 127.0.0.1 -uroot -p"$${MYSQL_ROOT_PASSWORD}" --silent
+      interval: 10s
+      timeout: 5s
+      retries: 24
+      start_period: 40s
+
+  redis:
+    image: redis:7.4.10-alpine3.21@sha256:e7723ff73d963f5cc6d9c4643ea3d989527a402a319239054e9472a7fb9219a2
+    restart: unless-stopped
+    command:
+      - redis-server
+      - --appendonly
+      - "yes"
+      - --requirepass
+      - ${REDIS_PASSWORD:?缺少 REDIS_PASSWORD}
+    environment:
+      TZ: ${TZ:-Asia/Shanghai}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?缺少 REDIS_PASSWORD}
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - redis-cli -a "$${REDIS_PASSWORD}" --no-auth-warning ping | grep PONG
+      interval: 10s
+      timeout: 5s
+      retries: 24
+
+  server:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    image: rehab-desktop-server:1.0.0
+    restart: unless-stopped
+    environment:
+      TZ: ${TZ:-Asia/Shanghai}
+      SPRING_PROFILES_ACTIVE: internal
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_NAME: ${DB_NAME:-ruoyi-vue-pro}
+      DB_USERNAME: ${DB_USERNAME:-yudao}
+      DB_PASSWORD: ${DB_PASSWORD:?缺少 DB_PASSWORD}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_DATABASE: 0
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?缺少 REDIS_PASSWORD}
+      REHAB_STORAGE_PATH: /app/data/rehab
+      OPENAI_ENABLE_AI_ANALYSIS: "false"
+      SERVER_SERVLET_SESSION_PERSISTENT: "false"
+    volumes:
+      - rehab-data:/app/data/rehab
+      - server-logs:/app/logs
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - curl
+        - --fail
+        - --silent
+        - http://127.0.0.1:48080/actuator/health
+      interval: 15s
+      timeout: 5s
+      retries: 24
+      start_period: 70s
+
+  admin:
+    build:
+      context: ./admin
+      dockerfile: Dockerfile
+    image: rehab-desktop-admin:1.0.0
+    restart: unless-stopped
+    environment:
+      TLS_PORT: ${TLS_PORT:-8443}
+    ports:
+      - "${BIND_ADDRESS:-127.0.0.1}:${APP_PORT:-8080}:80"
+      - "${BIND_ADDRESS:-127.0.0.1}:${TLS_PORT:-8443}:443"
+    volumes:
+      - ${TLS_CERT_PATH:?缺少 TLS_CERT_PATH}:/etc/nginx/tls/server.crt:ro
+      - ${TLS_KEY_PATH:?缺少 TLS_KEY_PATH}:/etc/nginx/tls/server.key:ro
+    depends_on:
+      server:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - wget
+        - -q
+        - --spider
+        - http://127.0.0.1/healthz
+      interval: 15s
+      timeout: 5s
+      retries: 12
+
+volumes:
+  mysql-data:
+    name: rehab-desktop-mysql-data
+  redis-data:
+    name: rehab-desktop-redis-data
+  rehab-data:
+    name: rehab-desktop-rehab-data
+  server-logs:
+    name: rehab-desktop-server-logs

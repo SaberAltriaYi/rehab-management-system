@@ -1,0 +1,331 @@
+:root {
+  font-family:
+    Inter, "PingFang SC", "Microsoft YaHei", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  color: #17312d;
+  background: #edf4f1;
+  font-synthesis: none;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 720px;
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at 90% 0%, rgba(79, 160, 139, 0.2), transparent 30rem),
+    linear-gradient(160deg, #f7fbf9, #e7f0ed);
+}
+
+button,
+input {
+  font: inherit;
+}
+
+button {
+  border: 0;
+  border-radius: 10px;
+  padding: 10px 16px;
+  color: white;
+  background: #236a5b;
+  cursor: pointer;
+  transition: transform 120ms ease, opacity 120ms ease;
+}
+
+button:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+button.secondary {
+  color: #26564d;
+  background: #dcebe6;
+}
+
+button.accent {
+  background: #d9772f;
+}
+
+button.danger {
+  background: #a13d3d;
+}
+
+.shell {
+  width: min(980px, calc(100% - 36px));
+  margin: 0 auto;
+  padding: 28px 0 40px;
+}
+
+.hero,
+.docker-panel,
+.details,
+.error,
+.first-login,
+.danger-zone,
+.logs {
+  border: 1px solid rgba(41, 91, 80, 0.12);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 14px 36px rgba(35, 70, 62, 0.08);
+}
+
+.hero {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 26px 30px;
+}
+
+.eyebrow {
+  margin: 0 0 8px;
+  color: #4b796f;
+  font-size: 13px;
+  letter-spacing: 0.08em;
+}
+
+h1 {
+  margin: 0;
+  font-size: 30px;
+}
+
+.subtitle {
+  margin: 8px 0 0;
+  color: #6b817c;
+}
+
+.version {
+  border-radius: 999px;
+  padding: 7px 12px;
+  color: #236a5b;
+  background: #e2f0eb;
+  font-weight: 700;
+}
+
+.docker-panel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 16px;
+  padding: 16px 20px;
+}
+
+.docker-panel strong {
+  margin-left: 12px;
+}
+
+.operation {
+  margin: 0;
+  color: #d26e28;
+}
+
+.services {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.service-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 92px;
+  border: 1px solid rgba(41, 91, 80, 0.12);
+  border-radius: 14px;
+  padding: 18px;
+  background: rgba(255, 255, 255, 0.86);
+}
+
+.service-card p {
+  margin: 7px 0 0;
+  color: #73857f;
+  font-size: 13px;
+}
+
+.service-name {
+  font-weight: 700;
+}
+
+.status {
+  display: inline-block;
+  border-radius: 999px;
+  padding: 5px 9px;
+  background: #e4e8e6;
+  color: #52605c;
+  font-size: 12px;
+}
+
+.status--healthy {
+  color: #17604f;
+  background: #d7eee6;
+}
+
+.status--starting {
+  color: #85511e;
+  background: #f7e8d4;
+}
+
+.status--error,
+.status--unavailable {
+  color: #8d3030;
+  background: #f5dddd;
+}
+
+.details {
+  margin-top: 16px;
+  padding: 6px 20px;
+}
+
+dl {
+  margin: 0;
+}
+
+dl > div {
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid #edf1ef;
+}
+
+dl > div:last-child {
+  border-bottom: 0;
+}
+
+dt {
+  color: #6d7c78;
+}
+
+dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.primary-actions button {
+  flex: 1;
+  min-width: 150px;
+}
+
+.utility-actions button {
+  color: #28584e;
+  background: white;
+  border: 1px solid #ccddd7;
+}
+
+.error,
+.first-login {
+  margin-top: 16px;
+  padding: 16px 20px;
+}
+
+.error {
+  border-color: #edbebe;
+  color: #842f2f;
+}
+
+.error p,
+.first-login p {
+  margin: 7px 0;
+}
+
+.first-login {
+  border-color: #f2d2a7;
+  background: #fff9ef;
+}
+
+.first-login code {
+  display: block;
+  margin-top: 10px;
+  padding: 10px;
+  border-radius: 8px;
+  background: #2c3533;
+  color: white;
+  user-select: all;
+}
+
+.danger-zone {
+  margin-top: 20px;
+  padding: 14px 18px;
+}
+
+.danger-zone summary {
+  cursor: pointer;
+  color: #963e3e;
+  font-weight: 700;
+}
+
+.danger-zone input {
+  width: min(420px, 100%);
+  margin-right: 8px;
+  border: 1px solid #d9c2c2;
+  border-radius: 9px;
+  padding: 9px 11px;
+}
+
+.logs {
+  margin-top: 16px;
+  padding: 18px;
+}
+
+.logs header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.logs pre {
+  max-height: 280px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  border-radius: 10px;
+  padding: 12px;
+  color: #d7ebe4;
+  background: #1f2c29;
+  font-size: 12px;
+}
+
+dialog {
+  width: min(460px, calc(100% - 32px));
+  border: 0;
+  border-radius: 16px;
+  padding: 24px;
+  box-shadow: 0 20px 60px rgba(19, 47, 41, 0.25);
+}
+
+dialog::backdrop {
+  background: rgba(18, 40, 35, 0.38);
+}
+
+dialog label {
+  display: grid;
+  gap: 6px;
+  margin: 14px 0;
+}
+
+dialog input {
+  border: 1px solid #bfd1cb;
+  border-radius: 8px;
+  padding: 9px;
+}
+
+dialog menu {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin: 20px 0 0;
+  padding: 0;
+}

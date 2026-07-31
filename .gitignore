@@ -61,5 +61,13 @@ application-my.yaml
 /script/rehab/output/*
 !/script/rehab/output/.gitkeep
 
+/desktop/runtime/
+/desktop/build/
+/desktop/launcher/node_modules/
+/desktop/launcher/dist/
+/desktop/launcher/src-tauri/target/
+/desktop/launcher/src-tauri/resources/runtime/*
+!/desktop/launcher/src-tauri/resources/runtime/README.txt
+
 /yudao-ui-app/unpackage/
 **/.DS_Store

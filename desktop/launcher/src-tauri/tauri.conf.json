@@ -1,0 +1,64 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "康复管理系统",
+  "version": "1.0.0",
+  "identifier": "com.saberaltriayi.rehab",
+  "build": {
+    "beforeDevCommand": "pnpm dev",
+    "devUrl": "http://127.0.0.1:1420",
+    "beforeBuildCommand": "pnpm build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "康复管理系统",
+        "width": 1040,
+        "height": 820,
+        "minWidth": 820,
+        "minHeight": 680,
+        "resizable": true,
+        "fullscreen": false
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; connect-src ipc: http://ipc.localhost"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "resources": [
+      "resources/runtime/**/*"
+    ],
+    "category": "Medical",
+    "shortDescription": "康复业务本地安全运行与服务管理",
+    "longDescription": "运动康复评估与业务管理系统桌面启动器。业务服务通过本机 Docker Compose 运行。",
+    "copyright": "Copyright © 2026 杨玺龙",
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser",
+        "displayLanguageSelector": false,
+        "installerIcon": "icons/icon.ico",
+        "installerHooks": "./windows/installer-hooks.nsh"
+      }
+    },
+    "macOS": {
+      "minimumSystemVersion": "10.15",
+      "dmg": {
+        "windowSize": {
+          "width": 660,
+          "height": 400
+        },
+        "appPosition": {
+          "x": 180,
+          "y": 190
+        },
+        "applicationFolderPosition": {
+          "x": 480,
+          "y": 190
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,1 @@
+{"default":{"identifier":"default","description":"康复管理系统启动器主窗口权限","local":true,"windows":["main"],"permissions":["core:default","opener:default"]}}

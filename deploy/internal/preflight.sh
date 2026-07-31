@@ -10,6 +10,7 @@ REHAB_TENANT_MIGRATION="$PROJECT_DIR/sql/mysql/rehab-step9-tenant-v1.sql"
 REHAB_INTEGRITY_MIGRATION="$PROJECT_DIR/sql/mysql/rehab-step10-integrity-v1.sql"
 AUTH_HARDENING_MIGRATION="$PROJECT_DIR/sql/mysql/rehab-step11-auth-hardening-v1.sql"
 INTERNAL_LOGIN_MIGRATION="$PROJECT_DIR/sql/mysql/rehab-step12-internal-login-client-v1.sql"
+UNDELIVERED_MENU_MIGRATION="$PROJECT_DIR/sql/mysql/rehab-step13-disable-undelivered-menus-v1.sql"
 CA_CERT="$SCRIPT_DIR/certs/ca.crt"
 SERVER_CERT="$SCRIPT_DIR/certs/server.crt"
 SERVER_KEY="$SCRIPT_DIR/certs/server.key"
@@ -98,6 +99,7 @@ pass "前后端构建产物存在"
 [ -f "$REHAB_INTEGRITY_MIGRATION" ] || fail "缺少康复业务表关系完整性迁移脚本"
 [ -f "$AUTH_HARDENING_MIGRATION" ] || fail "缺少内部认证安全迁移脚本"
 [ -f "$INTERNAL_LOGIN_MIGRATION" ] || fail "缺少内部登录客户端迁移脚本"
+[ -f "$UNDELIVERED_MENU_MIGRATION" ] || fail "缺少未交付模块菜单收口迁移脚本"
 grep -q "rehab-step9-tenant-v1.sql" "$SCRIPT_DIR/docker-compose.yml" \
   || fail "Compose 未挂载康复业务表多租户迁移脚本"
 grep -q "rehab-step10-integrity-v1.sql" "$SCRIPT_DIR/docker-compose.yml" \
@@ -106,6 +108,8 @@ grep -q "rehab-step11-auth-hardening-v1.sql" "$SCRIPT_DIR/docker-compose.yml" \
   || fail "Compose 未挂载内部认证安全迁移脚本"
 grep -q "rehab-step12-internal-login-client-v1.sql" "$SCRIPT_DIR/docker-compose.yml" \
   || fail "Compose 未挂载内部登录客户端迁移脚本"
+grep -q "rehab-step13-disable-undelivered-menus-v1.sql" "$SCRIPT_DIR/docker-compose.yml" \
+  || fail "Compose 未挂载未交付模块菜单收口迁移脚本"
 grep -q "init-schema-history.sql" "$SCRIPT_DIR/docker-compose.yml" \
   || fail "Compose 未挂载全新数据库迁移账本初始化脚本"
 "$SCRIPT_DIR/migrate.sh" verify-files

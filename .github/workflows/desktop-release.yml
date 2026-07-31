@@ -1,0 +1,399 @@
+name: Desktop installers
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - master
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  APP_VERSION: "1.0.0"
+  PNPM_VERSION: "10.15.1"
+  NODE_VERSION: "22"
+  JAVA_VERSION: "17"
+  FRONTEND_DIR: yudao-ui/yudao-ui-admin-vue3-app
+  LAUNCHER_DIR: desktop/launcher
+
+jobs:
+  prepare-runtime:
+    name: Test application and prepare runtime
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      # 生产 Compose 明确使用 Asia/Shanghai；上游短信时间戳测试依赖应用时区。
+      TZ: Asia/Shanghai
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Validate release version
+        shell: bash
+        run: |
+          test "$(node -p "require('./desktop/launcher/package.json').version")" = "${APP_VERSION}"
+          test "$(node -p "require('./desktop/launcher/src-tauri/tauri.conf.json').version")" = "${APP_VERSION}"
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            test "${GITHUB_REF_NAME}" = "v${APP_VERSION}"
+          fi
+
+      - name: Set up JDK
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: maven
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: ${{ env.PNPM_VERSION }}
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+          cache-dependency-path: |
+            yudao-ui/yudao-ui-admin-vue3-app/pnpm-lock.yaml
+            desktop/launcher/pnpm-lock.yaml
+
+      - name: Test rehabilitation backend
+        run: mvn -B -ntp -pl yudao-module-rehab -am test
+
+      - name: Test web security boundaries
+        run: >-
+          mvn -B -ntp
+          -pl yudao-framework/yudao-spring-boot-starter-web
+          -am
+          -Dtest=ApiAccessLogInterceptorTest,GlobalExceptionHandlerTest
+          -Dsurefire.failIfNoSpecifiedTests=false
+          test
+
+      - name: Build isolated backend JAR
+        run: deploy/internal/build-server-isolated.sh
+
+      - name: Install frontend dependencies
+        working-directory: ${{ env.FRONTEND_DIR }}
+        run: pnpm install --frozen-lockfile
+
+      - name: Build internal frontend
+        working-directory: ${{ env.FRONTEND_DIR }}
+        run: pnpm build:internal
+
+      - name: Audit production frontend dependencies
+        working-directory: ${{ env.FRONTEND_DIR }}
+        run: pnpm audit --prod --audit-level high --registry=https://registry.npmjs.org
+
+      - name: Test runtime tooling
+        run: node --test desktop/scripts/runtime-tools.test.mjs
+
+      - name: Generate sanitized database bootstrap
+        run: node desktop/scripts/build-sanitized-bootstrap.mjs
+
+      - name: Build and verify minimal runtime
+        env:
+          REHAB_BUILD_COMMIT: ${{ github.sha }}
+        run: |
+          node desktop/scripts/build-runtime.mjs
+          node desktop/scripts/check-runtime.mjs desktop/runtime/1.0.0
+
+      - name: Test packaged Docker runtime
+        run: desktop/scripts/test-runtime-e2e.sh
+
+      - name: Upload runtime
+        uses: actions/upload-artifact@v6
+        with:
+          name: desktop-runtime-${{ github.sha }}
+          path: desktop/runtime/1.0.0/
+          if-no-files-found: error
+          retention-days: 14
+
+  windows:
+    name: Windows x64 installer
+    needs: prepare-runtime
+    runs-on: windows-2025
+    timeout-minutes: 60
+    env:
+      WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+      WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+      WINDOWS_TIMESTAMP_URL: ${{ secrets.WINDOWS_TIMESTAMP_URL }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: ${{ env.PNPM_VERSION }}
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+          cache-dependency-path: desktop/launcher/pnpm-lock.yaml
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop/launcher/src-tauri
+
+      - name: Download runtime
+        uses: actions/download-artifact@v6
+        with:
+          name: desktop-runtime-${{ github.sha }}
+          path: desktop/launcher/src-tauri/resources/runtime/1.0.0
+
+      - name: Install launcher dependencies
+        working-directory: ${{ env.LAUNCHER_DIR }}
+        run: pnpm install --frozen-lockfile
+
+      - name: Test launcher
+        working-directory: ${{ env.LAUNCHER_DIR }}
+        run: |
+          pnpm test
+          pnpm cargo:test
+
+      - name: Import Windows signing certificate
+        if: ${{ env.WINDOWS_CERTIFICATE != '' && env.WINDOWS_CERTIFICATE_PASSWORD != '' }}
+        shell: pwsh
+        run: |
+          $pfxPath = Join-Path $env:RUNNER_TEMP "rehab-signing.pfx"
+          [IO.File]::WriteAllBytes($pfxPath, [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE))
+          $password = ConvertTo-SecureString $env:WINDOWS_CERTIFICATE_PASSWORD -AsPlainText -Force
+          $certificate = Import-PfxCertificate -FilePath $pfxPath -CertStoreLocation Cert:\CurrentUser\My -Password $password
+          if (-not $certificate.Thumbprint) { throw "Windows signing certificate import failed" }
+          $timestamp = if ($env:WINDOWS_TIMESTAMP_URL) { $env:WINDOWS_TIMESTAMP_URL } else { "http://timestamp.digicert.com" }
+          @{
+            bundle = @{
+              windows = @{
+                certificateThumbprint = $certificate.Thumbprint
+                digestAlgorithm = "sha256"
+                timestampUrl = $timestamp
+              }
+            }
+          } | ConvertTo-Json -Depth 5 | Set-Content -Encoding utf8 desktop/launcher/src-tauri/tauri.windows-signing.json
+          "WINDOWS_SIGNING_CONFIG=src-tauri/tauri.windows-signing.json" | Out-File -FilePath $env:GITHUB_ENV -Append
+          Remove-Item $pfxPath -Force
+
+      - name: Build signed Windows installer
+        if: ${{ env.WINDOWS_SIGNING_CONFIG != '' }}
+        working-directory: ${{ env.LAUNCHER_DIR }}
+        run: pnpm tauri build --bundles nsis --target x86_64-pc-windows-msvc --config $env:WINDOWS_SIGNING_CONFIG
+
+      - name: Build unsigned Windows installer
+        if: ${{ env.WINDOWS_SIGNING_CONFIG == '' }}
+        working-directory: ${{ env.LAUNCHER_DIR }}
+        run: pnpm tauri build --bundles nsis --target x86_64-pc-windows-msvc
+
+      - name: Collect Windows installer and checksums
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force artifacts | Out-Null
+          $installer = Get-ChildItem desktop/launcher/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe | Select-Object -First 1
+          if (-not $installer) { throw "NSIS installer not found" }
+          $suffix = if ($env:WINDOWS_SIGNING_CONFIG) { "" } else { "_unsigned" }
+          $name = "康复管理系统_${env:APP_VERSION}_windows-x64${suffix}-setup.exe"
+          Copy-Item $installer.FullName (Join-Path artifacts $name)
+          $hash = (Get-FileHash (Join-Path artifacts $name) -Algorithm SHA256).Hash.ToLower()
+          $utf8NoBom = [Text.UTF8Encoding]::new($false)
+          [IO.File]::WriteAllText(
+            (Join-Path $PWD "artifacts/SHA256SUMS-windows.txt"),
+            "$hash  $name`n",
+            $utf8NoBom
+          )
+          $isSigned = -not [string]::IsNullOrEmpty($env:WINDOWS_SIGNING_CONFIG)
+          $buildInfo = @(
+            "version=$env:APP_VERSION"
+            "commit=$env:GITHUB_SHA"
+            "platform=windows-x64"
+            "signed=$($isSigned.ToString().ToLowerInvariant())"
+          ) -join "`n"
+          [IO.File]::WriteAllText(
+            (Join-Path $PWD "artifacts/BUILD-INFO-windows.txt"),
+            "$buildInfo`n",
+            $utf8NoBom
+          )
+
+      - name: Upload Windows installer
+        uses: actions/upload-artifact@v6
+        with:
+          name: rehab-management-windows-${{ github.sha }}
+          path: artifacts/
+          if-no-files-found: error
+
+  macos:
+    name: macOS universal DMG
+    needs: prepare-runtime
+    runs-on: macos-14
+    timeout-minutes: 75
+    env:
+      MACOS_CERTIFICATE_B64: ${{ secrets.APPLE_CERTIFICATE }}
+      MACOS_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+      MACOS_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+      MACOS_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+      MACOS_API_KEY: ${{ secrets.APPLE_API_KEY }}
+      MACOS_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: ${{ env.PNPM_VERSION }}
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+          cache-dependency-path: desktop/launcher/pnpm-lock.yaml
+
+      - name: Set up Rust universal targets
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop/launcher/src-tauri
+
+      - name: Download runtime
+        uses: actions/download-artifact@v6
+        with:
+          name: desktop-runtime-${{ github.sha }}
+          path: desktop/launcher/src-tauri/resources/runtime/1.0.0
+
+      - name: Install launcher dependencies
+        working-directory: ${{ env.LAUNCHER_DIR }}
+        run: pnpm install --frozen-lockfile
+
+      - name: Test launcher
+        working-directory: ${{ env.LAUNCHER_DIR }}
+        run: |
+          pnpm test
+          pnpm cargo:test
+
+      - name: Import Apple signing certificate
+        if: ${{ env.MACOS_CERTIFICATE_B64 != '' && env.MACOS_CERTIFICATE_PASSWORD != '' && env.MACOS_SIGNING_IDENTITY != '' }}
+        run: |
+          CERTIFICATE_PATH="$RUNNER_TEMP/rehab-signing.p12"
+          KEYCHAIN_PATH="$RUNNER_TEMP/rehab-signing.keychain-db"
+          printf '%s' "$MACOS_CERTIFICATE_B64" | base64 -D > "$CERTIFICATE_PATH"
+          security create-keychain -p "$RUNNER_TEMP" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$RUNNER_TEMP" "$KEYCHAIN_PATH"
+          security import "$CERTIFICATE_PATH" -P "$MACOS_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security list-keychain -d user -s "$KEYCHAIN_PATH" login.keychain-db
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$RUNNER_TEMP" "$KEYCHAIN_PATH"
+          rm -f "$CERTIFICATE_PATH"
+          echo "APPLE_SIGNING_IDENTITY=$MACOS_SIGNING_IDENTITY" >> "$GITHUB_ENV"
+          echo "MACOS_SIGNING_READY=true" >> "$GITHUB_ENV"
+
+      - name: Configure Apple notarization API key
+        if: ${{ env.MACOS_SIGNING_READY == 'true' && env.MACOS_API_ISSUER != '' && env.MACOS_API_KEY != '' && env.MACOS_API_KEY_P8 != '' }}
+        run: |
+          API_KEY_PATH="$RUNNER_TEMP/AuthKey_${MACOS_API_KEY}.p8"
+          printf '%s' "$MACOS_API_KEY_P8" > "$API_KEY_PATH"
+          chmod 600 "$API_KEY_PATH"
+          {
+            echo "APPLE_API_ISSUER=$MACOS_API_ISSUER"
+            echo "APPLE_API_KEY=$MACOS_API_KEY"
+            echo "APPLE_API_KEY_PATH=$API_KEY_PATH"
+            echo "MACOS_NOTARIZATION_READY=true"
+          } >> "$GITHUB_ENV"
+
+      - name: Build macOS universal DMG
+        working-directory: ${{ env.LAUNCHER_DIR }}
+        run: pnpm tauri build --bundles dmg --target universal-apple-darwin
+
+      - name: Collect macOS DMG and checksums
+        run: |
+          mkdir -p artifacts
+          DMG=$(find desktop/launcher/src-tauri/target/universal-apple-darwin/release/bundle/dmg -name '*.dmg' -type f -print -quit)
+          test -n "$DMG"
+          if [ "${MACOS_SIGNING_READY:-}" = "true" ]; then
+            OUTPUT="康复管理系统_${APP_VERSION}_macos-universal.dmg"
+            SIGNED=true
+          else
+            OUTPUT="康复管理系统_${APP_VERSION}_macos-universal_unsigned.dmg"
+            SIGNED=false
+          fi
+          cp "$DMG" "artifacts/$OUTPUT"
+          shasum -a 256 "artifacts/$OUTPUT" | sed 's#artifacts/##' > artifacts/SHA256SUMS-macos.txt
+          {
+            echo "version=${APP_VERSION}"
+            echo "commit=${GITHUB_SHA}"
+            echo "platform=macos-universal"
+            echo "signed=${SIGNED}"
+            echo "notarization=${MACOS_NOTARIZATION_READY:-false}"
+          } > artifacts/BUILD-INFO-macos.txt
+
+      - name: Upload macOS installer
+        uses: actions/upload-artifact@v6
+        with:
+          name: rehab-management-macos-${{ github.sha }}
+          path: artifacts/
+          if-no-files-found: error
+
+  draft-release:
+    name: Create draft release
+    if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+    needs:
+      - windows
+      - macos
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Download installers
+        uses: actions/download-artifact@v6
+        with:
+          pattern: rehab-management-*-${{ github.sha }}
+          path: release
+          merge-multiple: true
+
+      - name: Create combined checksums and release notes
+        run: |
+          cd release
+          sha256sum ./*.exe ./*.dmg > SHA256SUMS.txt
+          {
+            echo "# 康复管理系统 ${GITHUB_REF_NAME}"
+            echo
+            echo "- Git commit: \`${GITHUB_SHA}\`"
+            echo "- Windows x64: NSIS 安装器"
+            echo "- macOS: Apple Silicon + Intel universal DMG"
+            echo "- 运行前置条件: Docker Desktop（Compose v2）"
+            echo "- unsigned 文件仅用于测试；正式分发前必须完成代码签名与 macOS 公证。"
+          } > RELEASE-NOTES.md
+
+      - name: Create draft GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          gh release create "${GITHUB_REF_NAME}"
+          --repo "${GITHUB_REPOSITORY}"
+          --draft
+          --title "康复管理系统 ${GITHUB_REF_NAME}"
+          --notes-file release/RELEASE-NOTES.md
+          release/*.exe
+          release/*.dmg
+          release/SHA256SUMS.txt
+          release/BUILD-INFO-*.txt
