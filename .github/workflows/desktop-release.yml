@@ -210,9 +210,24 @@ jobs:
           $name = "康复管理系统_${env:APP_VERSION}_windows-x64${suffix}-setup.exe"
           Copy-Item $installer.FullName (Join-Path artifacts $name)
           $hash = (Get-FileHash (Join-Path artifacts $name) -Algorithm SHA256).Hash.ToLower()
-          "$hash  $name" | Set-Content -Encoding ascii artifacts/SHA256SUMS-windows.txt
-          "version=$env:APP_VERSION`ncommit=$env:GITHUB_SHA`nplatform=windows-x64`nsigned=$([bool]$env:WINDOWS_SIGNING_CONFIG)" |
-            Set-Content -Encoding utf8 artifacts/BUILD-INFO-windows.txt
+          $utf8NoBom = [Text.UTF8Encoding]::new($false)
+          [IO.File]::WriteAllText(
+            (Join-Path $PWD "artifacts/SHA256SUMS-windows.txt"),
+            "$hash  $name`n",
+            $utf8NoBom
+          )
+          $isSigned = -not [string]::IsNullOrEmpty($env:WINDOWS_SIGNING_CONFIG)
+          $buildInfo = @(
+            "version=$env:APP_VERSION"
+            "commit=$env:GITHUB_SHA"
+            "platform=windows-x64"
+            "signed=$($isSigned.ToString().ToLowerInvariant())"
+          ) -join "`n"
+          [IO.File]::WriteAllText(
+            (Join-Path $PWD "artifacts/BUILD-INFO-windows.txt"),
+            "$buildInfo`n",
+            $utf8NoBom
+          )
 
       - name: Upload Windows installer
         uses: actions/upload-artifact@v6
