@@ -4,6 +4,8 @@
 
 版本：**V1.0 / 1.0.0**
 
+软件著作权人：**杨玺龙**
+
 这是一个面向运动康复工作室内部使用的本地管理系统，覆盖患者建档、康复周期、评估、报告、
 训练计划、训练执行、进度追踪、风险提醒、随访和复评等业务。
 
@@ -244,7 +246,28 @@ docker compose down -v
 桌面 V1.0 默认只监听 `127.0.0.1`，不接受 `0.0.0.0`，也不自动配置局域网或路由器端口
 转发。
 
-需要同一 Wi-Fi/局域网访问时，使用经过独立验收的 `deploy/internal/` 方案：
+需要同一 Wi-Fi/局域网访问时，可以使用局域网一键部署脚本。将示例 IP 替换成部署设备的固定
+私网 IPv4：
+
+macOS、Linux 或 NAS：
+
+```bash
+chmod +x install.sh
+./install.sh 192.168.1.100
+```
+
+Windows PowerShell：
+
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass
+.\install.ps1 192.168.1.100
+```
+
+安装完成后，在成员设备访问 `http://部署设备IP:8080/ca.crt` 安装局域网 CA，然后打开
+`https://部署设备IP:8443`。首次登录信息只在部署设备本地生成，不进入发布包或 Git。
+详细说明见 [局域网一键部署文档](deploy/lan/README.md)。
+
+需要手工控制每个部署步骤时，使用经过独立验收的 `deploy/internal/` 方案：
 
 ```bash
 cp deploy/internal/.env.example deploy/internal/.env
@@ -420,15 +443,28 @@ desktop/scripts/test-runtime-e2e.sh
 - [签名与公证](docs/desktop-signing.md)
 - [故障排查](docs/desktop-troubleshooting.md)
 - [发布检查清单](docs/desktop-release-checklist.md)
-- [局域网部署](deploy/internal/README.md)
+- [局域网一键部署](deploy/lan/README.md)
+- [内部生产部署](deploy/internal/README.md)
+- [V1.0 变更记录](CHANGELOG.md)
+- [V1.0 软件著作权材料目录](docs/software-copyright/v1.0/README.md)
+- [权属说明](COPYRIGHT.md)
+- [上游与第三方声明](NOTICE.md)
 
 ## 上游与许可证
 
 本项目基于以下开源项目进行二次开发：
 
 - 芋道 `ruoyi-vue-pro`：<https://github.com/YunaiV/ruoyi-vue-pro>
+- 芋道 Vue3 管理后台：<https://gitee.com/yudaocode/yudao-ui-admin-vue3>
 - 芋道开发文档：<https://doc.iocoder.cn/>
 
-本项目保留上游作者、提交历史、版权与许可证信息，具体许可条款见 [LICENSE](LICENSE)。
+本项目不是芋道官方项目。“芋道”“RuoYi-Vue-Pro”及相关标识的权利归原项目及其作者所有。
+本项目保留上游作者、提交历史、版权与许可证信息，具体许可条款见 [LICENSE](LICENSE)、
+[NOTICE.md](NOTICE.md) 和 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
 
 使用、修改和分发前请同时遵守仓库中保留的上游许可证及第三方许可证。
+
+SFMA、FMS、NASM-CES 等方法内容目前无授权或其他使用依据，不属于杨玺龙的软件著作权权利
+主张；软件著作权鉴别材料排除相关规则、表单和说明。继续使用、展示或分发相关内容前，应取得
+合法依据，或替换为经过审查的原创通用表达。自研代码及权利范围详见
+[COPYRIGHT.md](COPYRIGHT.md)。

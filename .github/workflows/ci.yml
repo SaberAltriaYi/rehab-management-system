@@ -1,0 +1,100 @@
+name: Internal release CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - master
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+      - name: Test password bootstrap
+        run: >-
+          mvn -B -pl yudao-server -am
+          -Dtest=PasswordHashCliTest
+          -Dsurefire.failIfNoSpecifiedTests=false test
+      - name: Build production server
+        run: deploy/internal/build-server-isolated.sh
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: yudao-ui/yudao-ui-admin-vue3-app
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10.11.0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: pnpm
+          cache-dependency-path: yudao-ui/yudao-ui-admin-vue3-app/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build:internal
+      - run: pnpm audit:prod
+
+  deployment:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Check repository for sensitive materials
+        run: script/rehab/check-repository-sensitive-materials.sh
+      - name: Validate POSIX scripts
+        run: |
+          find deploy script -type f -name '*.sh' -print0 |
+            while IFS= read -r -d '' file; do
+              case "$(head -n 1 "$file")" in
+                *bash*) bash -n "$file" ;;
+                *sh*) sh -n "$file" ;;
+                *) echo "Unsupported shell shebang: $file" >&2; exit 1 ;;
+              esac
+            done
+          sh -n install.sh
+          sh -n rehabctl.sh
+      - name: Verify migration checksums
+        run: deploy/internal/migrate.sh verify-files
+      - name: Validate Compose configuration
+        run: |
+          cp deploy/internal/.env.example deploy/internal/.env
+          docker compose --env-file deploy/internal/.env \
+            -f deploy/internal/docker-compose.yml config --quiet
+
+  powershell:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Parse PowerShell installers
+        shell: pwsh
+        run: |
+          $files = @(
+            "install.ps1",
+            "rehabctl.ps1",
+            "deploy/lan/install.ps1",
+            "deploy/lan/rehabctl.ps1"
+          )
+          foreach ($file in $files) {
+            $tokens = $null
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile(
+              (Resolve-Path $file),
+              [ref]$tokens,
+              [ref]$errors
+            ) | Out-Null
+            if ($errors.Count -gt 0) {
+              $errors | Format-List | Out-String | Write-Error
+              exit 1
+            }
+          }

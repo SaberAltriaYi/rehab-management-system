@@ -125,6 +125,10 @@ logging:
     cn.iocoder.yudao.module.infra: INFO
 
 yudao:
+  info:
+    version: 1.0.0
+  api-encrypt:
+    enable: false
   captcha:
     enable: true
   security:

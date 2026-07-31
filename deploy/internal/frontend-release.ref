@@ -1,5 +1,6 @@
-repository=yudao-ui/yudao-ui-admin-vue3-app
-commit=6ad355dcb8086ce7e76815ce7edd697a5c74abe4
-tag=rehab-internal-v1.0.0-20260729
+repository=SaberAltriaYi/rehab-management-system
+source_path=yudao-ui/yudao-ui-admin-vue3-app
+source_ref=v1.0.0
+version=1.0.0
 build_mode=internal
 ai_enabled=false

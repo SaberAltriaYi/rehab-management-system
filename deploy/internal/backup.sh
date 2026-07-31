@@ -15,6 +15,14 @@ fail() {
   exit 1
 }
 
+file_mode() {
+  if stat -f '%Lp' "$1" >/dev/null 2>&1; then
+    stat -f '%Lp' "$1"
+  else
+    stat -c '%a' "$1"
+  fi
+}
+
 . "$SCRIPT_DIR/backup-crypto.sh"
 resolve_backup_key
 
@@ -22,7 +30,7 @@ umask 077
 [ -f "$ENV_FILE" ] || fail "缺少部署环境文件：$ENV_FILE"
 [ -f "$BACKUP_KEY_PATH" ] || fail "缺少备份加密密钥：$BACKUP_KEY_PATH"
 [ -f "$CA_KEY" ] || fail "缺少备份清单签名密钥：$CA_KEY"
-[ "$(stat -f '%Lp' "$BACKUP_KEY_PATH")" = "600" ] || fail "备份加密密钥权限必须为 600"
+[ "$(file_mode "$BACKUP_KEY_PATH")" = "600" ] || fail "备份加密密钥权限必须为 600"
 mkdir -p "$BACKUP_ROOT"
 staging_dir=$(mktemp -d "$BACKUP_ROOT/.rehab-backup.XXXXXX")
 trap 'rm -rf -- "$staging_dir"' EXIT HUP INT TERM
