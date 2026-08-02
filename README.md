@@ -71,6 +71,8 @@ MySQL、Redis、后端和管理端全部健康后，点击“打开系统”。�
 | 随访通知 | 记录随访备注，向患者侧生成可读提醒 |
 | 后台管理 | 用户、角色、菜单、部门、租户、日志、文件和系统配置 |
 | 审计与权限 | 登录认证、租户隔离、患者可见范围、操作日志和最小权限控制 |
+<img width="1237" height="684" alt="image" src="https://github.com/user-attachments/assets/bf5cab62-eaaa-4d37-8492-624f1637a9ac" />
+<img width="1420" height="724" alt="image" src="https://github.com/user-attachments/assets/dc6b98cb-aa4a-40da-896b-cf0b52473e26" />
 
 当前没有独立预约模块。可交付业务链路为：
 
