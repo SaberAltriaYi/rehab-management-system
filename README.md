@@ -17,7 +17,7 @@
 
 桌面测试版发布页：
 
-[下载康复管理系统 V1.0 桌面预发布版](https://github.com/SaberAltriaYi/rehab-management-system/releases/tag/desktop-v1.0.0-preview.1)
+[下载康复管理系统 V1.0 桌面预发布修复版 preview.2](https://github.com/SaberAltriaYi/rehab-management-system/releases/tag/desktop-v1.0.0-preview.2)
 
 | 平台 | 安装包 | 支持范围 |
 | --- | --- | --- |
