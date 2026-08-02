@@ -11,7 +11,9 @@ use std::io::Write;
 use std::net::{IpAddr, TcpListener};
 use std::path::{Path, PathBuf};
 
-const PASSWORD_LENGTH: usize = 48;
+const INFRASTRUCTURE_SECRET_LENGTH: usize = 48;
+const ADMIN_PASSWORD_MIN_LENGTH: usize = 12;
+const ADMIN_PASSWORD_MAX_LENGTH: usize = 16;
 
 #[derive(Clone, Debug)]
 pub struct AppPaths {
@@ -90,17 +92,21 @@ pub struct FirstStartState {
     pub temporary_admin_password: Option<String>,
 }
 
-pub fn random_password() -> String {
-    Alphanumeric.sample_string(&mut rand::rng(), PASSWORD_LENGTH)
+pub fn random_infrastructure_secret() -> String {
+    Alphanumeric.sample_string(&mut rand::rng(), INFRASTRUCTURE_SECRET_LENGTH)
+}
+
+pub fn random_admin_password() -> String {
+    Alphanumeric.sample_string(&mut rand::rng(), ADMIN_PASSWORD_MAX_LENGTH)
 }
 
 pub fn generate_distinct_secrets() -> RuntimeSecrets {
     loop {
         let values = [
-            random_password(),
-            random_password(),
-            random_password(),
-            random_password(),
+            random_infrastructure_secret(),
+            random_infrastructure_secret(),
+            random_infrastructure_secret(),
+            random_infrastructure_secret(),
         ];
         let distinct: HashSet<&String> = values.iter().collect();
         if distinct.len() == values.len() {
@@ -175,7 +181,7 @@ pub fn initialize_config(paths: &AppPaths) -> LauncherResult<FirstStartState> {
     let mut first_login = None;
     if !paths.env_path().exists() {
         let secrets = generate_distinct_secrets();
-        let admin_password = random_password();
+        let admin_password = random_admin_password();
         write_environment(paths, &settings, &secrets)?;
         write_mysql_client_config(paths, &secrets.mysql_root_password)?;
         write_admin_credentials_sql(paths, &admin_password)?;
@@ -328,7 +334,7 @@ mod tests {
     use tempfile::tempdir;
 
     #[test]
-    fn generated_passwords_are_long_and_distinct() {
+    fn generated_infrastructure_secrets_are_long_and_distinct() {
         let secrets = generate_distinct_secrets();
         let values = [
             secrets.db_password,
@@ -341,11 +347,24 @@ mod tests {
     }
 
     #[test]
+    fn generated_admin_password_matches_login_contract() {
+        for _ in 0..128 {
+            let password = random_admin_password();
+            assert!(password.len() >= ADMIN_PASSWORD_MIN_LENGTH);
+            assert!(password.len() <= ADMIN_PASSWORD_MAX_LENGTH);
+            assert!(password
+                .chars()
+                .all(|character| character.is_ascii_alphanumeric()));
+        }
+    }
+
+    #[test]
     fn configuration_is_created_without_exposing_admin_password() {
         let dir = tempdir().unwrap();
         let paths = AppPaths::from_data_dir(dir.path().join("app"));
         let state = initialize_config(&paths).unwrap();
         let admin = state.temporary_admin_password.unwrap();
+        assert_eq!(admin.len(), ADMIN_PASSWORD_MAX_LENGTH);
         let env = fs::read_to_string(paths.env_path()).unwrap();
         let sql = fs::read_to_string(
             paths

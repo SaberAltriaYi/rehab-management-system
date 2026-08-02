@@ -9,6 +9,8 @@ COMPOSE_FILE="$INTERNAL_DIR/docker-compose.yml"
 MARKER_FILE="$SCRIPT_DIR/.installed"
 FIRST_LOGIN_FILE="$SCRIPT_DIR/FIRST_LOGIN.txt"
 REQUESTED_IP=${1:-}
+ADMIN_PASSWORD_MIN_LENGTH=12
+ADMIN_PASSWORD_MAX_LENGTH=16
 
 fail() {
   echo "FAIL: $1" >&2
@@ -146,9 +148,10 @@ compose up -d mysql redis
 wait_for_mysql
 
 if [ ! -f "$MARKER_FILE" ]; then
-  # 登录接口当前限制密码为 4–16 字符；16 个十六进制字符提供 64 位临时随机熵。
+  # 新管理员密码限制为 4–16 字符；16 个十六进制字符提供 64 位临时随机熵。
   ADMIN_PASSWORD=$(random_hex 8)
-  [ "${#ADMIN_PASSWORD}" -ge 12 ] && [ "${#ADMIN_PASSWORD}" -le 16 ] \
+  [ "${#ADMIN_PASSWORD}" -ge "$ADMIN_PASSWORD_MIN_LENGTH" ] \
+    && [ "${#ADMIN_PASSWORD}" -le "$ADMIN_PASSWORD_MAX_LENGTH" ] \
     || fail "生成的管理员密码不符合登录接口长度限制"
   ADMIN_HASH=$(
     printf '%s\n' "$ADMIN_PASSWORD" \

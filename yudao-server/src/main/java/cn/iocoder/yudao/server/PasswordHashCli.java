@@ -13,6 +13,8 @@ import java.nio.charset.StandardCharsets;
  */
 public final class PasswordHashCli {
 
+    private static final int ADMIN_PASSWORD_MIN_LENGTH = 12;
+    private static final int ADMIN_PASSWORD_MAX_LENGTH = 16;
     private static final int BCRYPT_MAX_BYTES = 72;
     private static final BCryptPasswordEncoder ENCODER = new BCryptPasswordEncoder(12);
 
@@ -28,6 +30,10 @@ public final class PasswordHashCli {
     static String encode(String password) {
         if (password == null || password.isEmpty()) {
             throw new IllegalArgumentException("password must not be empty");
+        }
+        if (password.length() < ADMIN_PASSWORD_MIN_LENGTH
+                || password.length() > ADMIN_PASSWORD_MAX_LENGTH) {
+            throw new IllegalArgumentException("administrator password must be 12-16 characters");
         }
         if (password.getBytes(StandardCharsets.UTF_8).length > BCRYPT_MAX_BYTES) {
             throw new IllegalArgumentException("password exceeds BCrypt 72-byte limit");

@@ -22,7 +22,7 @@
 | CVE-2016-1000027 | Critical | 项目没有使用或注册 `HttpInvokerServiceExporter`，不存在 Java HTTP Invoker 反序列化入口。 |
 | CVE-2024-38816 | High | 后端没有使用 `RouterFunction` 配合 `FileSystemResource` 暴露静态目录；静态资源由 Nginx 固定目录提供。 |
 | CVE-2024-38819 | High | 后端没有使用 WebMvc.fn/WebFlux.fn 文件资源路由，条件不成立。 |
-| CVE-2025-22228 | High | 所有后台/会员密码校验在服务层拒绝超过 72 字节的输入，公开 DTO 上限为 16；已增加专项测试。 |
+| CVE-2025-22228 | High | 所有后台/会员密码校验在服务层拒绝超过 72 字节的输入；新密码 DTO 上限为 16，登录及旧密码 DTO 为兼容早期桌面包的 48 位临时密码放宽至 64 字符；已增加专项测试。 |
 | CVE-2025-22235 | High | 项目未使用 `EndpointRequest.to(...)`；外部 `/actuator` 被 Nginx 封堵，只暴露容器内 `health/info`。 |
 | CVE-2025-41249 | High | 权限注解位于具体控制器方法，未在泛型父类或泛型接口上声明；条件不成立。 |
 | CVE-2026-22732 | Critical | 已按官方兼容方案设置 `HeaderWriterFilter.shouldWriteHeadersEagerly=true`，Nginx 同时统一写入生产安全头。 |

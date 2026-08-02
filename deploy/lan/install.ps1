@@ -8,6 +8,8 @@ $ComposeFile = Join-Path $InternalDir "docker-compose.yml"
 $MarkerFile = Join-Path $ScriptDir ".installed"
 $FirstLoginFile = Join-Path $ScriptDir "FIRST_LOGIN.txt"
 $RequestedIp = if ($args.Count -gt 0) { $args[0] } else { $null }
+$AdminPasswordMinLength = 12
+$AdminPasswordMaxLength = 16
 
 function Fail([string]$Message) {
     throw "FAIL: $Message"
@@ -144,9 +146,10 @@ Invoke-Compose up -d mysql redis
 Wait-MySql
 
 if (-not (Test-Path $MarkerFile)) {
-    # 登录接口当前限制密码为 4–16 字符；16 个十六进制字符提供 64 位临时随机熵。
+    # 新管理员密码限制为 4–16 字符；16 个十六进制字符提供 64 位临时随机熵。
     $adminPassword = New-RandomHex 8
-    if ($adminPassword.Length -lt 12 -or $adminPassword.Length -gt 16) {
+    if ($adminPassword.Length -lt $AdminPasswordMinLength -or
+        $adminPassword.Length -gt $AdminPasswordMaxLength) {
         Fail "生成的管理员密码不符合登录接口长度限制"
     }
     $bcryptOutput = ($adminPassword + "`n") |

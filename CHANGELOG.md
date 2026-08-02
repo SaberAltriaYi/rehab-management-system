@@ -4,6 +4,14 @@
 
 All notable product changes are recorded here. Product versions use semantic versioning; the human-readable software version is V1.0.
 
+## [Unreleased]
+
+### Fixed
+
+- Split the desktop administrator password generator from 48-character infrastructure-secret generation.
+- Generate a 16-character temporary administrator password compatible with the login and password-change contract.
+- Allow affected `desktop-v1.0.0-preview.1` installations to log in with their existing 48-character temporary password and then change it, without reinstalling or deleting Docker volumes.
+
 ## [1.0.0] - 2026-07-31
 
 ### Added

@@ -1,6 +1,7 @@
 package cn.iocoder.yudao.module.system.service.auth;
 
 import cn.hutool.core.util.ReflectUtil;
+import cn.hutool.core.util.StrUtil;
 import cn.iocoder.yudao.framework.common.enums.CommonStatusEnum;
 import cn.iocoder.yudao.framework.common.enums.UserTypeEnum;
 import cn.iocoder.yudao.framework.test.core.ut.BaseDbUnitTest;
@@ -180,6 +181,20 @@ public class AdminAuthServiceImplTest extends BaseDbUnitTest {
         verify(socialUserService).bindSocialUser(eq(new SocialUserBindReqDTO(
                 user.getId(), UserTypeEnum.ADMIN.getValue(),
                 reqVO.getSocialType(), reqVO.getSocialCode(), reqVO.getSocialState())));
+    }
+
+    @Test
+    public void testLoginRequestAcceptsLegacyDesktopInitialPassword() {
+        AuthLoginReqVO reqVO = AuthLoginReqVO.builder()
+                .username("admin")
+                .password(StrUtil.repeat("A", 48))
+                .build();
+
+        Validator requestValidator = Validation.buildDefaultValidatorFactory().getValidator();
+        assertEquals(0, requestValidator.validate(reqVO).size());
+
+        reqVO.setPassword(StrUtil.repeat("A", 65));
+        assertEquals(1, requestValidator.validate(reqVO).size());
     }
 
     @Test

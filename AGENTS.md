@@ -27,7 +27,8 @@ Backend:
 ```bash
 mvn -B -pl yudao-module-rehab -am test
 mvn -B -pl yudao-framework/yudao-spring-boot-starter-web \
-  -Dtest=ApiAccessLogInterceptorTest,GlobalExceptionHandlerTest test
+  -am -Dtest=ApiAccessLogInterceptorTest,GlobalExceptionHandlerTest \
+  -Dsurefire.failIfNoSpecifiedTests=false test
 deploy/internal/build-server-isolated.sh
 ```
 

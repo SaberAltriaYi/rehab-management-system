@@ -12,7 +12,7 @@ class PasswordHashCliTest {
 
     @Test
     void shouldEncodePassword() {
-        String password = "unit-test-password";
+        String password = "valid-test-1234";
 
         String encoded = PasswordHashCli.encode(password);
 
@@ -25,8 +25,13 @@ class PasswordHashCliTest {
     }
 
     @Test
-    void shouldRejectPasswordLongerThan72Utf8Bytes() {
+    void shouldRejectPasswordShorterThan12Characters() {
+        assertThrows(IllegalArgumentException.class, () -> PasswordHashCli.encode("short-pass"));
+    }
+
+    @Test
+    void shouldRejectPasswordLongerThan16Characters() {
         assertThrows(IllegalArgumentException.class,
-                () -> PasswordHashCli.encode("康康康康康康康康康康康康康康康康康康康康康康康康康"));
+                () -> PasswordHashCli.encode("12345678901234567"));
     }
 }

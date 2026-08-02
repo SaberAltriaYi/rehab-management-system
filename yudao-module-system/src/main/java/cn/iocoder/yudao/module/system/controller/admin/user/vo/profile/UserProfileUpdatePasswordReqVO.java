@@ -12,7 +12,8 @@ public class UserProfileUpdatePasswordReqVO {
 
     @Schema(description = "旧密码", requiredMode = Schema.RequiredMode.REQUIRED, example = "123456")
     @NotEmpty(message = "旧密码不能为空")
-    @Length(min = 4, max = 16, message = "密码长度为 4-16 位")
+    // 兼容桌面版 V1.0.0 早期构建生成的 48 位临时密码。
+    @Length(min = 4, max = 64, message = "旧密码长度为 4-64 位")
     private String oldPassword;
 
     @Schema(description = "新密码", requiredMode = Schema.RequiredMode.REQUIRED, example = "654321")

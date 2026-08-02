@@ -37,6 +37,8 @@ import org.springframework.context.annotation.Import;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 import javax.annotation.Resource;
+import javax.validation.Validation;
+import javax.validation.Validator;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
@@ -248,6 +250,19 @@ public class AdminUserServiceImplTest extends BaseDbUnitTest {
         // 断言
         AdminUserDO user = userMapper.selectById(userId);
         assertEquals("encode:yuanma", user.getPassword());
+    }
+
+    @Test
+    public void testProfilePasswordRequestAcceptsLegacyOldPasswordOnly() {
+        UserProfileUpdatePasswordReqVO reqVO = new UserProfileUpdatePasswordReqVO();
+        reqVO.setOldPassword(StrUtil.repeat("A", 48));
+        reqVO.setNewPassword("new-password-123");
+
+        Validator validator = Validation.buildDefaultValidatorFactory().getValidator();
+        assertEquals(0, validator.validate(reqVO).size());
+
+        reqVO.setNewPassword("12345678901234567");
+        assertEquals(1, validator.validate(reqVO).size());
     }
 
     @Test
@@ -647,8 +662,8 @@ public class AdminUserServiceImplTest extends BaseDbUnitTest {
     }
 
     @Test
-    public void testIsPasswordMatch_acceptsSupportedLength() {
-        String rawPassword = RandomUtil.randomString(16);
+    public void testIsPasswordMatch_acceptsLegacyDesktopInitialPassword() {
+        String rawPassword = RandomUtil.randomString(48);
         when(passwordEncoder.matches(rawPassword, "encoded")).thenReturn(true);
 
         assertTrue(userService.isPasswordMatch(rawPassword, "encoded"));

@@ -442,6 +442,8 @@ export default {
       oldPwdMsg: 'Please Enter Old Password',
       newPwdMsg: 'Please Enter New Password',
       cfPwdMsg: 'Please Enter Confirm Password',
+      oldPwdRules: 'Old password must be 4 to 64 characters',
+      newPwdRules: 'New password must be 4 to 16 characters',
       diffPwd: 'The Passwords Entered Twice No Match'
     }
   },
