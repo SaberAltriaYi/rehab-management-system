@@ -211,7 +211,8 @@ jobs:
           $installer = Get-ChildItem desktop/launcher/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe | Select-Object -First 1
           if (-not $installer) { throw "NSIS installer not found" }
           $suffix = if ($env:WINDOWS_SIGNING_CONFIG) { "" } else { "_unsigned" }
-          $name = "康复管理系统_${env:APP_VERSION}_windows-x64${suffix}-setup.exe"
+          # GitHub 会清理发布附件文件名中的非 ASCII 前缀，因此统一使用稳定英文标识。
+          $name = "rehab-management-system_${env:APP_VERSION}_windows-x64${suffix}-setup.exe"
           Copy-Item $installer.FullName (Join-Path artifacts $name)
           $hash = (Get-FileHash (Join-Path artifacts $name) -Algorithm SHA256).Hash.ToLower()
           $utf8NoBom = [Text.UTF8Encoding]::new($false)
@@ -334,10 +335,10 @@ jobs:
           DMG=$(find desktop/launcher/src-tauri/target/universal-apple-darwin/release/bundle/dmg -name '*.dmg' -type f -print -quit)
           test -n "$DMG"
           if [ "${MACOS_SIGNING_READY:-}" = "true" ]; then
-            OUTPUT="康复管理系统_${APP_VERSION}_macos-universal.dmg"
+            OUTPUT="rehab-management-system_${APP_VERSION}_macos-universal.dmg"
             SIGNED=true
           else
-            OUTPUT="康复管理系统_${APP_VERSION}_macos-universal_unsigned.dmg"
+            OUTPUT="rehab-management-system_${APP_VERSION}_macos-universal_unsigned.dmg"
             SIGNED=false
           fi
           cp "$DMG" "artifacts/$OUTPUT"

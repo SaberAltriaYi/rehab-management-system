@@ -68,7 +68,7 @@ JRE 基础镜像，并在界面显示当前阶段；不使用 `latest` 基础镜
 ### Windows
 
 - 目标：Windows x64；
-- 安装器：Tauri NSIS `康复管理系统_1.0.0_windows-x64-setup.exe`；
+- 发布安装器：Tauri NSIS `rehab-management-system_1.0.0_windows-x64-setup.exe`；
 - 开始菜单、卸载入口由 Tauri/NSIS 提供，桌面快捷方式作为安装选项；
 - 不要求 Git Bash、WSL、Homebrew、Java、Maven、Node 或 pnpm；
 - 未签名安装器明确记录 SmartScreen 提示；
@@ -77,7 +77,7 @@ JRE 基础镜像，并在界面显示当前阶段；不使用 `latest` 基础镜
 ### macOS
 
 - 目标：`universal-apple-darwin`，同时覆盖 Apple Silicon 与 Intel；
-- 安装器：`康复管理系统_1.0.0_macos-universal.dmg`；
+- 发布安装器：`rehab-management-system_1.0.0_macos-universal.dmg`；
 - 应用从 `/Applications` 运行；
 - 无 Developer ID 时生成带 `unsigned` 标识的测试构建；
 - Developer ID 签名和 notarization 仅在相应 CI Secret 完整时执行。

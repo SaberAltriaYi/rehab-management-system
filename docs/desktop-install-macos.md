@@ -1,7 +1,7 @@
 # macOS 安装与卸载
 
 universal DMG 同时支持 Apple Silicon 和 Intel。下载
-`康复管理系统_1.0.0_macos-universal.dmg`；无签名测试构建文件名带 `_unsigned`。核对
+`rehab-management-system_1.0.0_macos-universal.dmg`；无签名测试构建文件名带 `_unsigned`。核对
 `SHA256SUMS-macos.txt` 后打开 DMG，将应用拖入 Applications。
 
 先安装并启动 Docker Desktop。启动器会检查应用包内 GUI 环境常见的 Docker Desktop 路径，

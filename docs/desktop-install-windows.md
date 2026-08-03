@@ -1,6 +1,6 @@
 # Windows 安装与卸载
 
-支持 Windows x64。下载 `康复管理系统_1.0.0_windows-x64-setup.exe`；未签名测试构建文件名
+支持 Windows x64。下载 `rehab-management-system_1.0.0_windows-x64-setup.exe`；未签名测试构建文件名
 带 `_unsigned`。先用同一 artifact 中 `SHA256SUMS-windows.txt` 校验，再运行安装器。
 
 安装器为当前用户创建开始菜单入口和标准卸载入口；NSIS 界面可选择桌面快捷方式。安装前
