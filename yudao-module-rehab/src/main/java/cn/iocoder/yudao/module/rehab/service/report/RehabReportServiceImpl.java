@@ -42,6 +42,11 @@ import org.apache.pdfbox.pdmodel.font.PDType0Font;
 import org.apache.poi.xwpf.usermodel.XWPFDocument;
 import org.apache.poi.xwpf.usermodel.XWPFParagraph;
 import org.apache.poi.xwpf.usermodel.XWPFRun;
+import org.apache.poi.xwpf.usermodel.XWPFTable;
+import org.apache.poi.xwpf.usermodel.XWPFTableCell;
+import org.apache.poi.xwpf.usermodel.XWPFTableRow;
+import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTRPr;
+import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTFonts;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -52,10 +57,14 @@ import java.io.Closeable;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionUtil.exception;
@@ -74,11 +83,14 @@ public class RehabReportServiceImpl implements RehabReportService {
     private static final String SOFTWARE_COPYRIGHT_HOLDER = "杨玺龙";
     private static final String REPORT_TITLE = "康复综合评估报告";
     private static final String BRANDED_REPORT_TITLE = SOFTWARE_NAME + " " + SOFTWARE_VERSION + " - " + REPORT_TITLE;
+    private static final String REPORT_TEMPLATE_RESOURCE = "/templates/rehab-assessment-report-v4.1.docx";
 
     @Value("${yudao.rehab.storage-path:./data/rehab}")
     private String storagePath;
     @Value("${yudao.rehab.pdf-font-path:${REHAB_PDF_FONT_PATH:}}")
     private String pdfFontPath;
+    @Value("${yudao.rehab.libreoffice-path:${REHAB_LIBREOFFICE_PATH:}}")
+    private String libreOfficePath;
 
     @Resource
     private RehabReportMapper reportMapper;
@@ -190,7 +202,7 @@ public class RehabReportServiceImpl implements RehabReportService {
             generateDocx(reportPayload, docxPath);
 
             pdfPath = reportDir + File.separator + baseName + ".pdf";
-            generatePdf(reportPayload, pdfPath);
+            generatePdf(reportPayload, docxPath, pdfPath);
         } catch (Exception ex) {
             fallbackUsed = true;
             fallbackMessage = "报告模板导出失败，已降级保留结构化 JSON";
@@ -393,7 +405,15 @@ public class RehabReportServiceImpl implements RehabReportService {
                 String pdfPath = reportDir + File.separator + report.getReportNo()
                         + "_v" + report.getReportVersion() + ".pdf";
                 try {
-                    generatePdf(payload, pdfPath);
+                    String docxPath = report.getDocxPath();
+                    if (StrUtil.isBlank(docxPath) || !FileUtil.exist(docxPath)) {
+                        docxPath = reportDir + File.separator + report.getReportNo()
+                                + "_v" + report.getReportVersion() + ".docx";
+                        generateDocx(payload, docxPath);
+                        report.setDocxPath(docxPath);
+                        reportMapper.updateById(new RehabReportDO().setId(id).setDocxPath(docxPath));
+                    }
+                    generatePdf(payload, docxPath, pdfPath);
                     report.setPdfPath(pdfPath);
                     reportMapper.updateById(new RehabReportDO().setId(id).setPdfPath(pdfPath));
                 } catch (IOException ignored) {
@@ -652,39 +672,92 @@ public class RehabReportServiceImpl implements RehabReportService {
                 .filter(type -> !moduleMap.containsKey(type))
                 .collect(Collectors.toList());
 
+        Map<String, Object> patientPayload = new LinkedHashMap<>();
+        patientPayload.put("patientNo", patient.getPatientNo());
+        patientPayload.put("name", patient.getName());
+        patientPayload.put("gender", patient.getGender());
+        patientPayload.put("birthday", patient.getBirthday());
+        patientPayload.put("age", patient.getAge());
+        patientPayload.put("heightCm", patient.getHeightCm());
+        patientPayload.put("weightKg", patient.getWeightKg());
+        patientPayload.put("bmi", patient.getBmi());
+        patientPayload.put("dominantSide", patient.getDominantSide());
+        patientPayload.put("sportType", patient.getSportType());
+        patientPayload.put("schoolOrCompany", patient.getSchoolOrCompany());
+        patientPayload.put("chiefComplaint", patient.getChiefComplaint());
+        patientPayload.put("painArea", patient.getPainArea());
+        patientPayload.put("painScore", patient.getPainScore());
+        patientPayload.put("medicalHistory", patient.getMedicalHistory());
+        patientPayload.put("injuryHistory", patient.getInjuryHistory());
+        patientPayload.put("trainingHistory", patient.getTrainingHistory());
+
+        Map<String, Object> episodePayload = new LinkedHashMap<>();
+        episodePayload.put("episodeNo", episode == null ? null : episode.getEpisodeNo());
+        episodePayload.put("episodeType", episode == null ? null : episode.getEpisodeType());
+        episodePayload.put("startDate", episode == null ? null : episode.getStartDate());
+
+        Map<String, Object> assessmentPayload = new LinkedHashMap<>();
+        assessmentPayload.put("assessmentNo", assessment.getAssessmentNo());
+        assessmentPayload.put("assessmentType", assessment.getAssessmentType());
+        assessmentPayload.put("assessmentDate", assessment.getAssessmentDate());
+        AdminUserRespDTO assessor = assessment.getAssessorUserId() == null
+                ? null : adminUserApi.getUser(assessment.getAssessorUserId());
+        assessmentPayload.put("assessorName", assessor == null ? null : assessor.getNickname());
+        assessmentPayload.put("locationType", assessment.getLocationType());
+        assessmentPayload.put("chiefFocus", assessment.getChiefFocus());
+        assessmentPayload.put("painScore", assessment.getPainScore());
+        assessmentPayload.put("redFlagNotes", assessment.getRedFlagNotes());
+        assessmentPayload.put("sourceSummary", assessment.getSourceSummary());
+        assessmentPayload.put("rawInputStatus", assessment.getRawInputStatus());
+
+        Map<String, Object> rawModules = new LinkedHashMap<>();
+        RehabAssessmentConstants.MODULE_TYPES.forEach(moduleType -> {
+            RehabAssessmentModuleDataDO module = moduleMap.get(moduleType);
+            if (module == null) {
+                return;
+            }
+            Map<String, Object> modulePayload = new LinkedHashMap<>();
+            modulePayload.put("moduleStatus", module.getModuleStatus());
+            modulePayload.put("sourceType", module.getSourceType());
+            modulePayload.put("version", module.getVersion());
+            Map<String, Object> parsed = StrUtil.isBlank(module.getDataJson())
+                    ? Collections.emptyMap() : JsonUtils.parseObject(module.getDataJson(), Map.class);
+            modulePayload.put("rawData", removeDerivedReportContent(parsed));
+            rawModules.put(moduleType, modulePayload);
+        });
+
         List<Map<String, Object>> sections = new ArrayList<>();
-        sections.add(section(1, "封面页", BRANDED_REPORT_TITLE));
-        sections.add(section(2, "基本信息与主诉", StrUtil.blankToDefault(patient.getChiefComplaint(), "未提供/数据不足")));
-        sections.add(section(3, "数据来源与可用性", describeDataAvailability(moduleMap, missingModules)));
-        sections.add(section(4, "总览摘要", buildOverviewSummary(assessment, moduleMap, missingModules)));
-        sections.add(section(5, "身体成分与生长发育解读", moduleSummaryContent(moduleMap, RehabAssessmentConstants.MODULE_BODY_COMP, "未提供/暂不适用")));
-        sections.add(section(6, "静态评估总章", moduleContent(moduleMap, RehabAssessmentConstants.MODULE_STATIC, "未提供/数据不足")));
-        sections.add(section(7, "静态指标总表", moduleContent(moduleMap, RehabAssessmentConstants.MODULE_STATIC, "未提供/数据不足")));
-        sections.add(section(8, "NASM-CES 动作评估汇总", buildNasmActionSummary(moduleMap)));
-        sections.add(section(9, "SFMA 评估解读", buildSfmaInterpretationSummary(moduleMap)));
-        sections.add(section(10, "FMS 评估解读", moduleSummaryContent(moduleMap, RehabAssessmentConstants.MODULE_FMS, "未提供/数据不足")));
-        sections.add(section(11, "YBT 评估解读", moduleSummaryContent(moduleMap, RehabAssessmentConstants.MODULE_YBT, "未提供/数据不足")));
-        sections.add(section(12, "OpenCap / OpenSim 运动学专项分析", moduleSummaryContent(moduleMap, RehabAssessmentConstants.MODULE_OPENCAP, "未提供/数据不足")));
-        sections.add(section(13, "综合问题清单", buildIssueSummary(moduleMap, missingModules)));
-        sections.add(section(14, "整体主要风险指向", buildRiskSummary(assessment, moduleMap)));
-        sections.add(section(15, "优先干预顺序", buildPriorityInterventionSummary(moduleMap)));
-        sections.add(section(16, "风险触发因素与红旗筛查", StrUtil.blankToDefault(assessment.getRedFlagNotes(), "证据不足；仅为功能学推测；需结合人工复核")));
-        sections.add(section(17, "训练处方总览", "提示先从低痛阈、低冲击训练开始，逐步进阶；若疼痛升级需立即降阶。"));
-        sections.add(section(18, "复评与进阶标准", "建议 2-4 周复评一次，优先跟踪疼痛、左右差与 QEI 趋势。"));
-        sections.add(section(19, "动作执行质量评估（QEI）", buildQeiSummary(moduleMap)));
-        sections.add(section(20, "治疗师快速查看表", "提示关注本次主要问题、风险等级、左右差和下次复测节点。"));
-        sections.add(section(21, "患者/家长简版摘要", "当前重点是降低疼痛、提升稳定性、保证训练依从性。"));
-        sections.add(section(22, "附录：原始证据页", "附录包含模块原始结构化数据摘要，供人工复核。"));
+        sections.add(section(1, "基本信息与生长发育", flattenForReport(patientPayload)));
+        sections.add(section(2, "红旗、疼痛与安全原始记录", flattenForReport(assessmentPayload)));
+        sections.add(section(3, "数据完整度与测量条件", buildModuleStatusText(rawModules)));
+        sections.add(section(4, "影像与结构性证据", moduleRawContent(rawModules, RehabAssessmentConstants.MODULE_OBSERVATION)));
+        sections.add(section(5, "静态体态原始数据", moduleRawContent(rawModules, RehabAssessmentConstants.MODULE_STATIC)));
+        sections.add(section(6, "NASM-CES 原始数据", moduleRawContent(rawModules, RehabAssessmentConstants.MODULE_NASM)));
+        sections.add(section(7, "SFMA 原始数据", moduleRawContent(rawModules, RehabAssessmentConstants.MODULE_SFMA)));
+        sections.add(section(8, "FMS 原始数据", moduleRawContent(rawModules, RehabAssessmentConstants.MODULE_FMS)));
+        sections.add(section(9, "YBT-LQ / YBT-UQ 原始数据", moduleRawContent(rawModules, RehabAssessmentConstants.MODULE_YBT)));
+        sections.add(section(10, "力量、耐力、专项及 OpenCap 原始数据",
+                joinRawContents(moduleRawContent(rawModules, RehabAssessmentConstants.MODULE_BODY_COMP),
+                        moduleRawContent(rawModules, RehabAssessmentConstants.MODULE_OPENCAP))));
+        sections.add(section(11, "结局量表原始数据", moduleRawContent(rawModules, RehabAssessmentConstants.MODULE_OUTCOME_SCALE)));
+        sections.add(section(12, "综合评估原始数据", moduleRawContent(rawModules, RehabAssessmentConstants.MODULE_COMPREHENSIVE)));
+        sections.add(section(13, "临床推理与假设", ""));
+        sections.add(section(14, "风险分域与管理等级", ""));
+        sections.add(section(15, "优先级目标与 KPI", ""));
+        sections.add(section(16, "分阶段训练处方", ""));
+        sections.add(section(17, "复评、转诊与结案", ""));
 
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("reportNo", reportNo);
         payload.put("generatedAt", LocalDateTime.now().toString());
-        payload.put("patient", BeanUtils.toBean(patient, Map.class));
-        payload.put("episode", BeanUtils.toBean(episode, Map.class));
-        payload.put("assessment", BeanUtils.toBean(assessment, Map.class));
+        payload.put("patient", patientPayload);
+        payload.put("episode", episodePayload);
+        payload.put("assessment", assessmentPayload);
+        payload.put("rawModules", rawModules);
         payload.put("missingModules", missingModules);
         payload.put("sections", sections);
-        payload.put("evidenceRefs", new ArrayList<>(moduleMap.keySet()));
+        payload.put("evidenceRefs", new ArrayList<>(rawModules.keySet()));
+        payload.put("contentPolicy", "raw-data-only");
         return payload;
     }
 
@@ -696,260 +769,73 @@ public class RehabReportServiceImpl implements RehabReportService {
         return map;
     }
 
-    private String describeDataAvailability(Map<String, RehabAssessmentModuleDataDO> moduleMap,
-                                            List<String> missingModules) {
-        return "已提供模块 " + String.join("、", moduleMap.keySet())
-                + "；缺失模块 " + (CollUtil.isEmpty(missingModules) ? "无" : String.join("、", missingModules))
-                + "。缺失数据章节已自动降级为“未提供/数据不足”。";
+    private Object removeDerivedReportContent(Object value) {
+        if (value instanceof Map) {
+            Map<?, ?> source = (Map<?, ?>) value;
+            Map<String, Object> cleaned = new LinkedHashMap<>();
+            source.forEach((key, item) -> {
+                String keyText = String.valueOf(key);
+                if (!isDerivedReportKey(keyText)) {
+                    cleaned.put(keyText, removeDerivedReportContent(item));
+                }
+            });
+            return cleaned;
+        }
+        if (value instanceof List) {
+            return ((List<?>) value).stream().map(this::removeDerivedReportContent).collect(Collectors.toList());
+        }
+        return value;
     }
 
-    private String buildOverviewSummary(RehabAssessmentRecordDO assessment,
-                                        Map<String, RehabAssessmentModuleDataDO> moduleMap,
-                                        List<String> missingModules) {
-        String nasmDynamicSummary = getNasmMappingText(moduleMap, "dynamic_function_summary_text");
-        boolean hasDynamicEvidence = moduleMap.containsKey(RehabAssessmentConstants.MODULE_NASM)
-                || moduleMap.containsKey(RehabAssessmentConstants.MODULE_SFMA)
-                || moduleMap.containsKey(RehabAssessmentConstants.MODULE_FMS)
-                || moduleMap.containsKey(RehabAssessmentConstants.MODULE_YBT);
-
-        StringBuilder sb = new StringBuilder();
-        String comprehensiveConclusion = getStructuredSummaryValue(
-                moduleMap.get(RehabAssessmentConstants.MODULE_COMPREHENSIVE), "conclusion");
-        if (StrUtil.isNotBlank(comprehensiveConclusion)) {
-            sb.append("综合评估结论：").append(comprehensiveConclusion).append("\n");
-        }
-        sb.append("提示当前为功能评估结论，非医学确诊。")
-                .append("从静态排列看，")
-                .append(moduleMap.containsKey(RehabAssessmentConstants.MODULE_STATIC) ? "已记录体态线索" : "证据不足")
-                .append("；从动态表现看，")
-                .append(hasDynamicEvidence ? "存在动作控制与稳定性线索" : "证据不足")
-                .append("。结合当前证据，优先考虑 ")
-                .append(StrUtil.blankToDefault(assessment.getChiefFocus(), "动作质量与负荷管理"))
-                .append("。\n");
-        if (StrUtil.isNotBlank(nasmDynamicSummary)) {
-            sb.append("CES 动态功能摘要：").append(nasmDynamicSummary).append("\n");
-        }
-        if (CollUtil.isNotEmpty(missingModules)) {
-            sb.append("证据不足：缺失模块 ").append(String.join("、", missingModules))
-                    .append("；仅为功能学推测；需结合人工复核。");
-        }
-        return sb.toString();
+    private boolean isDerivedReportKey(String key) {
+        String normalized = StrUtil.blankToDefault(key, "").toLowerCase(Locale.ROOT).replace("_", "");
+        return Arrays.asList("reportmapping", "conclusion", "interpretation", "analysis",
+                        "clinicalmeaning", "trainingdirection", "recommendation", "suggestion", "risklevel",
+                        "riskflag", "mechanism", "priorityinterventiondraft", "confidence", "judgement")
+                .stream().anyMatch(normalized::contains)
+                || Arrays.asList("报告映射", "结论", "解读", "分析", "临床意义", "训练方向", "建议",
+                        "风险等级", "风险提示", "机制", "优先干预", "置信度", "判定")
+                .stream().anyMatch(key::contains);
     }
 
-    private String buildIssueSummary(Map<String, RehabAssessmentModuleDataDO> moduleMap, List<String> missingModules) {
-        if (moduleMap.isEmpty()) {
-            return "证据不足；仅为功能学推测；需结合人工复核。";
-        }
-        return "提示疑似存在动作模式效率下降与代偿链风险。已纳入证据模块："
-                + String.join("、", moduleMap.keySet())
-                + (CollUtil.isEmpty(missingModules) ? "。" : "；缺失模块：" + String.join("、", missingModules) + "。");
+    @SuppressWarnings("unchecked")
+    private String moduleRawContent(Map<String, Object> rawModules, String moduleType) {
+        Object module = rawModules.get(moduleType);
+        return module instanceof Map ? flattenForReport((Map<String, Object>) module) : "";
     }
 
-    private String buildRiskSummary(RehabAssessmentRecordDO assessment, Map<String, RehabAssessmentModuleDataDO> moduleMap) {
-        String mappedRiskText = getNasmMappingText(moduleMap, "overall_risk_direction_text");
-        if (StrUtil.isNotBlank(mappedRiskText)) {
-            return mappedRiskText;
-        }
-        String pain = assessment.getPainScore() == null ? "未提供" : assessment.getPainScore().toPlainString();
-        String opencapInfo = moduleMap.containsKey(RehabAssessmentConstants.MODULE_OPENCAP) ? "含运动学证据" : "运动学证据不足";
-        return "疼痛/症状风险：当前疼痛评分 " + pain + "；再代偿风险：" + opencapInfo
-                + "。提示需结合训练负荷与复测趋势持续监测。";
+    private String joinRawContents(String... contents) {
+        return Arrays.stream(contents).filter(StrUtil::isNotBlank).collect(Collectors.joining("\n"));
     }
 
-    private String buildNasmActionSummary(Map<String, RehabAssessmentModuleDataDO> moduleMap) {
-        Map<String, Object> mapping = getNasmReportMapping(moduleMap);
-        List<Map<String, Object>> actionBlocks = castToMapList(mapping.get("nasm_ces_action_blocks"));
-        if (CollUtil.isEmpty(actionBlocks)) {
-            return moduleContent(moduleMap, RehabAssessmentConstants.MODULE_NASM, "未提供/数据不足");
-        }
+    private String buildModuleStatusText(Map<String, Object> rawModules) {
+        return rawModules.entrySet().stream()
+                .map(entry -> entry.getKey() + "：已记录")
+                .collect(Collectors.joining("\n"));
+    }
+
+    private String flattenForReport(Map<String, Object> value) {
         List<String> lines = new ArrayList<>();
-        for (Map<String, Object> item : actionBlocks) {
-            String actionName = StrUtil.blankToDefault(String.valueOf(item.get("action_name_zh")), "-");
-            String observation = StrUtil.blankToDefault(String.valueOf(item.get("observation")), "未提供");
-            String analysis = StrUtil.blankToDefault(String.valueOf(item.get("analysis")), "未提供");
-            String risk = StrUtil.blankToDefault(String.valueOf(item.get("risk")), "未提供");
-            String suggestion = StrUtil.blankToDefault(String.valueOf(item.get("suggestion")), "需结合人工复核");
-            lines.add(actionName + "｜观测：" + observation + "｜分析：" + analysis + "｜风险：" + risk + "｜建议：" + suggestion);
-        }
+        flattenValue("", value, lines);
         return String.join("\n", lines);
     }
 
-    private String buildPriorityInterventionSummary(Map<String, RehabAssessmentModuleDataDO> moduleMap) {
-        Map<String, Object> mapping = getNasmReportMapping(moduleMap);
-        List<Map<String, Object>> drafts = castToMapList(mapping.get("priority_intervention_draft"));
-        if (CollUtil.isEmpty(drafts)) {
-            String sfmaPriorityText = getSfmaPriorityInterventionText(moduleMap);
-            if (StrUtil.isNotBlank(sfmaPriorityText)) {
-                return sfmaPriorityText;
+    private void flattenValue(String path, Object value, List<String> lines) {
+        if (value instanceof Map) {
+            ((Map<?, ?>) value).forEach((key, item) ->
+                    flattenValue(StrUtil.isBlank(path) ? String.valueOf(key) : path + "." + key, item, lines));
+            return;
+        }
+        if (value instanceof List) {
+            List<?> list = (List<?>) value;
+            for (int index = 0; index < list.size(); index++) {
+                flattenValue(path + "[" + index + "]", list.get(index), lines);
             }
-            return "结合当前证据，优先考虑动作控制重建、左右差优化与负荷管理。";
+            return;
         }
-        List<String> lines = new ArrayList<>();
-        for (Map<String, Object> item : drafts) {
-            String rank = String.valueOf(item.getOrDefault("priority_rank", "-"));
-            String region = String.valueOf(item.getOrDefault("region", "未提供"));
-            String focus = String.valueOf(item.getOrDefault("focus", "需结合人工复核"));
-            lines.add("第" + rank + "优先级｜区域：" + region + "｜关注点：" + focus);
+        if (value != null && StrUtil.isNotBlank(String.valueOf(value))) {
+            lines.add(path + "：" + value);
         }
-        return String.join("\n", lines);
-    }
-
-    private String buildQeiSummary(Map<String, RehabAssessmentModuleDataDO> moduleMap) {
-        Map<String, Object> mapping = getNasmReportMapping(moduleMap);
-        Map<String, Object> qeiSummary = castToMap(mapping.get("qei_summary"));
-        if (qeiSummary == null) {
-            return "若未提供 QEI 数据，显示“未提供/数据不足”。";
-        }
-        String summaryText = StrUtil.blankToDefault(
-                String.valueOf(qeiSummary.get("qei_summary_text")),
-                "当前阶段未启用自动 QEI 计算，建议结合治疗师人工评分。"
-        );
-        List<Map<String, Object>> rows = castToMapList(qeiSummary.get("qei_by_action"));
-        if (CollUtil.isEmpty(rows)) {
-            return summaryText;
-        }
-        String detailText = rows.stream()
-                .map(row -> String.valueOf(row.getOrDefault("action_name_zh", "-")) + "：" + String.valueOf(row.get("qei")))
-                .collect(Collectors.joining("；"));
-        return summaryText + "\n" + detailText;
-    }
-
-    private String buildSfmaInterpretationSummary(Map<String, RehabAssessmentModuleDataDO> moduleMap) {
-        Map<String, Object> sfmaMapping = getSfmaReportMapping(moduleMap);
-        if (sfmaMapping.isEmpty()) {
-            return moduleContent(moduleMap, RehabAssessmentConstants.MODULE_SFMA, "未提供/数据不足");
-        }
-        Map<String, Object> interpretation = castToMap(sfmaMapping.get("sfma_interpretation"));
-        Map<String, Object> classification = castToMap(sfmaMapping.get("classification_and_priority"));
-        Map<String, Object> protocolSummary = castToMap(sfmaMapping.get("book_protocol_summary"));
-
-        StringBuilder sb = new StringBuilder();
-        if (protocolSummary != null && !protocolSummary.isEmpty()) {
-            sb.append("评估协议：原书版 SFMA ")
-                    .append(normalizeMappingValue(protocolSummary.get("protocol_version")))
-                    .append("；已记录步骤 ")
-                    .append(normalizeMappingValue(protocolSummary.get("recorded_step_count")))
-                    .append("；疼痛终止流程 ")
-                    .append(normalizeMappingValue(protocolSummary.get("stopped_due_to_pain_count")))
-                    .append("\n");
-        }
-        if (interpretation != null) {
-            String judgement = normalizeMappingValue(interpretation.get("classification_judgement"));
-            if (StrUtil.isNotBlank(judgement)) {
-                sb.append("分类判定：").append(judgement).append("\n");
-            }
-            String clinicalMeaning = normalizeMappingValue(interpretation.get("clinical_meaning"));
-            if (StrUtil.isNotBlank(clinicalMeaning)) {
-                sb.append("临床意义：").append(clinicalMeaning).append("\n");
-            }
-            String trainingDirection = normalizeMappingValue(interpretation.get("training_direction"));
-            if (StrUtil.isNotBlank(trainingDirection)) {
-                sb.append("训练取向：").append(trainingDirection).append("\n");
-            }
-        }
-        if (classification != null) {
-            String primary = normalizeMappingValue(classification.get("primary"));
-            String secondary = normalizeMappingValue(classification.get("secondary"));
-            String p1 = normalizeMappingValue(classification.get("priority_1"));
-            String p2 = normalizeMappingValue(classification.get("priority_2"));
-            String p3 = normalizeMappingValue(classification.get("priority_3"));
-            if (StrUtil.isNotBlank(primary) || StrUtil.isNotBlank(secondary)) {
-                sb.append("主/次分类：")
-                        .append(StrUtil.blankToDefault(primary, "-"))
-                        .append(" / ")
-                        .append(StrUtil.blankToDefault(secondary, "-"))
-                        .append("\n");
-            }
-            if (StrUtil.isNotBlank(p1) || StrUtil.isNotBlank(p2) || StrUtil.isNotBlank(p3)) {
-                sb.append("优先级：")
-                        .append(StrUtil.blankToDefault(p1, "-"))
-                        .append("；")
-                        .append(StrUtil.blankToDefault(p2, "-"))
-                        .append("；")
-                        .append(StrUtil.blankToDefault(p3, "-"))
-                        .append("\n");
-            }
-        }
-        String limitationChains = normalizeMappingValue(sfmaMapping.get("major_limitation_chains"));
-        if (StrUtil.isNotBlank(limitationChains) && !"[]".equals(limitationChains)) {
-            sb.append("主要限制链条：").append(limitationChains).append("\n");
-        }
-        String controlChains = normalizeMappingValue(sfmaMapping.get("major_control_deficit_chains"));
-        if (StrUtil.isNotBlank(controlChains) && !"[]".equals(controlChains)) {
-            sb.append("主要控制障碍链条：").append(controlChains).append("\n");
-        }
-        String asymmetry = normalizeMappingValue(sfmaMapping.get("left_right_asymmetry_focus"));
-        if (StrUtil.isNotBlank(asymmetry) && !"[]".equals(asymmetry)) {
-            sb.append("左右差重点：").append(asymmetry).append("\n");
-        }
-        String manualHint = normalizeMappingValue(sfmaMapping.get("manual_review_hint"));
-        if (StrUtil.isNotBlank(manualHint)) {
-            sb.append("人工复核提示：").append(manualHint);
-        }
-        String content = sb.toString().trim();
-        if (StrUtil.isBlank(content)) {
-            return moduleContent(moduleMap, RehabAssessmentConstants.MODULE_SFMA, "未提供/数据不足");
-        }
-        return content;
-    }
-
-    private String getSfmaPriorityInterventionText(Map<String, RehabAssessmentModuleDataDO> moduleMap) {
-        Map<String, Object> sfmaMapping = getSfmaReportMapping(moduleMap);
-        if (sfmaMapping.isEmpty()) {
-            return null;
-        }
-        Map<String, Object> classification = castToMap(sfmaMapping.get("classification_and_priority"));
-        if (classification == null) {
-            return null;
-        }
-        String p1 = normalizeMappingValue(classification.get("priority_1"));
-        String p2 = normalizeMappingValue(classification.get("priority_2"));
-        String p3 = normalizeMappingValue(classification.get("priority_3"));
-        if (StrUtil.isAllBlank(p1, p2, p3)) {
-            return null;
-        }
-        return "第1优先级｜" + StrUtil.blankToDefault(p1, "-") + "\n"
-                + "第2优先级｜" + StrUtil.blankToDefault(p2, "-") + "\n"
-                + "第3优先级｜" + StrUtil.blankToDefault(p3, "-");
-    }
-
-    private String getNasmMappingText(Map<String, RehabAssessmentModuleDataDO> moduleMap, String key) {
-        Map<String, Object> mapping = getNasmReportMapping(moduleMap);
-        if (mapping.isEmpty()) {
-            return null;
-        }
-        String value = normalizeMappingValue(mapping.get(key));
-        return StrUtil.isBlank(value) ? null : value;
-    }
-
-    private Map<String, Object> getNasmReportMapping(Map<String, RehabAssessmentModuleDataDO> moduleMap) {
-        RehabAssessmentModuleDataDO nasmModule = moduleMap.get(RehabAssessmentConstants.MODULE_NASM);
-        if (nasmModule == null || StrUtil.isBlank(nasmModule.getDataJson())) {
-            return Collections.emptyMap();
-        }
-        Map<String, Object> nasmPayload = JsonUtils.parseObject(nasmModule.getDataJson(), Map.class);
-        if (nasmPayload == null) {
-            return Collections.emptyMap();
-        }
-        Map<String, Object> mapping = castToMap(nasmPayload.get("report_mapping"));
-        return mapping == null ? Collections.emptyMap() : mapping;
-    }
-
-    private Map<String, Object> getSfmaReportMapping(Map<String, RehabAssessmentModuleDataDO> moduleMap) {
-        RehabAssessmentModuleDataDO sfmaModule = moduleMap.get(RehabAssessmentConstants.MODULE_SFMA);
-        if (sfmaModule == null || StrUtil.isBlank(sfmaModule.getDataJson())) {
-            return Collections.emptyMap();
-        }
-        Map<String, Object> sfmaPayload = JsonUtils.parseObject(sfmaModule.getDataJson(), Map.class);
-        if (sfmaPayload == null) {
-            return Collections.emptyMap();
-        }
-        Map<String, Object> mapping = castToMap(sfmaPayload.get("report_mapping"));
-        if (mapping == null) {
-            return Collections.emptyMap();
-        }
-        Map<String, Object> sfma = castToMap(mapping.get("sfma"));
-        return sfma == null ? Collections.emptyMap() : sfma;
     }
 
     @SuppressWarnings("unchecked")
@@ -958,44 +844,6 @@ public class RehabReportServiceImpl implements RehabReportService {
             return null;
         }
         return (Map<String, Object>) value;
-    }
-
-    @SuppressWarnings("unchecked")
-    private List<Map<String, Object>> castToMapList(Object value) {
-        if (!(value instanceof List)) {
-            return Collections.emptyList();
-        }
-        List<?> list = (List<?>) value;
-        List<Map<String, Object>> result = new ArrayList<>();
-        for (Object item : list) {
-            if (item instanceof Map) {
-                result.add((Map<String, Object>) item);
-            }
-        }
-        return result;
-    }
-
-    private String normalizeMappingValue(Object value) {
-        if (value == null) {
-            return null;
-        }
-        String text = String.valueOf(value);
-        if ("null".equalsIgnoreCase(text) || "undefined".equalsIgnoreCase(text)) {
-            return null;
-        }
-        return text;
-    }
-
-    private String moduleContent(Map<String, RehabAssessmentModuleDataDO> moduleMap, String moduleType, String fallback) {
-        RehabAssessmentModuleDataDO module = moduleMap.get(moduleType);
-        if (module == null || StrUtil.isBlank(module.getDataJson())) {
-            return fallback;
-        }
-        String content = module.getDataJson();
-        if (content.length() > 600) {
-            content = content.substring(0, 600) + "...";
-        }
-        return content;
     }
 
     @SuppressWarnings("unchecked")
@@ -1034,105 +882,27 @@ public class RehabReportServiceImpl implements RehabReportService {
         });
     }
 
-    @SuppressWarnings("unchecked")
-    private String moduleSummaryContent(Map<String, RehabAssessmentModuleDataDO> moduleMap,
-                                        String moduleType, String fallback) {
-        RehabAssessmentModuleDataDO module = moduleMap.get(moduleType);
-        if (module == null || StrUtil.isBlank(module.getDataJson())) {
-            return fallback;
-        }
-        Map<String, Object> payload = JsonUtils.parseObject(module.getDataJson(), Map.class);
-        if (payload == null) {
-            return moduleContent(moduleMap, moduleType, fallback);
-        }
-        List<String> lines = new ArrayList<>();
-        Map<String, Object> summary = castToMap(payload.get("summary"));
-        if (summary != null) {
-            appendSummaryLine(lines, "核心问题", summary.get("chiefProblem"));
-            appendSummaryLine(lines, "总分", summary.get("totalScore"));
-            appendSummaryLine(lines, "左右不对称项", summary.get("asymmetryCount"));
-            appendSummaryLine(lines, "疼痛提示", summary.get("painDetected"));
-            appendSummaryLine(lines, "风险等级", summary.get("riskLevel"));
-            appendSummaryLine(lines, "结论", summary.get("conclusion"));
-            appendSummaryLine(lines, "干预优先级", summary.get("priority"));
-            appendSummaryLine(lines, "建议", summary.get("recommendation"));
-            appendSummaryLine(lines, "数据局限", summary.get("limitation"));
-            appendSummaryLine(lines, "复查安排", summary.get("followUp"));
-        }
-        if (RehabAssessmentConstants.MODULE_BODY_COMP.equals(moduleType)) {
-            Map<String, Object> measurements = castToMap(payload.get("measurements"));
-            if (measurements != null) {
-                appendSummaryLine(lines, "身高(cm)", measurements.get("heightCm"));
-                appendSummaryLine(lines, "体重(kg)", measurements.get("weightKg"));
-                appendSummaryLine(lines, "BMI", measurements.get("bmi"));
-                appendSummaryLine(lines, "体脂率(%)", measurements.get("bodyFatPercent"));
-                appendSummaryLine(lines, "骨骼肌(kg)", measurements.get("skeletalMuscleKg"));
-                appendSummaryLine(lines, "腰臀比", measurements.get("waistHipRatio"));
-            }
-        }
-        if (RehabAssessmentConstants.MODULE_YBT.equals(moduleType)) {
-            appendYbtResult(lines, "下肢", castToMap(payload.get("lowerQuarter")));
-            appendYbtResult(lines, "上肢", castToMap(payload.get("upperQuarter")));
-        }
-        if (RehabAssessmentConstants.MODULE_OPENCAP.equals(moduleType)) {
-            Object trials = payload.get("trials");
-            if (trials instanceof List) {
-                lines.add("Trial 数量：" + ((List<Object>) trials).size());
-            }
-        }
-        return CollUtil.isEmpty(lines) ? moduleContent(moduleMap, moduleType, fallback) : String.join("\n", lines);
-    }
-
-    private void appendYbtResult(List<String> lines, String label, Map<String, Object> region) {
-        if (region == null || Boolean.FALSE.equals(region.get("enabled"))) {
-            return;
-        }
-        Map<String, Object> result = castToMap(region.get("result"));
-        if (result == null) {
-            return;
-        }
-        appendSummaryLine(lines, label + "左侧综合分(%)", result.get("leftCompositePercent"));
-        appendSummaryLine(lines, label + "右侧综合分(%)", result.get("rightCompositePercent"));
-        appendSummaryLine(lines, label + "最大左右差(cm)", result.get("maxAsymmetryCm"));
-        appendSummaryLine(lines, label + "风险提示", result.get("riskFlag"));
-    }
-
-    private void appendSummaryLine(List<String> lines, String label, Object value) {
-        String normalized = normalizeMappingValue(value);
-        if (StrUtil.isNotBlank(normalized)) {
-            lines.add(label + "：" + normalized);
-        }
-    }
-
-    private String getStructuredSummaryValue(RehabAssessmentModuleDataDO module, String key) {
-        if (module == null || StrUtil.isBlank(module.getDataJson())) {
-            return null;
-        }
-        Map<String, Object> payload = JsonUtils.parseObject(module.getDataJson(), Map.class);
-        Map<String, Object> summary = payload == null ? null : castToMap(payload.get("summary"));
-        return summary == null ? null : normalizeMappingValue(summary.get(key));
-    }
-
     private String buildHtml(Map<String, Object> payload) {
         StringBuilder html = new StringBuilder();
         html.append("<html><head><meta charset=\"UTF-8\"><style>")
-                .append("body{font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Microsoft YaHei',sans-serif;padding:24px;line-height:1.7;color:#1f2d3d;}")
-                .append("h1{font-size:24px;margin:0 0 8px;}h2{font-size:18px;margin-top:20px;}pre{white-space:pre-wrap;background:#f6f8fa;padding:12px;border-radius:6px;}")
-                .append(".meta{color:#6b7280;font-size:13px;margin-bottom:16px;}")
+                .append("body{font-family:'Noto Sans CJK SC','PingFang SC','Microsoft YaHei',sans-serif;padding:24px;line-height:1.7;color:#222;}")
+                .append("h1{font-size:24px;margin:0 0 8px;}h2{font-size:18px;margin-top:20px;border-bottom:2px solid #2b2b2b;padding-bottom:6px;}")
+                .append("pre{white-space:pre-wrap;background:#f2f2f2;padding:12px;border:1px solid #d8d8d8;margin:0;min-height:22px;}")
+                .append(".meta{color:#555;font-size:13px;margin-bottom:16px;}")
                 .append("</style></head><body>");
         html.append("<h1>").append(BRANDED_REPORT_TITLE).append("</h1>")
                 .append("<div class=\"meta\">报告编号：")
-                .append(StrUtil.blankToDefault((String) payload.get("reportNo"), "-"))
+                .append(escapeHtml(payload.get("reportNo")))
                 .append("；生成时间：")
-                .append(StrUtil.blankToDefault((String) payload.get("generatedAt"), "-"))
+                .append(escapeHtml(payload.get("generatedAt")))
                 .append("</div>");
 
         List<Map<String, Object>> sections = (List<Map<String, Object>>) payload.get("sections");
         if (sections != null) {
             for (Map<String, Object> section : sections) {
                 html.append("<h2>").append(section.get("index")).append(". ")
-                        .append(section.get("title")).append("</h2>")
-                        .append("<pre>").append(StrUtil.blankToDefault((String) section.get("content"), "未提供/数据不足"))
+                        .append(escapeHtml(section.get("title"))).append("</h2>")
+                        .append("<pre>").append(escapeHtml(section.get("content")))
                         .append("</pre>");
             }
         }
@@ -1140,49 +910,314 @@ public class RehabReportServiceImpl implements RehabReportService {
         return html.toString();
     }
 
+    private String escapeHtml(Object value) {
+        if (value == null) {
+            return "";
+        }
+        return String.valueOf(value)
+                .replace("&", "&amp;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;")
+                .replace("\"", "&quot;")
+                .replace("'", "&#39;");
+    }
+
     private void generateDocx(Map<String, Object> payload, String docxPath) throws IOException {
         File target = new File(docxPath);
         FileUtil.mkParentDirs(target);
 
-        try (XWPFDocument document = new XWPFDocument()) {
-            document.getProperties().getCoreProperties().setTitle(BRANDED_REPORT_TITLE);
-            document.getProperties().getCoreProperties().setCreator(SOFTWARE_COPYRIGHT_HOLDER);
-            XWPFParagraph title = document.createParagraph();
-            XWPFRun titleRun = title.createRun();
-            titleRun.setText(BRANDED_REPORT_TITLE);
-            titleRun.setBold(true);
-            titleRun.setFontSize(16);
-
-            XWPFParagraph meta = document.createParagraph();
-            XWPFRun metaRun = meta.createRun();
-            metaRun.setText("报告编号：" + StrUtil.blankToDefault((String) payload.get("reportNo"), "-"));
-            metaRun.addBreak();
-            metaRun.setText("生成时间：" + StrUtil.blankToDefault((String) payload.get("generatedAt"), "-"));
-
-            List<Map<String, Object>> sections = (List<Map<String, Object>>) payload.get("sections");
-            if (sections != null) {
-                for (Map<String, Object> section : sections) {
-                    XWPFParagraph heading = document.createParagraph();
-                    XWPFRun headingRun = heading.createRun();
-                    headingRun.setBold(true);
-                    headingRun.setText(section.get("index") + ". " + section.get("title"));
-
-                    XWPFParagraph body = document.createParagraph();
-                    XWPFRun bodyRun = body.createRun();
-                    bodyRun.setText(StrUtil.blankToDefault((String) section.get("content"), "未提供/数据不足"));
-                }
+        try (InputStream templateStream = RehabReportServiceImpl.class.getResourceAsStream(REPORT_TEMPLATE_RESOURCE)) {
+            if (templateStream == null) {
+                throw new IOException("评估报告模板资源不存在");
             }
+            try (XWPFDocument document = new XWPFDocument(templateStream)) {
+                document.getProperties().getCoreProperties().setTitle(BRANDED_REPORT_TITLE);
+                document.getProperties().getCoreProperties().setCreator(SOFTWARE_COPYRIGHT_HOLDER);
+                blankTemplatePlaceholders(document);
+                fillTemplateBasicInformation(document, payload);
+                fillTemplateModuleStatus(document, payload);
+                fillTemplateRawModules(document, payload);
+                fillTemplateEvidenceIndex(document, payload);
+                applyCompatibleCjkFonts(document);
 
-            try (FileOutputStream fos = new FileOutputStream(target)) {
-                document.write(fos);
+                try (FileOutputStream fos = new FileOutputStream(target)) {
+                    document.write(fos);
+                }
             }
         }
     }
 
     @SuppressWarnings("unchecked")
-    private void generatePdf(Map<String, Object> payload, String pdfPath) throws IOException {
+    private void fillTemplateBasicInformation(XWPFDocument document, Map<String, Object> payload) {
+        Map<String, Object> patient = (Map<String, Object>) payload.getOrDefault("patient", Collections.emptyMap());
+        Map<String, Object> assessment = (Map<String, Object>) payload.getOrDefault("assessment", Collections.emptyMap());
+        Map<String, Object> rawModules = (Map<String, Object>) payload.getOrDefault("rawModules", Collections.emptyMap());
+        List<XWPFTable> tables = document.getTables();
+
+        String genderAge = joinNonBlank(" / ", formatGender(patient.get("gender")), valueText(patient.get("age")));
+        String heightWeight = joinNonBlank(" / ", withUnit(patient.get("heightCm"), "cm"),
+                withUnit(patient.get("weightKg"), "kg"));
+        String assessmentDate = valueText(assessment.get("assessmentDate"));
+        String assessmentType = formatAssessmentType(assessment.get("assessmentType"));
+        String tools = rawModules.keySet().stream().map(this::formatModuleName).collect(Collectors.joining("、"));
+
+        setTableCellText(tables, 0, 0, 1, valueText(patient.get("name")));
+        setTableCellText(tables, 0, 1, 1, genderAge);
+        setTableCellText(tables, 0, 2, 1, heightWeight);
+        setTableCellText(tables, 0, 3, 1, assessmentType);
+        setTableCellText(tables, 0, 4, 1, assessmentDate);
+        setTableCellText(tables, 0, 5, 1, valueText(patient.get("chiefComplaint")));
+        setTableCellText(tables, 0, 6, 1, tools);
+        setTableCellText(tables, 0, 8, 1, valueText(assessment.get("assessorName")));
+
+        setTableCellText(tables, 5, 1, 1, valueText(patient.get("name")));
+        setTableCellText(tables, 5, 2, 1, genderAge);
+        setTableCellText(tables, 5, 3, 1, heightWeight);
+        setTableCellText(tables, 5, 4, 1, withUnit(patient.get("bmi"), "kg/m²"));
+        setTableCellText(tables, 5, 5, 1, valueText(patient.get("dominantSide")));
+        setTableCellText(tables, 5, 6, 1,
+                joinNonBlank(" / ", valueText(patient.get("schoolOrCompany")), valueText(patient.get("sportType"))));
+        setTableCellText(tables, 5, 7, 1, valueText(patient.get("chiefComplaint")));
+        setTableCellText(tables, 5, 8, 1, valueText(patient.get("trainingHistory")));
+        setTableCellText(tables, 5, 9, 1, valueText(patient.get("injuryHistory")));
+        setTableCellText(tables, 5, 10, 1, valueText(patient.get("medicalHistory")));
+
+        setTableCellText(tables, 8, 8, 1, valueText(assessment.get("redFlagNotes")));
+        setTableCellText(tables, 9, 1, 0, valueText(patient.get("painArea")));
+        setTableCellText(tables, 9, 1, 2,
+                valueText(firstNonNull(assessment.get("painScore"), patient.get("painScore"))));
+    }
+
+    @SuppressWarnings("unchecked")
+    private void fillTemplateModuleStatus(XWPFDocument document, Map<String, Object> payload) {
+        Map<String, Object> rawModules = (Map<String, Object>) payload.getOrDefault("rawModules", Collections.emptyMap());
+        List<XWPFTable> tables = document.getTables();
+        setTableCellText(tables, 10, 1, 1, rawModules.containsKey(RehabAssessmentConstants.MODULE_STATIC) ? "已提供" : "");
+        setTableCellText(tables, 10, 2, 1, rawModules.containsKey(RehabAssessmentConstants.MODULE_STATIC) ? "已提供" : "");
+        setTableCellText(tables, 10, 4, 1, rawModules.containsKey(RehabAssessmentConstants.MODULE_NASM) ? "已提供" : "");
+        setTableCellText(tables, 10, 5, 1, rawModules.containsKey(RehabAssessmentConstants.MODULE_SFMA) ? "已提供" : "");
+        setTableCellText(tables, 10, 6, 1, rawModules.containsKey(RehabAssessmentConstants.MODULE_FMS) ? "已提供" : "");
+        setTableCellText(tables, 10, 7, 1, rawModules.containsKey(RehabAssessmentConstants.MODULE_YBT) ? "已提供" : "");
+        setTableCellText(tables, 10, 8, 1, rawModules.containsKey(RehabAssessmentConstants.MODULE_YBT) ? "已提供" : "");
+        setTableCellText(tables, 10, 11, 1, rawModules.containsKey(RehabAssessmentConstants.MODULE_OPENCAP) ? "已提供" : "");
+    }
+
+    @SuppressWarnings("unchecked")
+    private void fillTemplateRawModules(XWPFDocument document, Map<String, Object> payload) {
+        Map<String, Object> rawModules = (Map<String, Object>) payload.getOrDefault("rawModules", Collections.emptyMap());
+        Map<String, Integer> tableMapping = new LinkedHashMap<>();
+        tableMapping.put(RehabAssessmentConstants.MODULE_BODY_COMP, 6);
+        tableMapping.put(RehabAssessmentConstants.MODULE_OBSERVATION, 15);
+        tableMapping.put(RehabAssessmentConstants.MODULE_STATIC, 18);
+        tableMapping.put(RehabAssessmentConstants.MODULE_NASM, 21);
+        tableMapping.put(RehabAssessmentConstants.MODULE_SFMA, 25);
+        tableMapping.put(RehabAssessmentConstants.MODULE_FMS, 27);
+        tableMapping.put(RehabAssessmentConstants.MODULE_YBT, 29);
+        tableMapping.put(RehabAssessmentConstants.MODULE_OPENCAP, 35);
+        tableMapping.put(RehabAssessmentConstants.MODULE_COMPREHENSIVE, 34);
+        tableMapping.put(RehabAssessmentConstants.MODULE_OUTCOME_SCALE, 47);
+        tableMapping.forEach((moduleType, tableIndex) -> {
+            Object value = rawModules.get(moduleType);
+            String content = value instanceof Map ? flattenForReport((Map<String, Object>) value) : "";
+            fillRawDataBlock(document.getTables(), tableIndex, formatModuleName(moduleType), content);
+        });
+    }
+
+    @SuppressWarnings("unchecked")
+    private void fillTemplateEvidenceIndex(XWPFDocument document, Map<String, Object> payload) {
+        Map<String, Object> rawModules = (Map<String, Object>) payload.getOrDefault("rawModules", Collections.emptyMap());
+        String metadata = rawModules.entrySet().stream().map(entry -> {
+            Map<String, Object> module = entry.getValue() instanceof Map
+                    ? (Map<String, Object>) entry.getValue() : Collections.emptyMap();
+            return formatModuleName(entry.getKey()) + "：sourceType=" + valueText(module.get("sourceType"))
+                    + "；version=" + valueText(module.get("version"));
+        }).collect(Collectors.joining("\n"));
+        fillRawDataBlock(document.getTables(), 48, "评估数据来源索引", metadata);
+    }
+
+    private void blankTemplatePlaceholders(XWPFDocument document) {
+        document.getParagraphs().forEach(this::blankParagraphPlaceholders);
+        document.getTables().forEach(table -> table.getRows().forEach(row ->
+                uniqueCells(row).forEach(cell -> cell.getParagraphs().forEach(this::blankParagraphPlaceholders))));
+    }
+
+    private void blankParagraphPlaceholders(XWPFParagraph paragraph) {
+        String text = paragraph.getText();
+        if (StrUtil.isBlank(text) || !text.contains("【")) {
+            return;
+        }
+        setParagraphText(paragraph, text.replaceAll("【[^】]*】", ""));
+    }
+
+    private void fillRawDataBlock(List<XWPFTable> tables, int tableIndex, String moduleName, String content) {
+        if (tableIndex < 0 || tableIndex >= tables.size()) {
+            return;
+        }
+        XWPFTable table = tables.get(tableIndex);
+        if (table.getNumberOfRows() == 0) {
+            return;
+        }
+        setUniqueRowCells(table.getRow(0), moduleName + "原始数据（仅记录，不含自动解读）", "");
+        if (table.getNumberOfRows() > 1) {
+            setUniqueRowCells(table.getRow(1), "原始字段", "原始值");
+        }
+        if (table.getNumberOfRows() > 2) {
+            setUniqueRowCells(table.getRow(2), "原始记录", content);
+        }
+        for (int rowIndex = 3; rowIndex < table.getNumberOfRows(); rowIndex++) {
+            setUniqueRowCells(table.getRow(rowIndex), "", "");
+        }
+    }
+
+    private void setUniqueRowCells(XWPFTableRow row, String firstText, String lastText) {
+        List<XWPFTableCell> cells = uniqueCells(row);
+        if (cells.isEmpty()) {
+            return;
+        }
+        setCellText(cells.get(0), firstText);
+        for (int index = 1; index < cells.size() - 1; index++) {
+            setCellText(cells.get(index), "");
+        }
+        if (cells.size() > 1) {
+            setCellText(cells.get(cells.size() - 1), lastText);
+        } else if (StrUtil.isNotBlank(lastText)) {
+            setCellText(cells.get(0), firstText + "\n" + lastText);
+        }
+    }
+
+    private List<XWPFTableCell> uniqueCells(XWPFTableRow row) {
+        Set<Object> seen = Collections.newSetFromMap(new IdentityHashMap<>());
+        List<XWPFTableCell> cells = new ArrayList<>();
+        for (XWPFTableCell cell : row.getTableCells()) {
+            if (seen.add(cell.getCTTc())) {
+                cells.add(cell);
+            }
+        }
+        return cells;
+    }
+
+    private void setTableCellText(List<XWPFTable> tables, int tableIndex, int rowIndex, int cellIndex, String text) {
+        if (tableIndex < 0 || tableIndex >= tables.size()) {
+            return;
+        }
+        XWPFTable table = tables.get(tableIndex);
+        if (rowIndex < 0 || rowIndex >= table.getNumberOfRows()) {
+            return;
+        }
+        List<XWPFTableCell> cells = uniqueCells(table.getRow(rowIndex));
+        if (cellIndex < 0 || cellIndex >= cells.size()) {
+            return;
+        }
+        setCellText(cells.get(cellIndex), text);
+    }
+
+    private void setCellText(XWPFTableCell cell, String text) {
+        List<XWPFParagraph> paragraphs = cell.getParagraphs();
+        XWPFParagraph paragraph = paragraphs.isEmpty() ? cell.addParagraph() : paragraphs.get(0);
+        for (int index = paragraphs.size() - 1; index > 0; index--) {
+            cell.removeParagraph(index);
+        }
+        setParagraphText(paragraph, StrUtil.nullToEmpty(text));
+    }
+
+    private void setParagraphText(XWPFParagraph paragraph, String text) {
+        CTRPr runProperties = null;
+        if (!paragraph.getRuns().isEmpty() && paragraph.getRuns().get(0).getCTR().getRPr() != null) {
+            runProperties = (CTRPr) paragraph.getRuns().get(0).getCTR().getRPr().copy();
+        }
+        for (int index = paragraph.getRuns().size() - 1; index >= 0; index--) {
+            paragraph.removeRun(index);
+        }
+        XWPFRun run = paragraph.createRun();
+        if (runProperties != null) {
+            run.getCTR().setRPr(runProperties);
+        }
+        String[] lines = StrUtil.nullToEmpty(text).replace("\r", "").split("\n", -1);
+        for (int index = 0; index < lines.length; index++) {
+            if (index > 0) {
+                run.addBreak();
+            }
+            run.setText(lines[index]);
+        }
+    }
+
+    private void applyCompatibleCjkFonts(XWPFDocument document) {
+        String osName = System.getProperty("os.name", "").toLowerCase(Locale.ROOT);
+        String fontName = osName.contains("mac") ? "Arial Unicode MS"
+                : osName.contains("win") ? "Microsoft YaHei" : "Noto Sans CJK SC";
+        document.getParagraphs().forEach(paragraph -> applyParagraphFont(paragraph, fontName));
+        document.getTables().forEach(table -> table.getRows().forEach(row -> uniqueCells(row).forEach(cell ->
+                cell.getParagraphs().forEach(paragraph -> applyParagraphFont(paragraph, fontName)))));
+        document.getHeaderList().forEach(header -> header.getParagraphs()
+                .forEach(paragraph -> applyParagraphFont(paragraph, fontName)));
+        document.getFooterList().forEach(footer -> footer.getParagraphs()
+                .forEach(paragraph -> applyParagraphFont(paragraph, fontName)));
+    }
+
+    private void applyParagraphFont(XWPFParagraph paragraph, String fontName) {
+        paragraph.getRuns().forEach(run -> {
+            run.setFontFamily(fontName);
+            CTRPr properties = run.getCTR().getRPr() == null ? run.getCTR().addNewRPr() : run.getCTR().getRPr();
+            CTFonts fonts = properties.sizeOfRFontsArray() == 0
+                    ? properties.addNewRFonts() : properties.getRFontsArray(0);
+            fonts.setAscii(fontName);
+            fonts.setHAnsi(fontName);
+            fonts.setEastAsia(fontName);
+            fonts.setCs(fontName);
+        });
+    }
+
+    private String valueText(Object value) {
+        return value == null ? "" : String.valueOf(value);
+    }
+
+    private Object firstNonNull(Object first, Object second) {
+        return first == null ? second : first;
+    }
+
+    private String withUnit(Object value, String unit) {
+        return value == null || StrUtil.isBlank(String.valueOf(value)) ? "" : value + unit;
+    }
+
+    private String joinNonBlank(String separator, String... values) {
+        return Arrays.stream(values).filter(StrUtil::isNotBlank).collect(Collectors.joining(separator));
+    }
+
+    private String formatGender(Object value) {
+        return ObjUtil.equals(value, 1) ? "男" : ObjUtil.equals(value, 2) ? "女" : valueText(value);
+    }
+
+    private String formatAssessmentType(Object value) {
+        Map<String, String> labels = new HashMap<>();
+        labels.put(RehabAssessmentConstants.TYPE_INITIAL, "初评");
+        labels.put(RehabAssessmentConstants.TYPE_FOLLOWUP, "复评");
+        labels.put(RehabAssessmentConstants.TYPE_DISCHARGE, "结案");
+        labels.put(RehabAssessmentConstants.TYPE_COMPREHENSIVE_ASSESSMENT, "综合评估");
+        return labels.getOrDefault(valueText(value), valueText(value));
+    }
+
+    private String formatModuleName(String moduleType) {
+        Map<String, String> labels = new HashMap<>();
+        labels.put(RehabAssessmentConstants.MODULE_STATIC, "静态体态");
+        labels.put(RehabAssessmentConstants.MODULE_BODY_COMP, "身体成分/生长发育");
+        labels.put(RehabAssessmentConstants.MODULE_NASM, "NASM-CES");
+        labels.put(RehabAssessmentConstants.MODULE_SFMA, "SFMA");
+        labels.put(RehabAssessmentConstants.MODULE_FMS, "FMS");
+        labels.put(RehabAssessmentConstants.MODULE_YBT, "YBT");
+        labels.put(RehabAssessmentConstants.MODULE_OPENCAP, "OpenCap");
+        labels.put(RehabAssessmentConstants.MODULE_OBSERVATION, "观察/影像");
+        labels.put(RehabAssessmentConstants.MODULE_OUTCOME_SCALE, "结局量表");
+        labels.put(RehabAssessmentConstants.MODULE_COMPREHENSIVE, "综合评估");
+        return labels.getOrDefault(moduleType, moduleType);
+    }
+
+    @SuppressWarnings("unchecked")
+    private void generatePdf(Map<String, Object> payload, String docxPath, String pdfPath) throws IOException {
         File target = new File(pdfPath);
         FileUtil.mkParentDirs(target);
+        if (convertDocxToPdf(docxPath, target)) {
+            return;
+        }
 
         try (PDDocument document = new PDDocument();
              PdfFontResource fontResource = loadPdfFont(document)) {
@@ -1204,7 +1239,7 @@ public class RehabReportServiceImpl implements RehabReportService {
             if (sections != null) {
                 for (Map<String, Object> section : sections) {
                     lines.add(PdfTextLine.heading(section.get("index") + ". " + section.get("title")));
-                    String content = StrUtil.blankToDefault((String) section.get("content"), "未提供/数据不足");
+                    String content = StrUtil.nullToEmpty((String) section.get("content"));
                     for (String paragraph : content.replace("\r", "").split("\n", -1)) {
                         List<String> wrapped = wrapPdfText(paragraph, 88);
                         if (wrapped.isEmpty()) {
@@ -1220,6 +1255,62 @@ public class RehabReportServiceImpl implements RehabReportService {
             writePdfLines(document, fontResource.getFont(), lines);
             document.save(target);
         }
+    }
+
+    private boolean convertDocxToPdf(String docxPath, File target) {
+        if (StrUtil.isBlank(docxPath) || !FileUtil.exist(docxPath)) {
+            return false;
+        }
+        if ("disabled".equalsIgnoreCase(libreOfficePath)) {
+            return false;
+        }
+        List<String> candidates = new ArrayList<>();
+        if (StrUtil.isNotBlank(libreOfficePath)) {
+            candidates.add(libreOfficePath);
+        }
+        candidates.add("/usr/bin/libreoffice");
+        candidates.add("/usr/bin/soffice");
+        candidates.add("/Applications/LibreOffice.app/Contents/MacOS/soffice");
+        candidates.add("libreoffice");
+        candidates.add("soffice");
+
+        for (String candidate : candidates) {
+            Path profile = null;
+            File processLog = null;
+            try {
+                if (candidate.contains(File.separator) && !new File(candidate).canExecute()) {
+                    continue;
+                }
+                profile = Files.createTempDirectory("rehab-report-libreoffice-");
+                processLog = File.createTempFile("rehab-report-convert-", ".log");
+                FileUtil.del(target);
+                ProcessBuilder builder = new ProcessBuilder(candidate,
+                        "-env:UserInstallation=" + profile.toUri(),
+                        "--headless", "--invisible", "--nologo", "--nodefault", "--norestore", "--nolockcheck",
+                        "--convert-to", "pdf:writer_pdf_Export",
+                        "--outdir", target.getParentFile().getAbsolutePath(), new File(docxPath).getAbsolutePath());
+                builder.redirectErrorStream(true);
+                builder.redirectOutput(processLog);
+                Process process = builder.start();
+                boolean finished = process.waitFor(90, TimeUnit.SECONDS);
+                if (!finished) {
+                    process.destroyForcibly();
+                }
+                if (finished && process.exitValue() == 0 && target.isFile() && target.length() > 0) {
+                    return true;
+                }
+            } catch (Exception ignored) {
+                // 尝试下一候选；最终使用内置 PDF 渲染，不向日志输出患者内容或转换命令。
+            } finally {
+                if (profile != null) {
+                    FileUtil.del(profile.toFile());
+                }
+                if (processLog != null) {
+                    FileUtil.del(processLog);
+                }
+            }
+        }
+        return false;
     }
 
     private PdfFontResource loadPdfFont(PDDocument document) throws IOException {

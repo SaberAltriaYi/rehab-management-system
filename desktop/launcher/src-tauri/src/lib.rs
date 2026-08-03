@@ -6,6 +6,7 @@ mod runner;
 mod runtime;
 mod service;
 mod single_instance;
+mod transfer;
 
 use config::AppPaths;
 use model::{LauncherOverview, LauncherSettings};
@@ -135,6 +136,57 @@ fn open_system(
 }
 
 #[tauri::command]
+fn open_admin(
+    app: tauri::AppHandle,
+    state: State<'_, LauncherState>,
+) -> Result<LauncherOverview, String> {
+    open_system(app, state)
+}
+
+#[tauri::command]
+fn export_full_transfer(
+    state: State<'_, LauncherState>,
+    destination: String,
+    password: String,
+) -> Result<String, String> {
+    state
+        .0
+        .lock()
+        .map_err(|_| "启动器状态锁异常".to_owned())?
+        .export_full_transfer(std::path::Path::new(&destination), &password)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn import_full_transfer(
+    state: State<'_, LauncherState>,
+    source: String,
+    password: String,
+    confirmation: String,
+) -> Result<LauncherOverview, String> {
+    state
+        .0
+        .lock()
+        .map_err(|_| "启动器状态锁异常".to_owned())?
+        .import_full_transfer(std::path::Path::new(&source), &password, &confirmation)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn update_admin_credentials(
+    state: State<'_, LauncherState>,
+    username: String,
+    password: String,
+) -> Result<LauncherOverview, String> {
+    state
+        .0
+        .lock()
+        .map_err(|_| "启动器状态锁异常".to_owned())?
+        .update_admin_credentials(&username, &password)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
 fn open_data_directory(
     app: tauri::AppHandle,
     state: State<'_, LauncherState>,
@@ -172,6 +224,7 @@ pub fn run() {
             }
         }))
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let fallback = AppPaths::platform_default()?;
             let data_dir = app
@@ -192,7 +245,11 @@ pub fn run() {
             stop_services,
             restart_services,
             open_system,
+            open_admin,
             create_backup,
+            export_full_transfer,
+            import_full_transfer,
+            update_admin_credentials,
             read_logs,
             open_data_directory,
             get_diagnostics,

@@ -3,6 +3,8 @@ package cn.iocoder.yudao.module.rehab.service.patient;
 import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.util.ObjUtil;
 import cn.hutool.core.util.StrUtil;
+import cn.idev.excel.FastExcelFactory;
+import cn.iocoder.yudao.framework.common.exception.ServiceException;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.framework.common.util.json.JsonUtils;
@@ -30,11 +32,14 @@ import cn.iocoder.yudao.module.system.api.user.dto.AdminUserRespDTO;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.validation.annotation.Validated;
 
 import javax.annotation.Resource;
+import java.io.ByteArrayOutputStream;
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
@@ -52,6 +57,7 @@ import static cn.iocoder.yudao.module.rehab.enums.ErrorCodeConstants.*;
 public class RehabPatientServiceImpl implements RehabPatientService {
 
     private static final DateTimeFormatter PATIENT_NO_DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyyMMdd");
+    private static final int MAX_IMPORT_ROWS = 2000;
 
     @Resource
     private RehabPatientMapper patientMapper;
@@ -79,6 +85,9 @@ public class RehabPatientServiceImpl implements RehabPatientService {
     private RehabAuditLogService auditLogService;
     @Resource
     private JdbcTemplate jdbcTemplate;
+    @Resource
+    @Lazy
+    private RehabPatientService self;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -183,18 +192,144 @@ public class RehabPatientServiceImpl implements RehabPatientService {
     @Override
     public List<RehabPatientExportRespVO> getPatientExportList(RehabPatientPageReqVO reqVO, Long operatorUserId) {
         reqVO.setPageSize(-1);
-        PageResult<RehabPatientRespVO> pageResult = getPatientPage(reqVO, operatorUserId);
-        return pageResult.getList().stream().map(item -> {
-            RehabPatientExportRespVO exportRespVO = new RehabPatientExportRespVO();
-            exportRespVO.setPatientNo(item.getPatientNo());
-            exportRespVO.setName(item.getName());
-            exportRespVO.setPhone(item.getPhone());
-            exportRespVO.setCurrentStage(item.getCurrentStage());
-            exportRespVO.setCurrentTherapistName(item.getCurrentTherapistName());
-            exportRespVO.setCrmBindStatus(item.getCrmBindStatus());
-            exportRespVO.setUpdateTime(item.getUpdateTime());
+        Set<Long> visiblePatientIds = dataPermissionService.getVisiblePatientIds(operatorUserId);
+        Collection<Long> crmFilteredPatientIds = getCrmFilteredPatientIds(reqVO.getCrmBindStatus());
+        List<RehabPatientDO> patients = patientMapper.selectPage(reqVO, visiblePatientIds, crmFilteredPatientIds).getList();
+        if (CollUtil.isEmpty(patients)) {
+            return Collections.emptyList();
+        }
+
+        Set<Long> therapistIds = patients.stream().map(RehabPatientDO::getCurrentTherapistUserId)
+                .filter(Objects::nonNull).collect(Collectors.toSet());
+        Map<Long, AdminUserRespDTO> therapistMap = therapistIds.isEmpty()
+                ? Collections.emptyMap() : adminUserApi.getUserMap(therapistIds);
+        List<Long> patientIds = patients.stream().map(RehabPatientDO::getId).collect(Collectors.toList());
+        Map<Long, RehabPatientCrmBindingDO> crmBindingMap = crmBindingMapper.selectListByPatientIds(patientIds).stream()
+                .collect(Collectors.toMap(RehabPatientCrmBindingDO::getPatientId, item -> item, (first, ignored) -> first));
+
+        return patients.stream().map(patient -> {
+            RehabPatientExportRespVO exportRespVO = BeanUtils.toBean(patient, RehabPatientExportRespVO.class);
+            AdminUserRespDTO therapist = therapistMap.get(patient.getCurrentTherapistUserId());
+            exportRespVO.setCurrentTherapistName(therapist == null ? "" : therapist.getNickname());
+            RehabPatientCrmBindingDO crmBinding = crmBindingMap.get(patient.getId());
+            exportRespVO.setCrmBindStatus(crmBinding == null
+                    ? RehabCrmBindingConstants.STATUS_UNBOUND : crmBinding.getBindStatus());
             return exportRespVO;
         }).collect(Collectors.toList());
+    }
+
+    @Override
+    public RehabPatientImportRespVO importPatients(List<RehabPatientImportExcelVO> rows, Long operatorUserId) {
+        List<RehabPatientImportExcelVO> safeRows = rows == null ? Collections.emptyList() : rows;
+        if (safeRows.size() > MAX_IMPORT_ROWS) {
+            throw exception(PATIENT_IMPORT_ROWS_EXCEEDED);
+        }
+
+        List<String> createdPatients = new ArrayList<>();
+        List<String> skippedPatients = new ArrayList<>();
+        List<RehabPatientImportFailureVO> failures = new ArrayList<>();
+        for (int index = 0; index < safeRows.size(); index++) {
+            RehabPatientImportExcelVO row = safeRows.get(index);
+            int excelRowNumber = index + 2;
+            String identity = getImportIdentity(row);
+            try {
+                validateImportRow(row);
+                if (StrUtil.isNotBlank(row.getPatientNo())
+                        && patientMapper.selectByPatientNo(StrUtil.trim(row.getPatientNo())) != null) {
+                    skippedPatients.add(identity + "（患者编号已存在）");
+                    continue;
+                }
+                if (CollUtil.isNotEmpty(patientMapper.selectListByNameAndPhone(
+                        StrUtil.trim(row.getName()), StrUtil.trim(row.getPhone())))) {
+                    skippedPatients.add(identity + "（姓名和手机号已存在）");
+                    continue;
+                }
+
+                RehabPatientCreateReqVO createReqVO = BeanUtils.toBean(row, RehabPatientCreateReqVO.class);
+                createReqVO.setName(StrUtil.trim(row.getName()));
+                createReqVO.setPhone(StrUtil.trim(row.getPhone()));
+                createReqVO.setInitEpisode(false);
+                // 通过代理逐行开启事务，单行失败不会留下半条患者档案，也不会回滚其他成功行。
+                RehabPatientCreateRespVO createRespVO = self.createPatient(createReqVO, operatorUserId);
+                createdPatients.add(createReqVO.getName() + "（" + createRespVO.getPatientNo() + "）");
+            } catch (Exception ex) {
+                String reason = getSafeImportFailureReason(ex);
+                if (!(ex instanceof IllegalArgumentException) && !(ex instanceof ServiceException)) {
+                    log.warn("患者批量导入单行失败，rowNumber={}, patientIdentity={}",
+                            excelRowNumber, identity, ex);
+                }
+                failures.add(new RehabPatientImportFailureVO(excelRowNumber, identity, reason));
+            }
+        }
+
+        return RehabPatientImportRespVO.builder()
+                .totalCount(safeRows.size())
+                .createdCount(createdPatients.size())
+                .skippedCount(skippedPatients.size())
+                .failureCount(failures.size())
+                .createdPatients(createdPatients)
+                .skippedPatients(skippedPatients)
+                .failures(failures)
+                .failureExcelBase64(buildFailureExcel(failures))
+                .build();
+    }
+
+    private void validateImportRow(RehabPatientImportExcelVO row) {
+        if (row == null || StrUtil.isBlank(row.getName())) {
+            throw new IllegalArgumentException("姓名不能为空");
+        }
+        if (row.getName().trim().length() > 64) {
+            throw new IllegalArgumentException("姓名不能超过 64 个字符");
+        }
+        if (row.getGender() != null && row.getGender() != 1 && row.getGender() != 2) {
+            throw new IllegalArgumentException("性别只能填写 1（男）或 2（女）");
+        }
+        if (row.getAge() != null && (row.getAge() < 0 || row.getAge() > 150)) {
+            throw new IllegalArgumentException("年龄必须在 0-150 之间");
+        }
+        if (StrUtil.length(row.getPhone()) > 20 || StrUtil.length(row.getContactPhone()) > 20
+                || StrUtil.length(row.getEmergencyPhone()) > 20) {
+            throw new IllegalArgumentException("手机号不能超过 20 个字符");
+        }
+        BigDecimal painScore = row.getPainScore();
+        if (painScore != null && (painScore.compareTo(BigDecimal.ZERO) < 0
+                || painScore.compareTo(BigDecimal.TEN) > 0)) {
+            throw new IllegalArgumentException("疼痛评分必须在 0-10 之间");
+        }
+    }
+
+    private String getImportIdentity(RehabPatientImportExcelVO row) {
+        if (row == null) {
+            return "空白行";
+        }
+        if (StrUtil.isNotBlank(row.getPatientNo())) {
+            return StrUtil.trim(row.getPatientNo());
+        }
+        return StrUtil.blankToDefault(StrUtil.trim(row.getName()), "未命名患者");
+    }
+
+    /**
+     * 只把业务校验消息返回给前端，避免数据库驱动、SQL 或内部路径出现在失败明细中。
+     */
+    private String getSafeImportFailureReason(Exception ex) {
+        if (ex instanceof IllegalArgumentException || ex instanceof ServiceException) {
+            return StrUtil.blankToDefault(ex.getMessage(), "导入失败，请检查该行数据");
+        }
+        return "系统校验失败，请联系管理员并查看服务端日志";
+    }
+
+    private String buildFailureExcel(List<RehabPatientImportFailureVO> failures) {
+        if (CollUtil.isEmpty(failures)) {
+            return null;
+        }
+        try (ByteArrayOutputStream outputStream = new ByteArrayOutputStream()) {
+            FastExcelFactory.write(outputStream, RehabPatientImportFailureVO.class)
+                    .sheet("失败明细").doWrite(failures);
+            return Base64.getEncoder().encodeToString(outputStream.toByteArray());
+        } catch (Exception ex) {
+            log.warn("生成患者导入失败明细 Excel 失败，failureCount={}", failures.size(), ex);
+            return null;
+        }
     }
 
     @Override

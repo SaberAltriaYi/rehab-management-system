@@ -6,11 +6,21 @@ All notable product changes are recorded here. Product versions use semantic ver
 
 ## [Unreleased]
 
+### Added
+
+- Add Excel patient import template, duplicate-safe batch import, failure workbook and full patient-list export.
+- Generate 17-page V4.1 DOCX/PDF assessment reports with patient metadata and raw module values only; interpretation, risk and training-advice sections remain blank for professional review.
+- Add simplified patient course attendance by patient, active plan, training date and optional note without changing task completion or progress.
+- Add visual metric icons to the rehabilitation workspace, home dashboard and operations dashboard.
+- Add encrypted full-store transfer packages and automatic destination backup before full database/attachment replacement.
+- Add desktop launcher backend entry and secure built-in super-administrator username/password settings.
+
 ### Fixed
 
 - Split the desktop administrator password generator from 48-character infrastructure-secret generation.
 - Generate a 16-character temporary administrator password compatible with the login and password-change contract.
 - Allow affected `desktop-v1.0.0-preview.1` installations to log in with their existing 48-character temporary password and then change it, without reinstalling or deleting Docker volumes.
+- Escape all assessment report HTML values and keep machine secrets, TLS material, logs, caches and backups out of cross-device transfer packages.
 
 ## [1.0.0] - 2026-07-31
 

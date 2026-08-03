@@ -13,6 +13,8 @@ public interface RehabDailyCheckinService {
 
     Long createCheckin(RehabDailyCheckinCreateReqVO reqVO, Long operatorUserId, boolean manual);
 
+    Long createAttendance(RehabTrainingAttendanceCreateReqVO reqVO, Long operatorUserId);
+
     List<RehabTaskExecutionRespVO> getTaskExecutionList(Long checkinId, Long operatorUserId);
 
 }

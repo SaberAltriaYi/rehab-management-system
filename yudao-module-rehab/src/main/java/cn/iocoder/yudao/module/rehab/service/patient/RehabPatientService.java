@@ -23,6 +23,8 @@ public interface RehabPatientService {
 
     List<RehabPatientExportRespVO> getPatientExportList(RehabPatientPageReqVO reqVO, Long operatorUserId);
 
+    RehabPatientImportRespVO importPatients(List<RehabPatientImportExcelVO> rows, Long operatorUserId);
+
     RehabPatientCrmBindingRespVO getCrmBinding(Long patientId, Long operatorUserId);
 
     RehabPatientMemberBindingRespVO getMemberBinding(Long patientId, Long operatorUserId);

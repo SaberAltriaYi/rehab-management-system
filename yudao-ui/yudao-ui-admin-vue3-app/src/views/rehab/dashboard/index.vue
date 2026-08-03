@@ -2,7 +2,7 @@
   <ContentWrap class="board-head-wrap">
     <div class="board-head">
       <div>
-        <div class="board-title">康复工作台</div>
+        <div class="board-title"><Icon icon="ep:data-analysis" />康复工作台</div>
         <div class="board-subtitle">覆盖患者、评估、报告、计划、打卡、风险、通知全链路数据</div>
       </div>
       <div class="board-actions">
@@ -17,8 +17,15 @@
     <el-row :gutter="12">
       <el-col v-for="item in therapistCards" :key="item.label" :xs="12" :sm="8" :md="6" :lg="3">
         <el-card shadow="hover" class="metric-card">
-          <div class="metric-label">{{ item.label }}</div>
-          <div class="metric-value">{{ item.value }}</div>
+          <div class="metric-content">
+            <div class="metric-icon" :style="{ backgroundColor: item.background, color: item.color }">
+              <Icon :icon="item.icon" />
+            </div>
+            <div>
+              <div class="metric-label">{{ item.label }}</div>
+              <div class="metric-value">{{ item.value }}</div>
+            </div>
+          </div>
         </el-card>
       </el-col>
     </el-row>
@@ -29,8 +36,15 @@
     <el-row :gutter="12">
       <el-col v-for="item in opsCards" :key="item.label" :xs="12" :sm="8" :md="6" :lg="4">
         <el-card shadow="hover" class="metric-card">
-          <div class="metric-label">{{ item.label }}</div>
-          <div class="metric-value">{{ item.value }}</div>
+          <div class="metric-content">
+            <div class="metric-icon" :style="{ backgroundColor: item.background, color: item.color }">
+              <Icon :icon="item.icon" />
+            </div>
+            <div>
+              <div class="metric-label">{{ item.label }}</div>
+              <div class="metric-value">{{ item.value }}</div>
+            </div>
+          </div>
         </el-card>
       </el-col>
     </el-row>
@@ -197,27 +211,30 @@ const getReportStatusLabel = (value?: string) =>
   REPORT_STATUS_LABELS[value || ''] || value || '-'
 
 const therapistCards = computed(() => [
-  { label: '我的患者', value: summary.value.myPatientCount ?? 0 },
-  { label: '执行中计划', value: summary.value.activePlanCount ?? 0 },
-  { label: '待复评', value: summary.value.pendingReassessmentCount ?? 0 },
-  { label: '高风险', value: summary.value.highRiskPatientCount ?? 0 },
-  { label: '低依从', value: summary.value.lowAdherencePatientCount ?? 0 },
-  { label: '本周新增评估', value: summary.value.weeklyNewAssessmentCount ?? 0 },
-  { label: '未读通知', value: summary.value.unreadNotificationCount ?? 0 }
+  { label: '我的患者', value: summary.value.myPatientCount ?? 0, icon: 'ep:user', color: '#409eff', background: '#ecf5ff' },
+  { label: '执行中计划', value: summary.value.activePlanCount ?? 0, icon: 'ep:calendar', color: '#67c23a', background: '#f0f9eb' },
+  { label: '待复评', value: summary.value.pendingReassessmentCount ?? 0, icon: 'ep:refresh', color: '#e6a23c', background: '#fdf6ec' },
+  { label: '高风险', value: summary.value.highRiskPatientCount ?? 0, icon: 'ep:warning-filled', color: '#f56c6c', background: '#fef0f0' },
+  { label: '低依从', value: summary.value.lowAdherencePatientCount ?? 0, icon: 'ep:trend-charts', color: '#909399', background: '#f4f4f5' },
+  { label: '本周新增评估', value: summary.value.weeklyNewAssessmentCount ?? 0, icon: 'ep:document-add', color: '#626aef', background: '#f0f1ff' },
+  { label: '未读通知', value: summary.value.unreadNotificationCount ?? 0, icon: 'ep:bell', color: '#9b59b6', background: '#f8f0fb' }
 ])
 
 const opsCards = computed(() => [
-  { label: '患者总量', value: opsSummary.value.patientTotal ?? 0 },
-  { label: '活跃患者', value: opsSummary.value.activePatientTotal ?? 0 },
-  { label: '活跃计划', value: opsSummary.value.activePlanTotal ?? 0 },
-  { label: '待复评', value: opsSummary.value.pendingReassessmentTotal ?? 0 },
-  { label: '高风险患者', value: opsSummary.value.highRiskTotal ?? 0 },
-  { label: '报告生成总数', value: opsSummary.value.reportGeneratedTotal ?? 0 },
-  { label: '报告导出总数', value: opsSummary.value.reportExportedTotal ?? 0 },
-  { label: '低依从患者', value: opsSummary.value.lowAdherenceTotal ?? 0 },
+  { label: '患者总量', value: opsSummary.value.patientTotal ?? 0, icon: 'ep:user-filled', color: '#409eff', background: '#ecf5ff' },
+  { label: '活跃患者', value: opsSummary.value.activePatientTotal ?? 0, icon: 'ep:circle-check-filled', color: '#67c23a', background: '#f0f9eb' },
+  { label: '活跃计划', value: opsSummary.value.activePlanTotal ?? 0, icon: 'ep:list', color: '#16a085', background: '#eafaf6' },
+  { label: '待复评', value: opsSummary.value.pendingReassessmentTotal ?? 0, icon: 'ep:refresh', color: '#e6a23c', background: '#fdf6ec' },
+  { label: '高风险患者', value: opsSummary.value.highRiskTotal ?? 0, icon: 'ep:warning-filled', color: '#f56c6c', background: '#fef0f0' },
+  { label: '报告生成总数', value: opsSummary.value.reportGeneratedTotal ?? 0, icon: 'ep:document', color: '#626aef', background: '#f0f1ff' },
+  { label: '报告导出总数', value: opsSummary.value.reportExportedTotal ?? 0, icon: 'ep:download', color: '#9b59b6', background: '#f8f0fb' },
+  { label: '低依从患者', value: opsSummary.value.lowAdherenceTotal ?? 0, icon: 'ep:trend-charts', color: '#909399', background: '#f4f4f5' },
   {
     label: '平均打卡完成率',
-    value: `${opsSummary.value.avgCheckinCompletionRate ?? 0}%`
+    value: `${opsSummary.value.avgCheckinCompletionRate ?? 0}%`,
+    icon: 'ep:data-line',
+    color: '#00a8a8',
+    background: '#e9fafa'
   }
 ])
 
@@ -297,6 +314,9 @@ onMounted(() => {
 }
 
 .board-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   font-size: 22px;
   font-weight: 700;
 }
@@ -326,6 +346,23 @@ onMounted(() => {
 
 .metric-card {
   margin-bottom: 12px;
+}
+
+.metric-content {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.metric-icon {
+  display: flex;
+  flex: 0 0 42px;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  font-size: 22px;
 }
 
 .metric-label {

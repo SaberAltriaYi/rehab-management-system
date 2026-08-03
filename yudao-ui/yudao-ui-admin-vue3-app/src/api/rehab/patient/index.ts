@@ -28,6 +28,23 @@ export interface RehabPatientPageReqVO {
   createTime?: string[]
 }
 
+export interface RehabPatientImportFailure {
+  rowNumber: number
+  patientIdentity: string
+  reason: string
+}
+
+export interface RehabPatientImportResult {
+  totalCount: number
+  createdCount: number
+  skippedCount: number
+  failureCount: number
+  createdPatients: string[]
+  skippedPatients: string[]
+  failures: RehabPatientImportFailure[]
+  failureExcelBase64?: string
+}
+
 export interface RehabPatientCreateReqVO {
   name: string
   gender?: number
@@ -151,6 +168,10 @@ export const deleteRehabPatient = async (id: number) => {
 
 export const exportRehabPatient = async (params: RehabPatientPageReqVO) => {
   return await request.download({ url: '/rehab/patient/export', params })
+}
+
+export const downloadRehabPatientImportTemplate = async () => {
+  return await request.download({ url: '/rehab/patient/get-import-template' })
 }
 
 export const bindRehabPatientCrm = async (data: RehabPatientBindCrmReqVO) => {

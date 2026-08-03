@@ -1,6 +1,8 @@
 package cn.iocoder.yudao.module.rehab.service.checkin;
 
 import cn.iocoder.yudao.module.rehab.controller.admin.checkin.vo.RehabDailyCheckinCreateReqVO;
+import cn.iocoder.yudao.module.rehab.controller.admin.checkin.vo.RehabDailyCheckinRespVO;
+import cn.iocoder.yudao.module.rehab.controller.admin.checkin.vo.RehabTrainingAttendanceCreateReqVO;
 import cn.iocoder.yudao.module.rehab.controller.admin.checkin.vo.RehabTaskExecutionItemVO;
 import cn.iocoder.yudao.module.rehab.dal.dataobject.checkin.RehabDailyCheckinDO;
 import cn.iocoder.yudao.module.rehab.dal.dataobject.checkin.RehabTaskExecutionDO;
@@ -32,6 +34,8 @@ import java.util.List;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
@@ -123,6 +127,86 @@ class RehabDailyCheckinServiceImplTest {
         verify(taskExecutionMapper, atLeastOnce()).insert(org.mockito.ArgumentMatchers.<RehabTaskExecutionDO>any());
         verify(progressRecordService).recalculateByPlan(eq(40001L), any(LocalDate.class), eq(1L), anyString());
         verify(triggerService).evaluateByPlan(eq(40001L), any(RehabProgressRecordDO.class), eq(1L));
+    }
+
+    @Test
+    void createAttendance_shouldOnlyWriteCourseDateAndKeepProgressUnchanged() {
+        RehabTrainingAttendanceCreateReqVO reqVO = new RehabTrainingAttendanceCreateReqVO();
+        reqVO.setPatientId(10001L);
+        reqVO.setPlanId(40001L);
+        reqVO.setTrainingDate(LocalDate.of(2026, 8, 3));
+        reqVO.setNote(" 第二节训练课 ");
+
+        when(permissionApi.hasAnyRoles(1L, RehabRoleCodeConstants.SUPER_ADMIN)).thenReturn(true);
+        when(planMapper.selectById(40001L)).thenReturn(RehabCarePlanDO.builder()
+                .id(40001L).patientId(10001L).episodeId(13001L).build());
+        doAnswer(invocation -> {
+            RehabDailyCheckinDO item = invocation.getArgument(0);
+            item.setId(42002L);
+            return 1;
+        }).when(checkinMapper).insert(any(RehabDailyCheckinDO.class));
+
+        Long attendanceId = checkinService.createAttendance(reqVO, 1L);
+
+        assertEquals(42002L, attendanceId);
+        verify(checkinMapper).insert(org.mockito.ArgumentMatchers.<RehabDailyCheckinDO>argThat(item -> {
+            assertEquals(10001L, item.getPatientId());
+            assertEquals(13001L, item.getEpisodeId());
+            assertEquals(40001L, item.getPlanId());
+            assertEquals(LocalDate.of(2026, 8, 3), item.getCheckinDate());
+            assertEquals("therapist", item.getSubmitRoleType());
+            assertEquals("第二节训练课", item.getOverallComment());
+            assertNull(item.getOverallCompletionRate());
+            return true;
+        }));
+        verifyNoInteractions(taskExecutionMapper, progressRecordService, triggerService);
+        verify(planOperationLogMapper).insert(org.mockito.ArgumentMatchers.<cn.iocoder.yudao.module.rehab.dal.dataobject.log.RehabPlanOperationLogDO>argThat(log ->
+                log.getRemark().contains("不计入训练任务完成率")));
+    }
+
+    @Test
+    void createAttendance_shouldAllowMultipleClassesOnSameDate() {
+        RehabTrainingAttendanceCreateReqVO reqVO = new RehabTrainingAttendanceCreateReqVO();
+        reqVO.setPatientId(10001L);
+        reqVO.setPlanId(40001L);
+        reqVO.setTrainingDate(LocalDate.of(2026, 8, 3));
+
+        when(permissionApi.hasAnyRoles(1L, RehabRoleCodeConstants.SUPER_ADMIN)).thenReturn(true);
+        when(planMapper.selectById(40001L)).thenReturn(RehabCarePlanDO.builder()
+                .id(40001L).patientId(10001L).episodeId(13001L).build());
+        doAnswer(invocation -> {
+            RehabDailyCheckinDO item = invocation.getArgument(0);
+            item.setId(42003L);
+            return 1;
+        }).when(checkinMapper).insert(any(RehabDailyCheckinDO.class));
+
+        checkinService.createAttendance(reqVO, 1L);
+        checkinService.createAttendance(reqVO, 1L);
+
+        verify(checkinMapper, times(2)).insert(any(RehabDailyCheckinDO.class));
+        assertTrue(mockingDetails(checkinMapper).getInvocations().stream()
+                .noneMatch(invocation -> invocation.getMethod().getName().equals("selectByPatientPlanAndDate")));
+    }
+
+    @Test
+    void getCheckin_shouldDistinguishCourseAttendanceFromHistoricalDetailedCheckin() {
+        when(permissionApi.hasAnyRoles(1L, RehabRoleCodeConstants.SUPER_ADMIN)).thenReturn(true);
+        when(checkinMapper.selectById(42003L)).thenReturn(RehabDailyCheckinDO.builder()
+                .id(42003L).patientId(10001L).planId(40001L).build());
+        when(taskExecutionMapper.selectListByCheckinIds(anyCollection())).thenReturn(List.of());
+
+        RehabDailyCheckinRespVO attendance = checkinService.getCheckin(42003L, 1L);
+
+        assertTrue(attendance.getCourseAttendance());
+
+        when(checkinMapper.selectById(42004L)).thenReturn(RehabDailyCheckinDO.builder()
+                .id(42004L).patientId(10001L).planId(40001L).build());
+        when(taskExecutionMapper.selectListByCheckinIds(anyCollection())).thenReturn(List.of(
+                RehabTaskExecutionDO.builder().checkinId(42004L).taskId(41001L).build()));
+
+        RehabDailyCheckinRespVO detailed = checkinService.getCheckin(42004L, 1L);
+
+        assertEquals(Boolean.FALSE, detailed.getCourseAttendance());
     }
 
 }

@@ -68,7 +68,7 @@ JRE 基础镜像，并在界面显示当前阶段；不使用 `latest` 基础镜
 ### Windows
 
 - 目标：Windows x64；
-- 安装器：Tauri NSIS `康复管理系统_1.0.0_x64-setup.exe`；
+- 安装器：Tauri NSIS `康复管理系统_1.0.0_windows-x64-setup.exe`；
 - 开始菜单、卸载入口由 Tauri/NSIS 提供，桌面快捷方式作为安装选项；
 - 不要求 Git Bash、WSL、Homebrew、Java、Maven、Node 或 pnpm；
 - 未签名安装器明确记录 SmartScreen 提示；
@@ -77,7 +77,7 @@ JRE 基础镜像，并在界面显示当前阶段；不使用 `latest` 基础镜
 ### macOS
 
 - 目标：`universal-apple-darwin`，同时覆盖 Apple Silicon 与 Intel；
-- 安装器：`康复管理系统_1.0.0_universal.dmg`；
+- 安装器：`康复管理系统_1.0.0_macos-universal.dmg`；
 - 应用从 `/Applications` 运行；
 - 无 Developer ID 时生成带 `unsigned` 标识的测试构建；
 - Developer ID 签名和 notarization 仅在相应 CI Secret 完整时执行。
@@ -179,7 +179,7 @@ macOS 预留：
 ## 9. 自动化与验收
 
 新增 `.github/workflows/desktop-release.yml`。提交到以 `master` 为目标的 PR 时做完整安装器
-回归；合并后支持 `workflow_dispatch` 手动构建，推送 `v*` 标签时构建并创建 draft Release：
+回归；合并后支持 `workflow_dispatch` 手动构建，推送 `v*` 或 `desktop-v*` 标签时构建并创建 draft Release：
 
 1. JDK 17 下运行康复模块及 Web 安全测试；
 2. 执行隔离后端构建；
@@ -201,7 +201,8 @@ macOS 预留：
 - 未签名 Windows/macOS 构建会触发 SmartScreen/Gatekeeper 提示，不作为正式对外发行包。
 - 第一版不实现静默 Docker 安装、不配置路由器、不自动开启局域网、不上传日志、不做云备份。
 - 第一版不实现自动更新服务；版本化资源、升级前备份和稳定数据卷为后续安全更新保留基础。
-- 数据库恢复属于高风险操作，第一版文档化现有受控恢复流程，不在普通启动器主页提供一键恢复。
+- 普通本机历史备份恢复仍属于受控管理员流程；跨设备整店克隆提供加密一键导入，且必须先
+  自动备份目标数据、精确确认并保留目标设备机器级密钥和 TLS。
 - 上游 Java 8/Spring Boot 2.7 风险登记继续有效；桌面封装不改变该运行时风险边界。
 - RustSec 对当前锁文件未发现 vulnerability；会报告 Tauri Linux 目标的 GTK3 绑定及若干
   构建期 proc-macro/Unicode 间接依赖为 unmaintained，并报告一项仅 Linux GTK 链路的

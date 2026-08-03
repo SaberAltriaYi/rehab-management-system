@@ -25,6 +25,7 @@ import cn.iocoder.yudao.module.rehab.service.log.RehabAuditLogService;
 import cn.iocoder.yudao.module.rehab.service.notification.RehabNotificationService;
 import cn.iocoder.yudao.module.system.api.permission.PermissionApi;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
+import org.apache.poi.xwpf.usermodel.XWPFDocument;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -34,7 +35,10 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.Collections;
 import java.util.List;
 
@@ -95,6 +99,7 @@ class RehabReportServiceImplTest {
         ReflectionTestUtils.setField(reportService, "auditLogService", auditLogService);
         ReflectionTestUtils.setField(reportService, "notificationService", notificationService);
         ReflectionTestUtils.setField(reportService, "storagePath", Files.createTempDirectory("rehab-report-test").toString());
+        ReflectionTestUtils.setField(reportService, "libreOfficePath", "disabled");
     }
 
     @Test
@@ -148,7 +153,7 @@ class RehabReportServiceImplTest {
     }
 
     @Test
-    void generateReport_shouldExpandComprehensiveModulesAndRenderStructuredSummary() {
+    void generateReport_shouldExpandComprehensiveModulesAndRenderOnlyRawData() throws Exception {
         RehabReportGenerateReqVO reqVO = new RehabReportGenerateReqVO();
         reqVO.setAssessmentId(20002L);
 
@@ -194,11 +199,25 @@ class RehabReportServiceImplTest {
 
         ArgumentCaptor<RehabReportDO> captor = ArgumentCaptor.forClass(RehabReportDO.class);
         verify(reportMapper, atLeast(2)).updateById(captor.capture());
-        assertTrue(captor.getAllValues().stream().anyMatch(item ->
-                item.getReportJson() != null
-                        && item.getReportJson().contains("优先改善髋部控制")
-                        && item.getReportJson().contains("髋稳定性需继续训练")
-                        && item.getReportJson().contains("\"fms\"")));
+        RehabReportDO generated = captor.getAllValues().stream()
+                .filter(item -> item.getReportJson() != null)
+                .findFirst().orElseThrow(AssertionError::new);
+        assertTrue(generated.getReportJson().contains("\"totalScore\":16"));
+        assertTrue(generated.getReportJson().contains("\"fms\""));
+        assertTrue(generated.getReportJson().contains("\"contentPolicy\":\"raw-data-only\""));
+        assertFalse(generated.getReportJson().contains("优先改善髋部控制"));
+        assertFalse(generated.getReportJson().contains("髋稳定性需继续训练"));
+
+        Path docx = Paths.get(generated.getDocxPath());
+        assertTrue(Files.isRegularFile(docx));
+        try (InputStream inputStream = Files.newInputStream(docx);
+             XWPFDocument document = new XWPFDocument(inputStream)) {
+            assertEquals(53, document.getTables().size());
+            String text = document.getTables().stream().map(table -> table.getText())
+                    .reduce("", (left, right) -> left + "\n" + right);
+            assertTrue(text.contains("totalScore：16"));
+            assertFalse(text.contains("髋稳定性需继续训练"));
+        }
     }
 
     @Test

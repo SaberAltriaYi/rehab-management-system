@@ -70,3 +70,16 @@ export function formatBackupTime(value: string | null): string {
 export function deletionConfirmationMatches(value: string): boolean {
   return value.trim() === '删除所有本地数据'
 }
+
+export function importConfirmationMatches(value: string): boolean {
+  return value.trim() === '覆盖导入全部数据'
+}
+
+export function isValidTransferPassword(value: string): boolean {
+  const length = Array.from(value).length
+  return length >= 12 && length <= 128
+}
+
+export function isValidAdminCredentialInput(username: string, password: string): boolean {
+  return /^[A-Za-z0-9._-]{4,30}$/.test(username.trim()) && Array.from(password).length >= 12 && Array.from(password).length <= 16
+}

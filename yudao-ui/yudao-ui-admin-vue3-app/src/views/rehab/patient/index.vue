@@ -69,6 +69,9 @@
         <el-button type="primary" plain v-hasPermi="['rehab:patient:create']" @click="openForm('create')">
           <Icon icon="ep:plus" /> 新建患者
         </el-button>
+        <el-button type="warning" plain v-hasPermi="['rehab:patient:create']" @click="openImport">
+          <Icon icon="ep:upload" /> 批量导入
+        </el-button>
         <el-button
           type="success"
           plain
@@ -76,7 +79,7 @@
           v-hasPermi="['rehab:patient:export']"
           @click="handleExport"
         >
-          <Icon icon="ep:download" /> 导出
+          <Icon icon="ep:download" /> 批量导出
         </el-button>
       </el-form-item>
     </el-form>
@@ -142,6 +145,7 @@
   </ContentWrap>
 
   <PatientForm ref="patientFormRef" @success="getList" />
+  <PatientImportDialog ref="patientImportDialogRef" @success="getList" />
   <AssignTherapistDialog ref="assignDialogRef" @success="getList" />
   <BindCrmDialog ref="bindCrmDialogRef" @success="getList" />
 </template>
@@ -159,6 +163,7 @@ import {
 } from '@/api/rehab/patient'
 import * as UserApi from '@/api/system/user'
 import PatientForm from './PatientForm.vue'
+import PatientImportDialog from './PatientImportDialog.vue'
 import AssignTherapistDialog from './AssignTherapistDialog.vue'
 import BindCrmDialog from './BindCrmDialog.vue'
 
@@ -235,6 +240,9 @@ const openForm = (type: 'create' | 'update', id?: number) => {
   patientFormRef.value.open(type, id)
 }
 
+const patientImportDialogRef = ref()
+const openImport = () => patientImportDialogRef.value?.open()
+
 const openDetail = (id: number) => {
   push(`/rehab/patient/detail/${id}`)
 }
@@ -284,7 +292,7 @@ const handleExport = async () => {
     await message.confirm('确认导出当前查询结果吗？')
     exportLoading.value = true
     const data = await exportRehabPatient(queryParams)
-    download.excel(data, '康复患者.xls')
+    download.excel(data, '康复患者.xlsx')
   } finally {
     exportLoading.value = false
   }

@@ -160,6 +160,31 @@ public class RehabDailyCheckinServiceImpl implements RehabDailyCheckinService {
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
+    public Long createAttendance(RehabTrainingAttendanceCreateReqVO reqVO, Long operatorUserId) {
+        RehabCarePlanDO plan = validatePlanReadable(reqVO.getPlanId(), operatorUserId);
+        if (!ObjUtil.equals(plan.getPatientId(), reqVO.getPatientId())) {
+            throw exception(TASK_PLAN_MISMATCH);
+        }
+
+        RehabDailyCheckinDO attendance = RehabDailyCheckinDO.builder()
+                .patientId(plan.getPatientId())
+                .episodeId(plan.getEpisodeId())
+                .planId(plan.getId())
+                .checkinDate(reqVO.getTrainingDate())
+                .submittedByUserId(operatorUserId)
+                .submitRoleType(dataPermissionService.isClerk(operatorUserId)
+                        ? RehabPlanConstants.CHECKIN_ROLE_CLERK : RehabPlanConstants.CHECKIN_ROLE_THERAPIST)
+                .overallComment(StrUtil.trim(reqVO.getNote()))
+                .build();
+        checkinMapper.insert(attendance);
+
+        createPlanLog(plan.getId(), RehabOperationTypeConstants.CHECKIN_CREATE, operatorUserId,
+                null, attendance, "登记患者课程签到（不计入训练任务完成率）");
+        return attendance.getId();
+    }
+
+    @Override
     public List<RehabTaskExecutionRespVO> getTaskExecutionList(Long checkinId, Long operatorUserId) {
         RehabDailyCheckinDO checkin = validateCheckinReadable(checkinId, operatorUserId);
         List<RehabTaskExecutionDO> executions = taskExecutionMapper.selectListByCheckinId(checkin.getId());
@@ -235,6 +260,9 @@ public class RehabDailyCheckinServiceImpl implements RehabDailyCheckinService {
                 .collect(Collectors.toSet());
         Set<Long> userIds = checkins.stream().map(RehabDailyCheckinDO::getSubmittedByUserId).filter(Objects::nonNull)
                 .collect(Collectors.toSet());
+        Set<Long> checkinIdsWithTaskExecutions = taskExecutionMapper.selectListByCheckinIds(
+                        checkins.stream().map(RehabDailyCheckinDO::getId).collect(Collectors.toSet()))
+                .stream().map(RehabTaskExecutionDO::getCheckinId).collect(Collectors.toSet());
 
         Map<Long, RehabPatientDO> patientMap = patientIds.isEmpty() ? Collections.emptyMap() : patientMapper.selectBatchIds(patientIds)
                 .stream().collect(Collectors.toMap(RehabPatientDO::getId, item -> item, (a, b) -> a));
@@ -255,6 +283,7 @@ public class RehabDailyCheckinServiceImpl implements RehabDailyCheckinService {
             }
             AdminUserRespDTO submitter = userMap.get(item.getSubmittedByUserId());
             vo.setSubmitterName(submitter == null ? "" : submitter.getNickname());
+            vo.setCourseAttendance(!checkinIdsWithTaskExecutions.contains(item.getId()));
             return vo;
         }).collect(Collectors.toList());
     }

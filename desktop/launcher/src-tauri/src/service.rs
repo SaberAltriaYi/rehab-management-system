@@ -1,5 +1,6 @@
 use crate::config::{
-    check_port_available, initialize_config, load_settings, save_settings, AppPaths,
+    build_admin_update_sql, check_port_available, initialize_config, load_settings, save_settings,
+    AppPaths,
 };
 use crate::docker::{
     context_for, detect_docker, read_service_states, redact_sensitive, run_compose,
@@ -12,6 +13,10 @@ use crate::model::{
 use crate::runner::{CommandRunner, ProcessCommandRunner};
 use crate::runtime::{ensure_runtime, locate_bundled_runtime};
 use crate::single_instance::InstanceLock;
+use crate::transfer::{
+    create_transfer_package, extract_transfer_package, validate_transfer_password,
+    IMPORT_CONFIRMATION,
+};
 use age::secrecy::SecretString;
 use age::Encryptor;
 use chrono::{DateTime, Utc};
@@ -214,109 +219,183 @@ impl LauncherService {
         self.operation = Some("正在创建本机备份".to_owned());
         let result = (|| {
             let context = self.docker_context()?;
-            let states = read_service_states(self.runner.as_ref(), &context)?;
-            if !states.iter().all(|service| service.state == "healthy") {
-                return Err(LauncherError::CommandFailed(
-                    "服务未全部健康，不能创建一致性备份".to_owned(),
-                ));
-            }
-            fs::create_dir_all(&self.paths.backups_dir)?;
-            let timestamp = Utc::now().format("%Y%m%dT%H%M%SZ").to_string();
-            let sql_path = self
-                .paths
-                .backups_dir
-                .join(format!("rehab-{timestamp}.sql"));
-            let attachment_path = self
-                .paths
-                .backups_dir
-                .join(format!("rehab-{timestamp}-attachments.tar.gz"));
-            let sql_encrypted_path = encrypted_path(&sql_path);
-            let attachment_encrypted_path = encrypted_path(&attachment_path);
-            let backup_result = (|| {
-                self.capture_command_stdout(
-                    &context,
-                    &[
-                        "exec",
-                        "--no-TTY",
-                        "mysql",
-                        "mysqldump",
-                        "--defaults-extra-file=/run/rehab-secrets/mysql-client.cnf",
-                        "--single-transaction",
-                        "--routines",
-                        "--triggers",
-                        "ruoyi-vue-pro",
-                    ],
-                    &sql_path,
-                )?;
-                self.capture_command_stdout(
-                    &context,
-                    &[
-                        "exec",
-                        "--no-TTY",
-                        "server",
-                        "tar",
-                        "-czf",
-                        "-",
-                        "-C",
-                        "/app/data/rehab",
-                        ".",
-                    ],
-                    &attachment_path,
-                )?;
-                let backup_passphrase =
-                    fs::read_to_string(self.paths.secrets_dir.join("backup.passphrase"))?;
-                let sql_encrypted = encrypt_backup_file(&sql_path, &backup_passphrase)?;
-                let attachment_encrypted =
-                    encrypt_backup_file(&attachment_path, &backup_passphrase)?;
-                Ok((sql_encrypted, attachment_encrypted))
-            })();
-            let (sql_encrypted, attachment_encrypted) = match backup_result {
-                Ok(paths) => paths,
-                Err(error) => {
-                    for path in [
-                        &sql_path,
-                        &attachment_path,
-                        &sql_encrypted_path,
-                        &attachment_encrypted_path,
-                    ] {
-                        let _ = fs::remove_file(path);
-                    }
-                    return Err(error);
-                }
-            };
-            let manifest_path = self
-                .paths
-                .backups_dir
-                .join(format!("rehab-{timestamp}.json"));
-            let finalize_result = (|| {
-                let manifest = serde_json::json!({
-                    "createdAt": Utc::now().to_rfc3339(),
-                    "applicationVersion": crate::model::APP_VERSION,
-                    "database": sql_encrypted.file_name().and_then(|value| value.to_str()),
-                    "databaseSha256": sha256_file(&sql_encrypted)?,
-                    "attachments": attachment_encrypted.file_name().and_then(|value| value.to_str()),
-                    "attachmentsSha256": sha256_file(&attachment_encrypted)?,
-                    "containsPatientData": true,
-                    "encryption": "age-scrypt",
-                    "keyFile": "../secrets/backup.passphrase",
-                    "storage": "请将 .age 文件复制到受控介质，并将恢复口令分开保管"
-                });
-                crate::config::write_private(
-                    &manifest_path,
-                    serde_json::to_string_pretty(&manifest)?.as_bytes(),
-                )
-            })();
-            if let Err(error) = finalize_result {
-                for path in [&sql_encrypted, &attachment_encrypted, &manifest_path] {
-                    let _ = fs::remove_file(path);
-                }
-                return Err(error);
-            }
+            self.create_backup_inner(&context)?;
             Ok(self.overview())
         })();
         let result = self.finish(result);
         self.operation = None;
         result
+    }
+
+    pub fn export_full_transfer(
+        &mut self,
+        destination: &Path,
+        password: &str,
+    ) -> LauncherResult<String> {
+        self.operation = Some("正在导出整店加密迁移包（数据库、账号权限和附件）".to_owned());
+        let result = (|| {
+            validate_transfer_password(password)?;
+            let context = self.docker_context()?;
+            self.require_all_healthy(&context, "服务未全部健康，不能导出一致性迁移包")?;
+            let staging = self.prepare_transfer_staging()?;
+            let database = staging.join("database.sql");
+            let attachments = staging.join("attachments.tar.gz");
+            let export_result = (|| {
+                self.capture_transfer_sources(&context, &database, &attachments)?;
+                create_transfer_package(
+                    &database,
+                    &attachments,
+                    destination,
+                    password,
+                    crate::model::APP_VERSION,
+                )?;
+                Ok(destination.display().to_string())
+            })();
+            let _ = remove_fixed_path(&staging, &self.paths.data_dir);
+            export_result
+        })();
+        let result = self.finish_value(result);
+        self.operation = None;
+        result
+    }
+
+    pub fn import_full_transfer(
+        &mut self,
+        source: &Path,
+        password: &str,
+        confirmation: &str,
+    ) -> LauncherResult<LauncherOverview> {
+        if confirmation.trim() != IMPORT_CONFIRMATION {
+            return Err(LauncherError::InvalidConfig(
+                "覆盖导入确认文字不匹配，未修改任何数据".to_owned(),
+            ));
+        }
+        self.operation = Some("正在校验迁移包并在自动备份后覆盖导入全部业务数据".to_owned());
+        let result = (|| {
+            let staging = self.prepare_transfer_staging()?;
+            let import_result = (|| {
+                let (_manifest, database, attachments) =
+                    extract_transfer_package(source, &staging, password)?;
+                let context = self.docker_context()?;
+                self.require_all_healthy(&context, "服务未全部健康，不能执行覆盖导入")?;
+
+                // 覆盖前强制生成目标设备本机加密备份；后续任何失败都不删除该备份。
+                self.create_backup_inner(&context)?;
+                self.restore_transfer_sources(&context, &database, &attachments)?;
+                Ok(self.overview())
+            })();
+            let _ = remove_fixed_path(&staging, &self.paths.data_dir);
+            import_result
+        })();
+        let result = self.finish(result);
+        self.operation = None;
+        result
+    }
+
+    pub fn update_admin_credentials(
+        &mut self,
+        username: &str,
+        password: &str,
+    ) -> LauncherResult<LauncherOverview> {
+        self.operation = Some("正在更新内置超级管理员账号和密码".to_owned());
+        let result = (|| {
+            let sql = build_admin_update_sql(username, password)?;
+            let context = self.docker_context()?;
+            self.require_all_healthy(&context, "服务未全部健康，不能修改管理员账号")?;
+            let output = self.run_compose_os(
+                &context,
+                vec![
+                    "exec".into(),
+                    "--no-TTY".into(),
+                    "mysql".into(),
+                    "mysql".into(),
+                    "--defaults-extra-file=/run/rehab-secrets/mysql-client.cnf".into(),
+                    "--batch".into(),
+                    "--skip-column-names".into(),
+                    "ruoyi-vue-pro".into(),
+                    "--execute".into(),
+                    sql.into(),
+                ],
+            )?;
+            if !output
+                .stdout
+                .lines()
+                .any(|line| line.trim() == "REHAB_ADMIN_UPDATED=1")
+            {
+                return Err(LauncherError::InvalidConfig(
+                    "账号已被其他用户占用，或内置超级管理员不存在".to_owned(),
+                ));
+            }
+            self.flush_redis(&context)?;
+            let path = self.paths.initial_admin_password_path();
+            if path.exists() {
+                fs::remove_file(path)?;
+            }
+            self.first_login_password = None;
+            Ok(self.overview())
+        })();
+        let result = self.finish(result);
+        self.operation = None;
+        result
+    }
+
+    fn require_all_healthy(&self, context: &DockerContext, message: &str) -> LauncherResult<()> {
+        let states = read_service_states(self.runner.as_ref(), context)?;
+        if states.len() != 4 || states.iter().any(|service| service.state != "healthy") {
+            return Err(LauncherError::CommandFailed(message.to_owned()));
+        }
+        Ok(())
+    }
+
+    fn prepare_transfer_staging(&self) -> LauncherResult<PathBuf> {
+        let staging = self.paths.data_dir.join("transfer-staging");
+        if staging.exists() {
+            remove_fixed_path(&staging, &self.paths.data_dir)?;
+        }
+        fs::create_dir_all(&staging)?;
+        Ok(staging)
+    }
+
+    fn capture_transfer_sources(
+        &self,
+        context: &DockerContext,
+        database: &Path,
+        attachments: &Path,
+    ) -> LauncherResult<()> {
+        self.capture_command_stdout(
+            context,
+            &[
+                "exec",
+                "--no-TTY",
+                "mysql",
+                "mysqldump",
+                "--defaults-extra-file=/run/rehab-secrets/mysql-client.cnf",
+                "--default-character-set=utf8mb4",
+                "--set-gtid-purged=OFF",
+                "--single-transaction",
+                "--routines",
+                "--triggers",
+                "--events",
+                "--hex-blob",
+                "ruoyi-vue-pro",
+            ],
+            database,
+        )?;
+        self.capture_command_stdout(
+            context,
+            &[
+                "exec",
+                "--no-TTY",
+                "server",
+                "tar",
+                "-czf",
+                "-",
+                "-C",
+                "/app/data/rehab",
+                ".",
+            ],
+            attachments,
+        )
     }
 
     fn capture_command_stdout(
@@ -338,6 +417,246 @@ impl LauncherService {
             )));
         }
         Ok(())
+    }
+
+    fn create_backup_inner(&self, context: &DockerContext) -> LauncherResult<PathBuf> {
+        self.require_all_healthy(context, "服务未全部健康，不能创建一致性备份")?;
+        fs::create_dir_all(&self.paths.backups_dir)?;
+        let timestamp = Utc::now().format("%Y%m%dT%H%M%S%.3fZ").to_string();
+        let sql_path = self
+            .paths
+            .backups_dir
+            .join(format!("rehab-{timestamp}.sql"));
+        let attachment_path = self
+            .paths
+            .backups_dir
+            .join(format!("rehab-{timestamp}-attachments.tar.gz"));
+        let sql_encrypted_path = encrypted_path(&sql_path);
+        let attachment_encrypted_path = encrypted_path(&attachment_path);
+        let backup_result = (|| {
+            self.capture_transfer_sources(context, &sql_path, &attachment_path)?;
+            let backup_passphrase =
+                fs::read_to_string(self.paths.secrets_dir.join("backup.passphrase"))?;
+            let sql_encrypted = encrypt_backup_file(&sql_path, &backup_passphrase)?;
+            let attachment_encrypted = encrypt_backup_file(&attachment_path, &backup_passphrase)?;
+            Ok((sql_encrypted, attachment_encrypted))
+        })();
+        let (sql_encrypted, attachment_encrypted) = match backup_result {
+            Ok(paths) => paths,
+            Err(error) => {
+                for path in [
+                    &sql_path,
+                    &attachment_path,
+                    &sql_encrypted_path,
+                    &attachment_encrypted_path,
+                ] {
+                    let _ = fs::remove_file(path);
+                }
+                return Err(error);
+            }
+        };
+        let manifest_path = self
+            .paths
+            .backups_dir
+            .join(format!("rehab-{timestamp}.json"));
+        let finalize_result = (|| {
+            let manifest = serde_json::json!({
+                "createdAt": Utc::now().to_rfc3339(),
+                "applicationVersion": crate::model::APP_VERSION,
+                "database": sql_encrypted.file_name().and_then(|value| value.to_str()),
+                "databaseSha256": sha256_file(&sql_encrypted)?,
+                "attachments": attachment_encrypted.file_name().and_then(|value| value.to_str()),
+                "attachmentsSha256": sha256_file(&attachment_encrypted)?,
+                "containsPatientData": true,
+                "encryption": "age-scrypt",
+                "keyFile": "../secrets/backup.passphrase",
+                "storage": "请将 .age 文件复制到受控介质，并将恢复口令分开保管"
+            });
+            crate::config::write_private(
+                &manifest_path,
+                serde_json::to_string_pretty(&manifest)?.as_bytes(),
+            )
+        })();
+        if let Err(error) = finalize_result {
+            for path in [&sql_encrypted, &attachment_encrypted, &manifest_path] {
+                let _ = fs::remove_file(path);
+            }
+            return Err(error);
+        }
+        Ok(manifest_path)
+    }
+
+    fn restore_transfer_sources(
+        &self,
+        context: &DockerContext,
+        database: &Path,
+        attachments: &Path,
+    ) -> LauncherResult<()> {
+        self.validate_attachment_archive(context, attachments)?;
+        self.flush_redis(context)?;
+        run_compose(
+            self.runner.as_ref(),
+            context,
+            &["stop", "admin", "server", "redis"],
+        )?;
+
+        let restore_result: LauncherResult<()> = (|| {
+            self.run_compose_os(
+                context,
+                vec![
+                    OsString::from("cp"),
+                    database.as_os_str().to_owned(),
+                    OsString::from("mysql:/tmp/rehab-transfer.sql"),
+                ],
+            )?;
+            self.run_compose_os(
+                context,
+                vec![
+                    OsString::from("exec"),
+                    OsString::from("--no-TTY"),
+                    OsString::from("mysql"),
+                    OsString::from("mysql"),
+                    OsString::from("--defaults-extra-file=/run/rehab-secrets/mysql-client.cnf"),
+                    OsString::from("--execute"),
+                    OsString::from(
+                        "DROP DATABASE IF EXISTS `ruoyi-vue-pro`; CREATE DATABASE `ruoyi-vue-pro` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;",
+                    ),
+                ],
+            )?;
+            self.run_compose_os(
+                context,
+                vec![
+                    OsString::from("exec"),
+                    OsString::from("--no-TTY"),
+                    OsString::from("mysql"),
+                    OsString::from("mysql"),
+                    OsString::from("--defaults-extra-file=/run/rehab-secrets/mysql-client.cnf"),
+                    OsString::from("--default-character-set=utf8mb4"),
+                    OsString::from("ruoyi-vue-pro"),
+                    OsString::from("--execute"),
+                    OsString::from("source /tmp/rehab-transfer.sql"),
+                ],
+            )?;
+
+            let mount = transfer_mount_argument(
+                attachments
+                    .parent()
+                    .ok_or_else(|| LauncherError::Internal("迁移暂存目录异常".to_owned()))?,
+            );
+            self.run_compose_os(
+                context,
+                vec![
+                    OsString::from("run"),
+                    OsString::from("--rm"),
+                    OsString::from("--no-deps"),
+                    OsString::from("--volume"),
+                    mount.clone(),
+                    OsString::from("--entrypoint"),
+                    OsString::from("find"),
+                    OsString::from("server"),
+                    OsString::from("/app/data/rehab"),
+                    OsString::from("-mindepth"),
+                    OsString::from("1"),
+                    OsString::from("-delete"),
+                ],
+            )?;
+            self.run_compose_os(
+                context,
+                vec![
+                    OsString::from("run"),
+                    OsString::from("--rm"),
+                    OsString::from("--no-deps"),
+                    OsString::from("--volume"),
+                    mount,
+                    OsString::from("--entrypoint"),
+                    OsString::from("tar"),
+                    OsString::from("server"),
+                    OsString::from("-xzf"),
+                    OsString::from("/transfer/attachments.tar.gz"),
+                    OsString::from("-C"),
+                    OsString::from("/app/data/rehab"),
+                    OsString::from("--no-same-owner"),
+                    OsString::from("--no-same-permissions"),
+                ],
+            )?;
+            Ok(())
+        })();
+
+        // 无论覆盖过程成功与否，都重新启动现有服务；失败时自动备份和日志会保留供人工恢复。
+        let start_result = run_compose(self.runner.as_ref(), context, &["up", "--detach"])
+            .and_then(|_| wait_for_healthy_default(self.runner.as_ref(), context).map(|_| ()));
+        restore_result?;
+        start_result
+    }
+
+    fn validate_attachment_archive(
+        &self,
+        context: &DockerContext,
+        attachments: &Path,
+    ) -> LauncherResult<()> {
+        let staging = attachments
+            .parent()
+            .ok_or_else(|| LauncherError::Internal("迁移暂存目录异常".to_owned()))?;
+        let output = self.run_compose_os(
+            context,
+            vec![
+                OsString::from("run"),
+                OsString::from("--rm"),
+                OsString::from("--no-deps"),
+                OsString::from("--volume"),
+                transfer_mount_argument(staging),
+                OsString::from("--entrypoint"),
+                OsString::from("tar"),
+                OsString::from("server"),
+                OsString::from("-tzf"),
+                OsString::from("/transfer/attachments.tar.gz"),
+            ],
+        )?;
+        if output
+            .stdout
+            .lines()
+            .any(|entry| !safe_archive_entry(entry))
+        {
+            return Err(LauncherError::InvalidConfig(
+                "迁移包附件包含不安全路径，已拒绝导入".to_owned(),
+            ));
+        }
+        Ok(())
+    }
+
+    fn flush_redis(&self, context: &DockerContext) -> LauncherResult<()> {
+        let secret = read_environment_secrets(&self.paths.env_path())?.redis_password;
+        self.run_compose_os(
+            context,
+            vec![
+                OsString::from("exec"),
+                OsString::from("--no-TTY"),
+                OsString::from("redis"),
+                OsString::from("redis-cli"),
+                OsString::from("-a"),
+                OsString::from(secret),
+                OsString::from("--no-auth-warning"),
+                OsString::from("FLUSHALL"),
+            ],
+        )?;
+        Ok(())
+    }
+
+    fn run_compose_os(
+        &self,
+        context: &DockerContext,
+        trailing: Vec<OsString>,
+    ) -> LauncherResult<crate::runner::CommandOutput> {
+        let args = context.compose_args(trailing);
+        let output = self
+            .runner
+            .run(&context.executable, &args, Some(&context.working_dir))?;
+        if !output.success {
+            return Err(LauncherError::CommandFailed(redact_sensitive(
+                &output.stderr,
+            )));
+        }
+        Ok(output)
     }
 
     pub fn delete_all_data(&mut self, confirmation: &str) -> LauncherResult<LauncherOverview> {
@@ -424,6 +743,27 @@ impl LauncherService {
             }
         }
     }
+
+    fn finish_value<T>(&mut self, result: LauncherResult<T>) -> LauncherResult<T> {
+        match result {
+            Ok(value) => {
+                self.last_error = None;
+                let operation = self.operation.as_deref().unwrap_or("启动器操作");
+                let _ = append_launcher_log(&self.paths.logs_dir, &format!("{operation}完成"));
+                Ok(value)
+            }
+            Err(error) => {
+                let operation = self.operation.as_deref().unwrap_or("启动器操作");
+                let summary = format!(
+                    "{operation}失败：{error} 日志位置：{}",
+                    self.paths.logs_dir.join("launcher.log").display()
+                );
+                let _ = append_launcher_log(&self.paths.logs_dir, &summary);
+                self.last_error = Some(summary);
+                Err(error)
+            }
+        }
+    }
 }
 
 fn encrypt_backup_file(source: &Path, passphrase: &str) -> LauncherResult<PathBuf> {
@@ -490,6 +830,28 @@ fn append_launcher_log(logs_dir: &Path, message: &str) -> LauncherResult<()> {
 
 fn access_url(settings: &LauncherSettings) -> String {
     format!("https://{}:{}", settings.bind_address, settings.https_port)
+}
+
+fn transfer_mount_argument(staging: &Path) -> OsString {
+    OsString::from(format!(
+        "{}:/transfer:ro",
+        staging.to_string_lossy().replace('\\', "/")
+    ))
+}
+
+fn safe_archive_entry(entry: &str) -> bool {
+    let normalized = entry.trim().trim_start_matches("./");
+    if normalized.is_empty() {
+        return true;
+    }
+    let path = Path::new(normalized);
+    !path.is_absolute()
+        && path.components().all(|component| {
+            matches!(
+                component,
+                std::path::Component::Normal(_) | std::path::Component::CurDir
+            )
+        })
 }
 
 fn read_environment_secrets(path: &Path) -> LauncherResult<crate::config::RuntimeSecrets> {
@@ -604,5 +966,20 @@ mod tests {
         assert!(!output.contains("张三"));
         assert!(!output.contains("private"));
         assert!(output.contains("ordinary service message"));
+    }
+
+    #[test]
+    fn attachment_archive_paths_reject_traversal_and_absolute_entries() {
+        assert!(safe_archive_entry("./reports/report.docx"));
+        assert!(safe_archive_entry("attachments/image.png"));
+        assert!(!safe_archive_entry("../secrets/config.env"));
+        assert!(!safe_archive_entry("/etc/passwd"));
+        assert!(!safe_archive_entry("reports/../../tls/server.key"));
+    }
+
+    #[test]
+    fn import_confirmation_is_exact() {
+        assert_eq!(IMPORT_CONFIRMATION, "覆盖导入全部数据");
+        assert_ne!(IMPORT_CONFIRMATION, "覆盖导入数据");
     }
 }

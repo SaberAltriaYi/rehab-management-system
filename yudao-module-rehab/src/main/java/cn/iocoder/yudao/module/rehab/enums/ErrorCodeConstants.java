@@ -13,6 +13,8 @@ public interface ErrorCodeConstants {
     ErrorCode PATIENT_NO_PERMISSION = new ErrorCode(1_011_000_001, "无权限访问该患者");
     ErrorCode PATIENT_CAN_NOT_DELETE = new ErrorCode(1_011_000_002, "患者存在 episode/评估/报告记录，不允许删除，请先归档");
     ErrorCode PATIENT_DUPLICATE_SUSPECTED = new ErrorCode(1_011_000_003, "存在可能重复建档患者");
+    ErrorCode PATIENT_IMPORT_FILE_TOO_LARGE = new ErrorCode(1_011_000_004, "患者导入文件不能超过 5 MB");
+    ErrorCode PATIENT_IMPORT_ROWS_EXCEEDED = new ErrorCode(1_011_000_005, "患者单次导入不能超过 2000 行");
 
     ErrorCode CRM_BINDING_NOT_EXISTS = new ErrorCode(1_011_001_000, "CRM 绑定记录不存在");
     ErrorCode CRM_BINDING_CONFLICT = new ErrorCode(1_011_001_001, "CRM 客户已绑定其他患者，发生冲突");

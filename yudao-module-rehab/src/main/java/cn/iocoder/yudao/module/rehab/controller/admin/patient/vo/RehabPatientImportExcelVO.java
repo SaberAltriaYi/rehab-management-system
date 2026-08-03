@@ -5,15 +5,19 @@ import lombok.Data;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
-import java.time.LocalDateTime;
 
+/**
+ * 患者批量导入 Excel 行。
+ *
+ * <p>患者编号仅用于重复识别；新建成功后仍由系统生成本机构患者编号。</p>
+ */
 @Data
-public class RehabPatientExportRespVO {
+public class RehabPatientImportExcelVO {
 
-    @ExcelProperty("患者编号")
+    @ExcelProperty("患者编号（可空，仅用于查重）")
     private String patientNo;
 
-    @ExcelProperty("姓名")
+    @ExcelProperty("姓名（必填）")
     private String name;
 
     @ExcelProperty("性别（1男2女）")
@@ -49,9 +53,6 @@ public class RehabPatientExportRespVO {
     @ExcelProperty("体重(kg)")
     private BigDecimal weightKg;
 
-    @ExcelProperty("BMI")
-    private BigDecimal bmi;
-
     @ExcelProperty("惯用侧")
     private String dominantSide;
 
@@ -67,7 +68,7 @@ public class RehabPatientExportRespVO {
     @ExcelProperty("疼痛部位")
     private String painArea;
 
-    @ExcelProperty("疼痛评分")
+    @ExcelProperty("疼痛评分(0-10)")
     private BigDecimal painScore;
 
     @ExcelProperty("基础病史")
@@ -82,22 +83,10 @@ public class RehabPatientExportRespVO {
     @ExcelProperty("来源渠道")
     private String sourceChannel;
 
-    @ExcelProperty("当前状态")
-    private String currentStatus;
-
     @ExcelProperty("当前阶段")
     private String currentStage;
 
     @ExcelProperty("备注")
     private String remark;
-
-    @ExcelProperty("主责治疗师")
-    private String currentTherapistName;
-
-    @ExcelProperty("CRM 绑定状态")
-    private String crmBindStatus;
-
-    @ExcelProperty("更新时间")
-    private LocalDateTime updateTime;
 
 }

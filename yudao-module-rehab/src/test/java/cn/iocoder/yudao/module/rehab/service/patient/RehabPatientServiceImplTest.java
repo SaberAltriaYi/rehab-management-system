@@ -4,6 +4,8 @@ import cn.iocoder.yudao.module.rehab.controller.admin.patient.vo.RehabCrmConflic
 import cn.iocoder.yudao.module.rehab.controller.admin.patient.vo.RehabPatientCheckCrmConflictReqVO;
 import cn.iocoder.yudao.module.rehab.controller.admin.patient.vo.RehabPatientCreateReqVO;
 import cn.iocoder.yudao.module.rehab.controller.admin.patient.vo.RehabPatientCreateRespVO;
+import cn.iocoder.yudao.module.rehab.controller.admin.patient.vo.RehabPatientImportExcelVO;
+import cn.iocoder.yudao.module.rehab.controller.admin.patient.vo.RehabPatientImportRespVO;
 import cn.iocoder.yudao.module.rehab.controller.admin.patient.vo.RehabPatientTransferReqVO;
 import cn.iocoder.yudao.module.rehab.dal.dataobject.assignment.RehabTherapistAssignmentDO;
 import cn.iocoder.yudao.module.rehab.dal.dataobject.binding.RehabPatientCrmBindingDO;
@@ -76,6 +78,7 @@ class RehabPatientServiceImplTest {
         ReflectionTestUtils.setField(patientService, "episodeService", episodeService);
         ReflectionTestUtils.setField(patientService, "dataPermissionService", dataPermissionService);
         ReflectionTestUtils.setField(patientService, "adminUserApi", adminUserApi);
+        ReflectionTestUtils.setField(patientService, "self", patientService);
     }
 
     @Test
@@ -107,6 +110,44 @@ class RehabPatientServiceImplTest {
                 Objects.equals(update.getId(), 123L)
                         && Objects.equals(update.getPatientNo(), respVO.getPatientNo())));
         verify(operationLogMapper).insert(any(RehabPatientOperationLogDO.class));
+    }
+
+    @Test
+    void importPatients_shouldCreateSkipDuplicateAndReturnFailureWorkbook() {
+        RehabPatientImportExcelVO created = new RehabPatientImportExcelVO();
+        created.setName("批量患者甲");
+        created.setPhone("13800000001");
+
+        RehabPatientImportExcelVO duplicate = new RehabPatientImportExcelVO();
+        duplicate.setPatientNo("PT-EXISTS");
+        duplicate.setName("重复患者");
+
+        RehabPatientImportExcelVO invalid = new RehabPatientImportExcelVO();
+        invalid.setName(" ");
+
+        when(patientMapper.selectByPatientNo("PT-EXISTS"))
+                .thenReturn(RehabPatientDO.builder().id(998L).patientNo("PT-EXISTS").build());
+        when(patientMapper.selectListByNameAndPhone("批量患者甲", "13800000001"))
+                .thenReturn(Collections.emptyList());
+        doAnswer(invocation -> {
+            RehabPatientDO patient = invocation.getArgument(0);
+            patient.setId(321L);
+            return 1;
+        }).when(patientMapper).insert(any(RehabPatientDO.class));
+        when(episodeService.createInitialEpisodeIfNeeded(anyLong(), any(), any(), any(), any(), anyLong()))
+                .thenReturn(null);
+
+        RehabPatientImportRespVO result = patientService.importPatients(
+                List.of(created, duplicate, invalid), 1L);
+
+        assertEquals(3, result.getTotalCount());
+        assertEquals(1, result.getCreatedCount());
+        assertEquals(1, result.getSkippedCount());
+        assertEquals(1, result.getFailureCount());
+        assertEquals(4, result.getFailures().get(0).getRowNumber());
+        assertNotNull(result.getFailureExcelBase64());
+        assertFalse(result.getFailureExcelBase64().isEmpty());
+        verify(patientMapper, times(1)).insert(any(RehabPatientDO.class));
     }
 
     @Test

@@ -56,6 +56,13 @@ public class RehabDailyCheckinController {
         return success(checkinService.createCheckin(reqVO, getLoginUserId(), true));
     }
 
+    @PostMapping("/create-attendance")
+    @Operation(summary = "登记患者课程签到", description = "仅记录上课日期，不计入训练任务完成率；同一患者同一天可登记多节课")
+    @PreAuthorize("@ss.hasPermission('rehab:checkin:create-manual')")
+    public CommonResult<Long> createAttendance(@Valid @RequestBody RehabTrainingAttendanceCreateReqVO reqVO) {
+        return success(checkinService.createAttendance(reqVO, getLoginUserId()));
+    }
+
     @GetMapping("/task-executions")
     @Operation(summary = "获得打卡任务执行明细")
     @Parameter(name = "checkinId", description = "打卡编号", required = true)

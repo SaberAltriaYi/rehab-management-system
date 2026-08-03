@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core'
+import { open, save } from '@tauri-apps/plugin-dialog'
 import './styles.css'
 import {
   EMPTY_OVERVIEW,
@@ -6,6 +7,9 @@ import {
   type LauncherSettings,
   deletionConfirmationMatches,
   formatBackupTime,
+  importConfirmationMatches,
+  isValidAdminCredentialInput,
+  isValidTransferPassword,
   serviceBadgeClass
 } from './model'
 
@@ -22,6 +26,7 @@ let settings: LauncherSettings = {
 }
 let busy = false
 let logText = ''
+let selectedImportPath = ''
 
 function escapeHtml(value: string): string {
   return value
@@ -84,10 +89,14 @@ function render(): void {
         <button data-action="stop" class="secondary" ${busy ? 'disabled' : ''}>停止服务</button>
         <button data-action="restart" class="secondary" ${busy ? 'disabled' : ''}>重启服务</button>
         <button data-action="open" class="accent" ${busy || !overview.ready ? 'disabled' : ''}>打开康复管理系统</button>
+        <button data-action="open-admin" class="accent" ${busy || !overview.ready ? 'disabled' : ''}>进入后台管理</button>
       </section>
 
       <section class="actions utility-actions">
         <button data-action="backup" ${busy || !overview.ready ? 'disabled' : ''}>创建备份</button>
+        <button data-action="export-data" ${busy || !overview.ready ? 'disabled' : ''}>一键导出整店数据</button>
+        <button data-action="import-data" ${busy || !overview.ready ? 'disabled' : ''}>一键导入整店数据</button>
+        <button data-action="admin-settings" ${busy || !overview.ready ? 'disabled' : ''}>管理员账号设置</button>
         <button data-action="logs">查看日志</button>
         <button data-action="directory">打开数据目录</button>
         <button data-action="diagnostics">复制诊断信息</button>
@@ -114,6 +123,47 @@ function render(): void {
         <menu>
           <button value="cancel" class="secondary">取消</button>
           <button value="default" data-action="save-settings">保存</button>
+        </menu>
+      </form>
+    </dialog>
+
+    <dialog id="export-dialog">
+      <form method="dialog" id="export-form">
+        <h2>导出整店数据</h2>
+        <p>导出完整数据库、系统用户、权限和附件。迁移包不包含本机运行密码、TLS 私钥、端口、日志或备份。</p>
+        <label>迁移包密码（12–128 位）<input name="password" type="password" minlength="12" maxlength="128" autocomplete="new-password" /></label>
+        <label>再次输入密码<input name="passwordConfirm" type="password" minlength="12" maxlength="128" autocomplete="new-password" /></label>
+        <menu>
+          <button value="cancel" class="secondary">取消</button>
+          <button value="default" data-action="confirm-export">选择保存位置并导出</button>
+        </menu>
+      </form>
+    </dialog>
+
+    <dialog id="import-dialog">
+      <form method="dialog" id="import-form">
+        <h2>覆盖导入整店数据</h2>
+        <p class="warning-text">此操作会先自动创建目标设备本机备份，再用迁移包全量替换数据库和附件。目标设备的运行密码、TLS 与端口配置保持不变。</p>
+        <label>已选择迁移包<input name="source" value="${escapeHtml(selectedImportPath)}" readonly /></label>
+        <label>迁移包密码<input name="password" type="password" minlength="12" maxlength="128" autocomplete="off" /></label>
+        <label>确认文字<input name="confirmation" autocomplete="off" placeholder="输入：覆盖导入全部数据" /></label>
+        <menu>
+          <button value="cancel" class="secondary">取消</button>
+          <button value="default" class="danger" data-action="confirm-import">自动备份并覆盖导入</button>
+        </menu>
+      </form>
+    </dialog>
+
+    <dialog id="admin-dialog">
+      <form method="dialog" id="admin-form">
+        <h2>内置超级管理员设置</h2>
+        <p>修改租户 1、用户 ID 1 的内置超级管理员。保存后旧登录令牌立即失效；当前密码不会显示或写入日志。</p>
+        <label>新管理员账号<input name="username" minlength="4" maxlength="30" autocomplete="username" placeholder="例如 studio_admin" /></label>
+        <label>新密码（12–16 位）<input name="password" type="password" minlength="12" maxlength="16" autocomplete="new-password" /></label>
+        <label>再次输入密码<input name="passwordConfirm" type="password" minlength="12" maxlength="16" autocomplete="new-password" /></label>
+        <menu>
+          <button value="cancel" class="secondary">取消</button>
+          <button value="default" data-action="save-admin">保存管理员账号</button>
         </menu>
       </form>
     </dialog>
@@ -152,6 +202,8 @@ async function runAndRefresh(command: string, args?: Record<string, unknown>): P
     stop_services: '正在停止服务，业务数据会保留…',
     restart_services: '正在重启服务并等待健康检查…',
     create_backup: '正在导出并加密数据库与附件备份…',
+    import_full_transfer: '正在校验迁移包、自动备份并覆盖导入全部数据…',
+    update_admin_credentials: '正在安全更新内置超级管理员账号…',
     delete_all_data: '正在删除已确认的本机数据…'
   }
   overview.operation = operationLabels[command] ?? '正在执行操作…'
@@ -181,9 +233,114 @@ function bindActions(): void {
         case 'open':
           await runAndRefresh('open_system')
           break
+        case 'open-admin':
+          await runAndRefresh('open_admin')
+          break
         case 'backup':
           await runAndRefresh('create_backup')
           break
+        case 'export-data':
+          document.querySelector<HTMLDialogElement>('#export-dialog')?.showModal()
+          break
+        case 'confirm-export': {
+          event.preventDefault()
+          const form = document.querySelector<HTMLFormElement>('#export-form')
+          if (!form) return
+          const data = new FormData(form)
+          const password = String(data.get('password') ?? '')
+          const passwordConfirm = String(data.get('passwordConfirm') ?? '')
+          if (!isValidTransferPassword(password) || password !== passwordConfirm) {
+            window.alert('迁移包密码须为 12–128 位，且两次输入必须一致。')
+            return
+          }
+          const date = new Date().toISOString().slice(0, 10).replaceAll('-', '')
+          const destination = await save({
+            defaultPath: `康复管理系统-整店数据-${date}.rehab-transfer`,
+            filters: [{ name: '康复管理系统迁移包', extensions: ['rehab-transfer'] }]
+          })
+          if (!destination) return
+          try {
+            overview.operation = '正在导出整店加密迁移包（数据库、账号权限和附件）…'
+            const output = await invokeOperation<string>('export_full_transfer', { destination, password })
+            window.alert(`整店数据已加密导出到：\n${output}\n\n请将迁移包密码通过其他安全渠道交给分店。`)
+          } catch (error) {
+            overview.lastError = String(error)
+          }
+          await refresh()
+          break
+        }
+        case 'import-data': {
+          const source = await open({
+            multiple: false,
+            directory: false,
+            filters: [{ name: '康复管理系统迁移包', extensions: ['rehab-transfer'] }]
+          })
+          if (typeof source !== 'string') return
+          selectedImportPath = source
+          render()
+          document.querySelector<HTMLDialogElement>('#import-dialog')?.showModal()
+          break
+        }
+        case 'confirm-import': {
+          event.preventDefault()
+          const form = document.querySelector<HTMLFormElement>('#import-form')
+          if (!form) return
+          const data = new FormData(form)
+          const password = String(data.get('password') ?? '')
+          const confirmation = String(data.get('confirmation') ?? '')
+          if (!isValidTransferPassword(password)) {
+            window.alert('迁移包密码须为 12–128 位。')
+            return
+          }
+          if (!importConfirmationMatches(confirmation)) {
+            window.alert('确认文字不匹配，未修改任何数据。')
+            return
+          }
+          if (!window.confirm('确认自动备份当前分店数据，并用迁移包全量覆盖数据库和附件？')) return
+          try {
+            overview.operation = '正在校验迁移包、自动备份并覆盖导入全部数据…'
+            overview = await invokeOperation<LauncherOverview>('import_full_transfer', {
+              source: selectedImportPath,
+              password,
+              confirmation
+            })
+            selectedImportPath = ''
+            window.alert('整店数据导入完成。当前设备的运行密码、TLS 和端口配置已保留。')
+          } catch (error) {
+            overview.lastError = String(error)
+          }
+          await refresh()
+          break
+        }
+        case 'admin-settings':
+          document.querySelector<HTMLDialogElement>('#admin-dialog')?.showModal()
+          break
+        case 'save-admin': {
+          event.preventDefault()
+          const form = document.querySelector<HTMLFormElement>('#admin-form')
+          if (!form) return
+          const data = new FormData(form)
+          const username = String(data.get('username') ?? '').trim()
+          const password = String(data.get('password') ?? '')
+          const passwordConfirm = String(data.get('passwordConfirm') ?? '')
+          if (!isValidAdminCredentialInput(username, password) || password !== passwordConfirm) {
+            window.alert('账号须为 4–30 位字母、数字、点、下划线或连字符；密码须为 12–16 位且两次一致。')
+            return
+          }
+          if (!window.confirm('保存后当前管理员登录会话将失效，需要使用新账号密码重新登录。确认继续？')) return
+          try {
+            overview.operation = '正在安全更新内置超级管理员账号…'
+            overview = await invokeOperation<LauncherOverview>('update_admin_credentials', {
+              username,
+              password
+            })
+            window.alert('管理员账号密码已更新，旧登录令牌已失效。')
+          } catch (error) {
+            overview.lastError = String(error)
+          }
+          await refresh()
+          break
+        }
         case 'logs':
           logText = await invoke<string>('read_logs')
           render()

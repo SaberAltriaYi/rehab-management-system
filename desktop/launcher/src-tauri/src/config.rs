@@ -12,8 +12,8 @@ use std::net::{IpAddr, TcpListener};
 use std::path::{Path, PathBuf};
 
 const INFRASTRUCTURE_SECRET_LENGTH: usize = 48;
-const ADMIN_PASSWORD_MIN_LENGTH: usize = 12;
-const ADMIN_PASSWORD_MAX_LENGTH: usize = 16;
+pub const ADMIN_PASSWORD_MIN_LENGTH: usize = 12;
+pub const ADMIN_PASSWORD_MAX_LENGTH: usize = 16;
 
 #[derive(Clone, Debug)]
 pub struct AppPaths {
@@ -279,6 +279,42 @@ fn write_admin_credentials_sql(paths: &AppPaths, password: &str) -> LauncherResu
     )
 }
 
+pub fn validate_admin_credentials(username: &str, password: &str) -> LauncherResult<()> {
+    let username = username.trim();
+    if !(4..=30).contains(&username.chars().count())
+        || !username
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric() || "._-".contains(character))
+    {
+        return Err(LauncherError::InvalidConfig(
+            "管理员账号须为 4 至 30 位字母、数字、点、下划线或连字符".to_owned(),
+        ));
+    }
+    if !(ADMIN_PASSWORD_MIN_LENGTH..=ADMIN_PASSWORD_MAX_LENGTH).contains(&password.chars().count())
+    {
+        return Err(LauncherError::InvalidConfig(format!(
+            "管理员密码必须为 {ADMIN_PASSWORD_MIN_LENGTH} 至 {ADMIN_PASSWORD_MAX_LENGTH} 个字符"
+        )));
+    }
+    Ok(())
+}
+
+pub fn build_admin_update_sql(username: &str, password: &str) -> LauncherResult<String> {
+    validate_admin_credentials(username, password)?;
+    let hashed = hash(password, DEFAULT_COST)
+        .map_err(|error| LauncherError::Internal(format!("管理员密码哈希失败：{error}")))?;
+    Ok(format!(
+        "SET @rehab_conflict := (SELECT COUNT(*) FROM system_users WHERE tenant_id = 1 AND username = '{username}' AND id <> 1 AND deleted = b'0');\n\
+         UPDATE system_users SET username = '{username}', password = '{hashed}', status = 0, updater = 'desktop-launcher', update_time = NOW() WHERE id = 1 AND tenant_id = 1 AND deleted = b'0' AND @rehab_conflict = 0;\n\
+         SET @rehab_updated := ROW_COUNT();\n\
+         DELETE FROM system_oauth2_access_token WHERE user_id = 1 AND user_type = 2 AND @rehab_updated = 1;\n\
+         DELETE FROM system_oauth2_refresh_token WHERE user_id = 1 AND user_type = 2 AND @rehab_updated = 1;\n\
+         SELECT CONCAT('REHAB_ADMIN_UPDATED=', @rehab_updated);\n",
+        username = username.trim(),
+        hashed = hashed.replace('\'', "''")
+    ))
+}
+
 fn ensure_tls(paths: &AppPaths) -> LauncherResult<()> {
     let cert_path = paths.config_dir.join("tls/server.crt");
     let key_path = paths.config_dir.join("tls/server.key");
@@ -356,6 +392,20 @@ mod tests {
                 .chars()
                 .all(|character| character.is_ascii_alphanumeric()));
         }
+    }
+
+    #[test]
+    fn admin_update_sql_contains_only_hash_and_targets_builtin_super_admin() {
+        let password = "SafePassword12";
+        let sql = build_admin_update_sql("studio_admin", password).unwrap();
+        assert!(!sql.contains(password));
+        assert!(sql.contains("password = '$2"));
+        assert!(sql.contains("id = 1"));
+        assert!(sql.contains("tenant_id = 1"));
+        assert!(sql.contains("system_oauth2_access_token"));
+        assert!(sql.contains("system_oauth2_refresh_token"));
+        assert!(validate_admin_credentials("bad name", password).is_err());
+        assert!(validate_admin_credentials("admin", "too-short").is_err());
     }
 
     #[test]

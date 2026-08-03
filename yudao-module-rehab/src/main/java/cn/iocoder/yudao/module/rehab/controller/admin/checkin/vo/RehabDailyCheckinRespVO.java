@@ -26,6 +26,8 @@ public class RehabDailyCheckinRespVO {
     private Integer fatigueLevel;
     private Integer confidenceLevel;
     private String overallComment;
+    /** 没有任务执行明细的简化课程签到。 */
+    private Boolean courseAttendance;
     private LocalDateTime createTime;
 
 }

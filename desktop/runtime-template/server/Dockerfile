@@ -1,7 +1,7 @@
 FROM eclipse-temurin:8u492-b09-jre-jammy@sha256:2dd44832214038e70ecda102295e1099012a2a665fe5c81167c3eb7782085fed
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends curl fonts-wqy-zenhei \
+    && apt-get install -y --no-install-recommends curl fonts-wqy-zenhei fonts-noto-cjk libreoffice-writer \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --system app \
     && useradd --system --gid app --home-dir /app app \

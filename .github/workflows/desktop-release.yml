@@ -8,6 +8,7 @@ on:
   push:
     tags:
       - "v*"
+      - "desktop-v*"
 
 permissions:
   contents: read
@@ -42,7 +43,10 @@ jobs:
           test "$(node -p "require('./desktop/launcher/package.json').version")" = "${APP_VERSION}"
           test "$(node -p "require('./desktop/launcher/src-tauri/tauri.conf.json').version")" = "${APP_VERSION}"
           if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
-            test "${GITHUB_REF_NAME}" = "v${APP_VERSION}"
+            case "${GITHUB_REF_NAME}" in
+              "v${APP_VERSION}"|"desktop-v${APP_VERSION}"|"desktop-v${APP_VERSION}-"*) ;;
+              *) echo "Tag ${GITHUB_REF_NAME} does not match app version ${APP_VERSION}" >&2; exit 1 ;;
+            esac
           fi
 
       - name: Set up JDK
@@ -355,7 +359,7 @@ jobs:
 
   draft-release:
     name: Create draft release
-    if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+    if: ${{ startsWith(github.ref, 'refs/tags/v') || startsWith(github.ref, 'refs/tags/desktop-v') }}
     needs:
       - windows
       - macos
@@ -381,6 +385,8 @@ jobs:
             echo "- Windows x64: NSIS 安装器"
             echo "- macOS: Apple Silicon + Intel universal DMG"
             echo "- 运行前置条件: Docker Desktop（Compose v2）"
+            echo "- 新增患者 Excel 批量导入/导出、V4.1 原始数据评估报告和课程签到。"
+            echo "- 启动器新增整店加密迁移、后台入口及内置管理员账号设置。"
             echo "- unsigned 文件仅用于测试；正式分发前必须完成代码签名与 macOS 公证。"
           } > RELEASE-NOTES.md
 
