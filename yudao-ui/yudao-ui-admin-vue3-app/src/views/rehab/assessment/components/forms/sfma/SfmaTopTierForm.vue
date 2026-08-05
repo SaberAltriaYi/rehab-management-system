@@ -17,108 +17,112 @@
       description="FP/DP 为疼痛性模式，将自动标记高优先级并提示谨慎继续分解。"
     />
 
-    <el-collapse>
-      <el-collapse-item
-        v-for="group in groupedDefinitions"
-        :key="group.groupKey"
-        :title="group.label"
-        :name="group.groupKey"
-      >
-        <el-table :data="group.items" border size="small">
-          <el-table-column label="测试项" min-width="180">
-            <template #default="scope">
-              <div>{{ scope.row.test_name_zh }}</div>
-              <div class="text-12px text-[var(--el-text-color-secondary)]">code: {{ scope.row.test_code }}</div>
-            </template>
-          </el-table-column>
+    <section v-for="group in groupedDefinitions" :key="group.groupKey" class="top-tier-group">
+      <div class="top-tier-group__title">{{ group.label }}</div>
+      <el-table :data="group.items" border size="small">
+        <el-table-column label="测试项" min-width="180">
+          <template #default="scope">
+            <div>{{ scope.row.test_name_zh }}</div>
+            <div class="text-12px text-[var(--el-text-color-secondary)]"
+              >code: {{ scope.row.test_code }}</div
+            >
+          </template>
+        </el-table-column>
 
-          <el-table-column label="分类(FN/FP/DN/DP)" min-width="240">
-            <template #default="scope">
-              <el-radio-group
-                :model-value="getRow(scope.row.test_code).classification"
-                @change="(value) => handleClassificationChange(scope.row.test_code, value as any)"
+        <el-table-column label="分类(FN/FP/DN/DP)" min-width="240">
+          <template #default="scope">
+            <el-radio-group
+              :model-value="getRow(scope.row.test_code).classification"
+              @change="(value) => handleClassificationChange(scope.row.test_code, value as any)"
+            >
+              <el-radio
+                v-for="option in SFMA_CLASSIFICATION_OPTIONS"
+                :key="option.value"
+                :label="option.value"
               >
-                <el-radio v-for="option in SFMA_CLASSIFICATION_OPTIONS" :key="option.value" :label="option.value">
-                  {{ option.label }}
-                </el-radio>
-              </el-radio-group>
-            </template>
-          </el-table-column>
+                {{ option.label }}
+              </el-radio>
+            </el-radio-group>
+          </template>
+        </el-table-column>
 
-          <el-table-column label="疼痛" width="95">
-            <template #default="scope">
-              <el-switch
-                :model-value="getRow(scope.row.test_code).pain_present"
-                @change="(value) => handleRowFieldChange(scope.row.test_code, 'pain_present', value)"
-              />
-            </template>
-          </el-table-column>
+        <el-table-column label="疼痛" width="95">
+          <template #default="scope">
+            <el-switch
+              :model-value="getRow(scope.row.test_code).pain_present"
+              @change="(value) => handleRowFieldChange(scope.row.test_code, 'pain_present', value)"
+            />
+          </template>
+        </el-table-column>
 
-          <el-table-column label="疼痛VAS" width="120">
-            <template #default="scope">
-              <el-input-number
-                :model-value="getRow(scope.row.test_code).pain_vas"
-                :min="0"
-                :max="10"
-                :step="0.5"
-                class="!w-full"
-                @change="(value) => handleRowFieldChange(scope.row.test_code, 'pain_vas', value)"
-              />
-            </template>
-          </el-table-column>
+        <el-table-column label="疼痛VAS" width="120">
+          <template #default="scope">
+            <el-input-number
+              :model-value="getRow(scope.row.test_code).pain_vas"
+              :min="0"
+              :max="10"
+              :step="0.5"
+              class="!w-full"
+              @change="(value) => handleRowFieldChange(scope.row.test_code, 'pain_vas', value)"
+            />
+          </template>
+        </el-table-column>
 
-          <el-table-column label="关键ROM" width="140">
-            <template #default="scope">
-              <el-input
-                :model-value="getRow(scope.row.test_code).rom_key_value"
-                placeholder="可空"
-                @input="(value) => handleRowFieldChange(scope.row.test_code, 'rom_key_value', value)"
-              />
-            </template>
-          </el-table-column>
+        <el-table-column label="关键ROM" width="140">
+          <template #default="scope">
+            <el-input
+              :model-value="getRow(scope.row.test_code).rom_key_value"
+              placeholder="可空"
+              @input="(value) => handleRowFieldChange(scope.row.test_code, 'rom_key_value', value)"
+            />
+          </template>
+        </el-table-column>
 
-          <el-table-column label="观察要点" min-width="220">
-            <template #default="scope">
-              <el-input
-                :model-value="getRow(scope.row.test_code).key_observation_note"
-                type="textarea"
-                :rows="2"
-                placeholder="关键观察"
-                @input="(value) => handleRowFieldChange(scope.row.test_code, 'key_observation_note', value)"
-              />
-            </template>
-          </el-table-column>
+        <el-table-column label="观察要点" min-width="220">
+          <template #default="scope">
+            <el-input
+              :model-value="getRow(scope.row.test_code).key_observation_note"
+              type="textarea"
+              :rows="2"
+              placeholder="关键观察"
+              @input="
+                (value) => handleRowFieldChange(scope.row.test_code, 'key_observation_note', value)
+              "
+            />
+          </template>
+        </el-table-column>
 
-          <el-table-column label="质量备注" min-width="220">
-            <template #default="scope">
-              <el-input
-                :model-value="getRow(scope.row.test_code).movement_quality_note"
-                type="textarea"
-                :rows="2"
-                placeholder="动作质量备注"
-                @input="(value) => handleRowFieldChange(scope.row.test_code, 'movement_quality_note', value)"
-              />
-            </template>
-          </el-table-column>
+        <el-table-column label="质量备注" min-width="220">
+          <template #default="scope">
+            <el-input
+              :model-value="getRow(scope.row.test_code).movement_quality_note"
+              type="textarea"
+              :rows="2"
+              placeholder="动作质量备注"
+              @input="
+                (value) => handleRowFieldChange(scope.row.test_code, 'movement_quality_note', value)
+              "
+            />
+          </template>
+        </el-table-column>
 
-          <el-table-column label="优先级" width="96">
-            <template #default="scope">
-              <el-tag
-                :type="
-                  getRow(scope.row.test_code).review_priority === 'high'
-                    ? 'danger'
-                    : getRow(scope.row.test_code).review_priority === 'normal'
-                      ? 'warning'
-                      : 'info'
-                "
-              >
-                {{ getRow(scope.row.test_code).review_priority || 'normal' }}
-              </el-tag>
-            </template>
-          </el-table-column>
-        </el-table>
-      </el-collapse-item>
-    </el-collapse>
+        <el-table-column label="优先级" width="96">
+          <template #default="scope">
+            <el-tag
+              :type="
+                getRow(scope.row.test_code).review_priority === 'high'
+                  ? 'danger'
+                  : getRow(scope.row.test_code).review_priority === 'normal'
+                    ? 'warning'
+                    : 'info'
+              "
+            >
+              {{ getRow(scope.row.test_code).review_priority || 'normal' }}
+            </el-tag>
+          </template>
+        </el-table-column>
+      </el-table>
+    </section>
   </el-card>
 </template>
 
@@ -196,15 +200,16 @@ const patchTopTierRow = (
   model.value = payload
 }
 
-const handleRowFieldChange = (
-  testCode: string,
-  field: keyof SfmaTopTierRecord,
-  value: any
-) => {
-  patchTopTierRow(testCode, { [field]: value } as Partial<SfmaTopTierRecord>, { emitWhenMissing: true })
+const handleRowFieldChange = (testCode: string, field: keyof SfmaTopTierRecord, value: any) => {
+  patchTopTierRow(testCode, { [field]: value } as Partial<SfmaTopTierRecord>, {
+    emitWhenMissing: true
+  })
 }
 
-const handleClassificationChange = (testCode: string, classification: SfmaTopTierRecord['classification']) => {
+const handleClassificationChange = (
+  testCode: string,
+  classification: SfmaTopTierRecord['classification']
+) => {
   const payload = deepClone(model.value)
   const row = payload[testCode] || ({} as SfmaTopTierRecord)
   row.classification = classification || ''
@@ -252,3 +257,16 @@ const reset = () => {
 
 defineExpose({ validate, getFormData, reset })
 </script>
+
+<style scoped>
+.top-tier-group + .top-tier-group {
+  margin-top: 16px;
+}
+
+.top-tier-group__title {
+  margin-bottom: 12px;
+  color: var(--el-text-color-primary);
+  font-size: 15px;
+  font-weight: 600;
+}
+</style>

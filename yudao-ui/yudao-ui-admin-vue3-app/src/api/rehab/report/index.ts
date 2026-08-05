@@ -14,8 +14,21 @@ export interface RehabReportPageReqVO {
   createTime?: string[]
 }
 
+export interface RehabReportPatientRespVO {
+  patientId: number
+  patientNo: string
+  patientName: string
+  reportCount: number
+  assessmentCount: number
+  latestReportTime?: string
+}
+
 export const getRehabReportPage = async (params: RehabReportPageReqVO) => {
   return await request.get({ url: '/rehab/report/page', params })
+}
+
+export const getRehabReportPatientPage = async (params: RehabReportPageReqVO) => {
+  return await request.get({ url: '/rehab/report/patient-page', params })
 }
 
 export const getRehabReport = async (id: number) => {
@@ -28,7 +41,7 @@ export const generateRehabReport = async (data: {
   generationMode?: string
   note?: string
 }) => {
-  return await request.post({ url: '/rehab/report/generate', data })
+  return await request.post({ url: '/rehab/report/generate', data, timeout: 60000 })
 }
 
 export const previewRehabReport = async (id: number) => {
@@ -52,18 +65,30 @@ export const unlockRehabReport = async (data: { id: number; reason: string }) =>
 }
 
 export const exportRehabReportDocx = async (id: number) => {
-  return await request.download({ url: '/rehab/report/export-docx', params: { id } })
+  return await request.download({
+    url: '/rehab/report/export-docx',
+    params: { id },
+    timeout: 120000
+  })
 }
 
 export const exportRehabReportPdf = async (id: number) => {
-  return await request.download({ url: '/rehab/report/export-pdf', params: { id } })
+  return await request.download({
+    url: '/rehab/report/export-pdf',
+    params: { id },
+    timeout: 120000
+  })
 }
 
 export const getRehabReportByAssessment = async (assessmentId: number) => {
   return await request.get({ url: '/rehab/report/by-assessment', params: { assessmentId } })
 }
 
-export const getRehabReportVersionPage = async (params: { reportId: number; pageNo: number; pageSize: number }) => {
+export const getRehabReportVersionPage = async (params: {
+  reportId: number
+  pageNo: number
+  pageSize: number
+}) => {
   return await request.get({ url: '/rehab/report/version/page', params })
 }
 

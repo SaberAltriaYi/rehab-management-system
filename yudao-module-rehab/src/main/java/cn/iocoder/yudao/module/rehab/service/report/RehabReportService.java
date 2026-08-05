@@ -13,6 +13,8 @@ public interface RehabReportService {
 
     PageResult<RehabReportRespVO> getReportPage(RehabReportPageReqVO reqVO, Long operatorUserId);
 
+    PageResult<RehabReportPatientRespVO> getReportPatientPage(RehabReportPageReqVO reqVO, Long operatorUserId);
+
     RehabReportRespVO getReport(Long id, Long operatorUserId);
 
     RehabReportGenerateRespVO generateReport(RehabReportGenerateReqVO reqVO, Long operatorUserId);

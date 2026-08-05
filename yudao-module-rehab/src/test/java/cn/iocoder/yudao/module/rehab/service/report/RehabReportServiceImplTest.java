@@ -1,10 +1,13 @@
 package cn.iocoder.yudao.module.rehab.service.report;
 
 import cn.iocoder.yudao.framework.common.exception.ServiceException;
+import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.module.rehab.controller.admin.report.vo.RehabReportLockReqVO;
 import cn.iocoder.yudao.module.rehab.controller.admin.report.vo.RehabReportUnlockReqVO;
 import cn.iocoder.yudao.module.rehab.controller.admin.report.vo.RehabReportGenerateReqVO;
 import cn.iocoder.yudao.module.rehab.controller.admin.report.vo.RehabReportGenerateRespVO;
+import cn.iocoder.yudao.module.rehab.controller.admin.report.vo.RehabReportPageReqVO;
+import cn.iocoder.yudao.module.rehab.controller.admin.report.vo.RehabReportPatientRespVO;
 import cn.iocoder.yudao.module.rehab.dal.dataobject.assessment.RehabAssessmentModuleDataDO;
 import cn.iocoder.yudao.module.rehab.dal.dataobject.assessment.RehabAssessmentOperationLogDO;
 import cn.iocoder.yudao.module.rehab.dal.dataobject.assessment.RehabAssessmentRecordDO;
@@ -34,11 +37,9 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
-import java.io.InputStream;
 import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.Collections;
 import java.util.List;
 
@@ -153,7 +154,7 @@ class RehabReportServiceImplTest {
     }
 
     @Test
-    void generateReport_shouldExpandComprehensiveModulesAndRenderOnlyRawData() throws Exception {
+    void generateReport_shouldExpandComprehensiveModulesAndDeferBinaryExport() throws Exception {
         RehabReportGenerateReqVO reqVO = new RehabReportGenerateReqVO();
         reqVO.setAssessmentId(20002L);
 
@@ -208,16 +209,53 @@ class RehabReportServiceImplTest {
         assertFalse(generated.getReportJson().contains("优先改善髋部控制"));
         assertFalse(generated.getReportJson().contains("髋稳定性需继续训练"));
 
-        Path docx = Paths.get(generated.getDocxPath());
-        assertTrue(Files.isRegularFile(docx));
-        try (InputStream inputStream = Files.newInputStream(docx);
-             XWPFDocument document = new XWPFDocument(inputStream)) {
+        assertNull(generated.getDocxPath());
+        assertNull(generated.getPdfPath());
+
+        RehabReportDO approvedReport = RehabReportDO.builder()
+                .id(30002L)
+                .patientId(10001L)
+                .assessmentId(20002L)
+                .reportNo("REP202608050002")
+                .reportVersion(1)
+                .reportStatus("approved")
+                .reportJson(generated.getReportJson())
+                .build();
+        when(reportMapper.selectById(30002L)).thenReturn(approvedReport);
+        byte[] docxBytes = reportService.exportDocx(30002L, 1L);
+        assertTrue(docxBytes.length > 0);
+        try (XWPFDocument document = new XWPFDocument(new ByteArrayInputStream(docxBytes))) {
             assertEquals(53, document.getTables().size());
             String text = document.getTables().stream().map(table -> table.getText())
                     .reduce("", (left, right) -> left + "\n" + right);
             assertTrue(text.contains("totalScore：16"));
             assertFalse(text.contains("髋稳定性需继续训练"));
         }
+    }
+
+    @Test
+    void getReportPatientPage_shouldPageByPatientInsteadOfReport() {
+        RehabReportPageReqVO reqVO = new RehabReportPageReqVO();
+        reqVO.setPageNo(2);
+        reqVO.setPageSize(10);
+        reqVO.setKeyword("王");
+        RehabReportPatientRespVO patient = new RehabReportPatientRespVO();
+        patient.setPatientId(10001L);
+        patient.setPatientNo("P202608050001");
+        patient.setPatientName("王小明");
+        patient.setAssessmentCount(2L);
+        patient.setReportCount(3L);
+
+        when(permissionApi.hasAnyRoles(1L, RehabRoleCodeConstants.SUPER_ADMIN)).thenReturn(true);
+        when(reportMapper.selectPatientCount(reqVO, null)).thenReturn(11L);
+        when(reportMapper.selectPatientPage(reqVO, null, 10L, 10)).thenReturn(Collections.singletonList(patient));
+
+        PageResult<RehabReportPatientRespVO> result = reportService.getReportPatientPage(reqVO, 1L);
+
+        assertEquals(11L, result.getTotal());
+        assertEquals(1, result.getList().size());
+        assertEquals(10001L, result.getList().get(0).getPatientId());
+        assertEquals(3L, result.getList().get(0).getReportCount());
     }
 
     @Test

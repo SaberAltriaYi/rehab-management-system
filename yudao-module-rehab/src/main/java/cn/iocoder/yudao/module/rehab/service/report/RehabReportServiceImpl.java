@@ -147,6 +147,30 @@ public class RehabReportServiceImpl implements RehabReportService {
     }
 
     @Override
+    public PageResult<RehabReportPatientRespVO> getReportPatientPage(RehabReportPageReqVO reqVO,
+                                                                     Long operatorUserId) {
+        Set<Long> visiblePatientIds = dataPermissionService.getVisiblePatientIds(operatorUserId);
+        if (visiblePatientIds != null && visiblePatientIds.isEmpty()) {
+            return PageResult.empty();
+        }
+
+        Collection<Long> filteredPatientIds = visiblePatientIds;
+        if (reqVO.getPatientId() != null) {
+            validatePatientReadable(reqVO.getPatientId(), operatorUserId);
+            filteredPatientIds = Collections.singleton(reqVO.getPatientId());
+        }
+
+        Long total = reportMapper.selectPatientCount(reqVO, filteredPatientIds);
+        if (total == null || total == 0L) {
+            return PageResult.empty();
+        }
+        long offset = (long) (reqVO.getPageNo() - 1) * reqVO.getPageSize();
+        List<RehabReportPatientRespVO> list = reportMapper.selectPatientPage(
+                reqVO, filteredPatientIds, offset, reqVO.getPageSize());
+        return new PageResult<>(list, total);
+    }
+
+    @Override
     public RehabReportRespVO getReport(Long id, Long operatorUserId) {
         RehabReportDO report = validateReportExists(id);
         validatePatientReadable(report.getPatientId(), operatorUserId);
@@ -187,8 +211,6 @@ public class RehabReportServiceImpl implements RehabReportService {
         boolean fallbackUsed = false;
         String fallbackMessage = null;
         String htmlPath = null;
-        String docxPath = null;
-        String pdfPath = null;
         try {
             String reportDir = storagePath + File.separator + "reports" + File.separator + patient.getId();
             FileUtil.mkdir(reportDir);
@@ -197,23 +219,15 @@ public class RehabReportServiceImpl implements RehabReportService {
             String html = buildHtml(reportPayload);
             htmlPath = reportDir + File.separator + baseName + ".html";
             FileUtil.writeString(html, htmlPath, StandardCharsets.UTF_8);
-
-            docxPath = reportDir + File.separator + baseName + ".docx";
-            generateDocx(reportPayload, docxPath);
-
-            pdfPath = reportDir + File.separator + baseName + ".pdf";
-            generatePdf(reportPayload, docxPath, pdfPath);
         } catch (Exception ex) {
             fallbackUsed = true;
-            fallbackMessage = "报告模板导出失败，已降级保留结构化 JSON";
+            fallbackMessage = "报告预览生成失败，已保留结构化报告数据";
         }
 
         RehabReportDO updateObj = new RehabReportDO().setId(report.getId())
                 .setReportNo(reportNo)
                 .setReportJson(reportJson)
                 .setHtmlSnapshotPath(htmlPath)
-                .setDocxPath(docxPath)
-                .setPdfPath(pdfPath)
                 .setLastGeneratedAt(LocalDateTime.now());
         if (fallbackUsed) {
             updateObj.setNote(StrUtil.blankToDefault(report.getNote(), "")
@@ -369,6 +383,23 @@ public class RehabReportServiceImpl implements RehabReportService {
                 && !ObjUtil.equals(report.getReportStatus(), RehabReportConstants.STATUS_LOCKED)) {
             throw exception(REPORT_CAN_NOT_EXPORT);
         }
+        if ((StrUtil.isBlank(report.getDocxPath()) || !FileUtil.exist(report.getDocxPath()))
+                && StrUtil.isNotBlank(report.getReportJson())) {
+            Map<String, Object> payload = JsonUtils.parseObject(report.getReportJson(), Map.class);
+            if (payload != null) {
+                String reportDir = storagePath + File.separator + "reports" + File.separator + report.getPatientId();
+                FileUtil.mkdir(reportDir);
+                String docxPath = reportDir + File.separator + report.getReportNo()
+                        + "_v" + report.getReportVersion() + ".docx";
+                try {
+                    generateDocx(payload, docxPath);
+                    report.setDocxPath(docxPath);
+                    reportMapper.updateById(new RehabReportDO().setId(id).setDocxPath(docxPath));
+                } catch (IOException ignored) {
+                    // 下方统一返回“DOCX 文件不存在”，避免向前端暴露模板或文件系统细节
+                }
+            }
+        }
         if (StrUtil.isBlank(report.getDocxPath()) || !FileUtil.exist(report.getDocxPath())) {
             throw exception(REPORT_DOCX_NOT_EXISTS);
         }
@@ -402,6 +433,7 @@ public class RehabReportServiceImpl implements RehabReportService {
             Map<String, Object> payload = JsonUtils.parseObject(report.getReportJson(), Map.class);
             if (payload != null) {
                 String reportDir = storagePath + File.separator + "reports" + File.separator + report.getPatientId();
+                FileUtil.mkdir(reportDir);
                 String pdfPath = reportDir + File.separator + report.getReportNo()
                         + "_v" + report.getReportVersion() + ".pdf";
                 try {

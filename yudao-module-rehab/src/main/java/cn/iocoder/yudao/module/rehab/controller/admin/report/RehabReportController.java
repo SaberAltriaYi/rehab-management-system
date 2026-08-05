@@ -38,6 +38,14 @@ public class RehabReportController {
         return success(reportService.getReportPage(reqVO, getLoginUserId()));
     }
 
+    @GetMapping("/patient-page")
+    @Operation(summary = "按患者获得报告分页")
+    @PreAuthorize("@ss.hasPermission('rehab:report:view')")
+    public CommonResult<PageResult<RehabReportPatientRespVO>> getReportPatientPage(
+            @Valid RehabReportPageReqVO reqVO) {
+        return success(reportService.getReportPatientPage(reqVO, getLoginUserId()));
+    }
+
     @GetMapping("/get")
     @Operation(summary = "获得报告详情")
     @Parameter(name = "id", description = "报告编号", required = true)
