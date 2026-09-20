@@ -24,6 +24,8 @@ jobs:
           mvn -B -pl yudao-server -am
           -Dtest=PasswordHashCliTest
           -Dsurefire.failIfNoSpecifiedTests=false test
+      - name: Test rehabilitation and shared backend modules
+        run: mvn -B -pl yudao-module-rehab -am test
       - name: Build production server
         run: deploy/internal/build-server-isolated.sh
 
@@ -64,6 +66,8 @@ jobs:
             done
           sh -n install.sh
           sh -n rehabctl.sh
+      - name: Test migration safety guards
+        run: python3 -m unittest discover -s deploy/internal -p 'test_migration_guard.py' -v
       - name: Verify migration checksums
         run: deploy/internal/migrate.sh verify-files
       - name: Validate Compose configuration

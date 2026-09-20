@@ -101,6 +101,69 @@ class RehabAssessmentServiceImplTest {
     }
 
     @Test
+    void updateAssessment_shouldRejectMovingRecordToAnotherPatient() {
+        when(permissionApi.hasAnyRoles(1L, RehabRoleCodeConstants.SUPER_ADMIN)).thenReturn(true);
+        when(assessmentRecordMapper.selectById(20001L)).thenReturn(RehabAssessmentRecordDO.builder()
+                .id(20001L).patientId(10001L).episodeId(13001L)
+                .status(RehabAssessmentConstants.STATUS_DRAFT).build());
+        RehabAssessmentUpdateReqVO reqVO = new RehabAssessmentUpdateReqVO();
+        reqVO.setId(20001L);
+        reqVO.setPatientId(10002L);
+        reqVO.setEpisodeId(13002L);
+
+        ServiceException ex = assertThrows(ServiceException.class,
+                () -> assessmentService.updateAssessment(reqVO, 1L));
+
+        assertEquals(1_011_004_011, ex.getCode());
+        verify(assessmentRecordMapper, never()).updateById(any(RehabAssessmentRecordDO.class));
+        verifyNoInteractions(episodeMapper, moduleDataMapper, operationLogMapper);
+    }
+
+    @Test
+    void initializePrimaryModule_shouldNotMarkEmptyDataCompleted() {
+        when(moduleDataMapper.selectListByAssessmentId(20001L)).thenReturn(Collections.emptyList());
+        ReflectionTestUtils.invokeMethod(assessmentService, "ensurePrimaryModuleData", 20001L,
+                RehabAssessmentConstants.TYPE_COMPREHENSIVE_ASSESSMENT);
+        verify(moduleDataMapper).insert(org.mockito.ArgumentMatchers.<RehabAssessmentModuleDataDO>argThat(item ->
+                RehabAssessmentConstants.MODULE_STATUS_NOT_STARTED.equals(item.getModuleStatus())));
+    }
+
+    @Test
+    void refreshDerivedStatus_shouldPreserveExplicitDraft() {
+        when(assessmentRecordMapper.selectById(20001L)).thenReturn(RehabAssessmentRecordDO.builder()
+                .id(20001L).status(RehabAssessmentConstants.STATUS_DRAFT).build());
+        when(moduleDataMapper.selectListByAssessmentId(20001L)).thenReturn(Collections.singletonList(
+                RehabAssessmentModuleDataDO.builder().assessmentId(20001L)
+                        .moduleStatus(RehabAssessmentConstants.MODULE_STATUS_COMPLETED).build()));
+        ReflectionTestUtils.invokeMethod(assessmentService, "refreshAssessmentDerivedStatus", 20001L, true);
+        verify(assessmentRecordMapper).updateById(org.mockito.ArgumentMatchers.<RehabAssessmentRecordDO>argThat(item ->
+                RehabAssessmentConstants.STATUS_DRAFT.equals(item.getStatus())
+                        && RehabAssessmentConstants.RAW_INPUT_COMPLETE.equals(item.getRawInputStatus())));
+    }
+
+    @Test
+    void refreshDerivedStatus_shouldNotPromotePlaceholder() {
+        when(assessmentRecordMapper.selectById(20001L)).thenReturn(RehabAssessmentRecordDO.builder()
+                .id(20001L).status(RehabAssessmentConstants.STATUS_DRAFT).build());
+        when(moduleDataMapper.selectListByAssessmentId(20001L)).thenReturn(Collections.singletonList(
+                RehabAssessmentModuleDataDO.builder().assessmentId(20001L)
+                        .moduleStatus(RehabAssessmentConstants.MODULE_STATUS_NOT_STARTED).build()));
+        ReflectionTestUtils.invokeMethod(assessmentService, "refreshAssessmentDerivedStatus", 20001L);
+        verify(assessmentRecordMapper).updateById(org.mockito.ArgumentMatchers.<RehabAssessmentRecordDO>argThat(item ->
+                RehabAssessmentConstants.STATUS_DRAFT.equals(item.getStatus())
+                        && !RehabAssessmentConstants.RAW_INPUT_COMPLETE.equals(item.getRawInputStatus())));
+    }
+
+    @Test
+    void assessmentNumber_shouldNotCollideAfterTenThousandIds() {
+        String first = ReflectionTestUtils.invokeMethod(assessmentService, "generateAssessmentNo", 1L);
+        String later = ReflectionTestUtils.invokeMethod(assessmentService, "generateAssessmentNo", 10001L);
+        assertNotEquals(first, later);
+        assertTrue(first.endsWith("-1"));
+        assertTrue(later.endsWith("-10001"));
+    }
+
+    @Test
     void downloadAttachment_shouldReturnStoredFile() throws Exception {
         byte[] expected = "rehab attachment".getBytes(StandardCharsets.UTF_8);
         Path attachmentPath = tempDir.resolve("assessments/20001/attachments/evidence.txt");
@@ -329,6 +392,45 @@ class RehabAssessmentServiceImplTest {
                         && (Objects.equals(item.getRawInputStatus(), RehabAssessmentConstants.RAW_INPUT_COMPLETE)
                         || Objects.equals(item.getStatus(), RehabAssessmentConstants.STATUS_COMPLETED))));
         verify(operationLogMapper).insert(any(RehabAssessmentOperationLogDO.class));
+    }
+
+    @Test
+    void saveModuleData_shouldKeepExplicitDraftEvenWhenModuleIsCompleted() {
+        RehabAssessmentModuleDataSaveReqVO reqVO = new RehabAssessmentModuleDataSaveReqVO();
+        reqVO.setAssessmentId(20001L);
+        reqVO.setModuleType(RehabAssessmentConstants.MODULE_STATIC);
+        reqVO.setModuleStatus(RehabAssessmentConstants.MODULE_STATUS_COMPLETED);
+        reqVO.setKeepAssessmentDraft(true);
+        reqVO.setDataJson("{\"head_forward_angle\":12.5}");
+
+        when(permissionApi.hasAnyRoles(1L, RehabRoleCodeConstants.SUPER_ADMIN)).thenReturn(true);
+        when(assessmentRecordMapper.selectById(20001L)).thenReturn(RehabAssessmentRecordDO.builder()
+                .id(20001L)
+                .patientId(10001L)
+                .status(RehabAssessmentConstants.STATUS_DRAFT)
+                .build());
+        when(moduleDataMapper.selectByAssessmentIdAndModuleType(20001L, RehabAssessmentConstants.MODULE_STATIC)).thenReturn(
+                null,
+                null,
+                RehabAssessmentModuleDataDO.builder()
+                        .id(21001L)
+                        .assessmentId(20001L)
+                        .moduleType(RehabAssessmentConstants.MODULE_STATIC)
+                        .moduleStatus(RehabAssessmentConstants.MODULE_STATUS_COMPLETED)
+                        .build());
+        when(moduleDataMapper.selectListByAssessmentId(20001L)).thenReturn(Collections.singletonList(
+                RehabAssessmentModuleDataDO.builder()
+                        .assessmentId(20001L)
+                        .moduleType(RehabAssessmentConstants.MODULE_STATIC)
+                        .moduleStatus(RehabAssessmentConstants.MODULE_STATUS_COMPLETED)
+                        .build()));
+
+        assessmentService.saveModuleData(reqVO, 1L);
+
+        verify(assessmentRecordMapper).updateById(org.mockito.ArgumentMatchers.<RehabAssessmentRecordDO>argThat(item ->
+                Objects.equals(item.getId(), 20001L)
+                        && RehabAssessmentConstants.STATUS_DRAFT.equals(item.getStatus())
+                        && RehabAssessmentConstants.RAW_INPUT_COMPLETE.equals(item.getRawInputStatus())));
     }
 
     @Test

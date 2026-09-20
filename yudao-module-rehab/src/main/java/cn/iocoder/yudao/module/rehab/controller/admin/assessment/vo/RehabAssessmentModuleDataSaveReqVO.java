@@ -21,6 +21,9 @@ public class RehabAssessmentModuleDataSaveReqVO {
     @Schema(description = "模块状态", example = "completed")
     private String moduleStatus;
 
+    @Schema(description = "保持评估为草稿；用于可恢复的分段保存，默认 false", example = "true")
+    private Boolean keepAssessmentDraft;
+
     @Schema(description = "模块数据 JSON（字符串或对象）")
     private Object dataJson;
 

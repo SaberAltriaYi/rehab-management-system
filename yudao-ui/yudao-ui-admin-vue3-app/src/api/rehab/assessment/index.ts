@@ -73,6 +73,7 @@ export const saveRehabAssessmentModuleData = async (data: {
   assessmentId: number
   moduleType: string
   moduleStatus?: string
+  keepAssessmentDraft?: boolean
   dataJson?: any
   sourceType?: string
   version?: string

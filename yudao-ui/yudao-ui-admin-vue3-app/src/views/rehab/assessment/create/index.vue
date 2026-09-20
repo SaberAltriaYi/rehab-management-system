@@ -5,7 +5,14 @@
       <el-button @click="goBack">返回</el-button>
     </div>
 
-    <el-form ref="formRef" :model="formData" :rules="rules" label-width="130px" v-loading="loading">
+    <el-form
+      ref="formRef"
+      :model="formData"
+      :rules="rules"
+      :disabled="submitLoading"
+      label-width="130px"
+      v-loading="loading || submitLoading"
+    >
       <el-row :gutter="12">
         <el-col :span="12">
           <el-form-item label="患者" prop="patientId">
@@ -17,6 +24,7 @@
               remote
               :remote-method="handlePatientSearch"
               :loading="patientLoading"
+              :disabled="isEditMode"
               clearable
             >
               <el-option
@@ -153,6 +161,10 @@ import { useUserStore } from '@/store/modules/user'
 defineOptions({ name: 'RehabAssessmentCreateOrEdit' })
 
 type SaveAction = 'draft' | 'continue' | 'back'
+type FormStateSnapshot = {
+  base: string
+  module: string
+}
 
 const message = useMessage()
 const route = useRoute()
@@ -168,6 +180,8 @@ const dynamicFormRef = ref<AssessmentFormExpose>()
 const patientOptions = ref<RehabPatientVO[]>([])
 const patientSnapshotMap = reactive<Record<number, any>>({})
 const episodeOptions = ref<any[]>([])
+const suppressPatientEpisodeReset = ref(false)
+const episodeOptionsRequestId = ref(0)
 
 const formData = reactive<any>({
   patientId: undefined,
@@ -251,9 +265,12 @@ const hasUnsavedChanges = computed(() => {
 
 watch(
   () => formData.patientId,
-  async () => {
+  async (patientId) => {
+    if (suppressPatientEpisodeReset.value) {
+      return
+    }
     formData.episodeId = undefined
-    await loadEpisodeOptions()
+    await loadEpisodeOptions(patientId)
   }
 )
 
@@ -303,12 +320,22 @@ const ensureCurrentPatientOption = async (patientId?: number) => {
   appendPatientOption(detail?.patient as any)
 }
 
-const loadEpisodeOptions = async () => {
-  if (!formData.patientId) {
-    episodeOptions.value = []
+const loadEpisodeOptions = async (patientId = formData.patientId) => {
+  const targetPatientId = Number(patientId || 0)
+  const requestId = ++episodeOptionsRequestId.value
+  if (!targetPatientId) {
+    if (requestId === episodeOptionsRequestId.value) {
+      episodeOptions.value = []
+    }
     return
   }
-  const data = await getRehabEpisodePage({ pageNo: 1, pageSize: 50, patientId: formData.patientId })
+  const data = await getRehabEpisodePage({ pageNo: 1, pageSize: 50, patientId: targetPatientId })
+  // A remote patient search or an edit-detail load can overtake an older
+  // episode request. Never let an old response clear or replace the current
+  // patient's historical Episode selection.
+  if (requestId !== episodeOptionsRequestId.value || Number(formData.patientId || 0) !== targetPatientId) {
+    return
+  }
   episodeOptions.value = data.list || []
   const active = episodeOptions.value.find((item: any) => item.status === 'active')
   if (!formData.episodeId && active) {
@@ -342,9 +369,16 @@ const buildModuleState = () => {
   return JSON.stringify(cloneData(moduleFormDataMap))
 }
 
-const markSavedState = () => {
-  savedBaseState.value = buildBaseState()
-  savedModuleState.value = buildModuleState()
+const buildFormStateSnapshot = (): FormStateSnapshot => {
+  return {
+    base: buildBaseState(),
+    module: buildModuleState()
+  }
+}
+
+const markSavedState = (snapshot: FormStateSnapshot = buildFormStateSnapshot()) => {
+  savedBaseState.value = snapshot.base
+  savedModuleState.value = snapshot.module
 }
 
 const cloneData = (value: any) => {
@@ -381,6 +415,20 @@ const getModuleDataForAssessmentType = (assessmentType: string, moduleList: any[
   return parseModuleDataJson(matchedModule?.dataJson)
 }
 
+const settleRenderedModuleFormData = async (assessmentType?: string) => {
+  // Some structured forms normalize their v-model payload one or two render
+  // ticks after receiving persisted data. Capture that normalized value before
+  // recording the clean-state snapshot, otherwise Reset can immediately look
+  // like an unsaved user edit.
+  await nextTick()
+  await nextTick()
+  const renderedData = dynamicFormRef.value?.getFormData?.()
+  if (assessmentType && renderedData) {
+    moduleFormDataMap[assessmentType] = cloneData(renderedData)
+    await nextTick()
+  }
+}
+
 const handleAssessmentTypeChange = async (newType: string) => {
   if (typeSwitchRollback.value) {
     return
@@ -415,6 +463,7 @@ watch(
 )
 
 const resetCreateState = async () => {
+  episodeOptionsRequestId.value += 1
   Object.assign(formData, {
     patientId: undefined,
     episodeId: undefined,
@@ -431,7 +480,7 @@ const resetCreateState = async () => {
   markSavedState()
 }
 
-const buildModuleDataList = async (): Promise<RehabAssessmentModuleDataItemVO[]> => {
+const buildModuleDataList = async (action: SaveAction): Promise<RehabAssessmentModuleDataItemVO[]> => {
   const assessmentType = formData.assessmentType
   if (!assessmentType) {
     return []
@@ -441,9 +490,13 @@ const buildModuleDataList = async (): Promise<RehabAssessmentModuleDataItemVO[]>
     return []
   }
 
-  const valid = await dynamicFormRef.value?.validate?.()
-  if (valid === false) {
-    throw new Error('当前评估表单校验未通过，请检查输入后重试')
+  // A draft is a recoverable work-in-progress. Only a completion action asks
+  // the dynamic form to enforce its clinical completeness rules.
+  if (action !== 'draft') {
+    const valid = await dynamicFormRef.value?.validate?.()
+    if (valid === false) {
+      throw new Error('当前评估表单校验未通过，请检查输入后重试')
+    }
   }
 
   const rawData = dynamicFormRef.value?.getFormData?.() || currentFormData.value || {}
@@ -451,7 +504,7 @@ const buildModuleDataList = async (): Promise<RehabAssessmentModuleDataItemVO[]>
   return [
     {
       moduleType: registryItem.moduleType,
-      moduleStatus: 'completed',
+      moduleStatus: action === 'draft' ? 'partial' : 'completed',
       dataJson,
       sourceType: 'manual',
       version: 'v1'
@@ -460,35 +513,54 @@ const buildModuleDataList = async (): Promise<RehabAssessmentModuleDataItemVO[]>
 }
 
 const submitForm = async (action: SaveAction) => {
-  await formRef.value.validate()
+  if (submitLoading.value) {
+    return
+  }
   submitLoading.value = true
   try {
-    const moduleDataList = await buildModuleDataList()
+    await formRef.value.validate()
+    const moduleDataList = await buildModuleDataList(action)
+    const savingRoute = route.fullPath
     const payload: RehabAssessmentCreateReqVO = {
-      ...formData,
+      ...cloneData(formData),
       status: action === 'draft' ? 'draft' : undefined,
-      moduleDataList
+      moduleDataList: cloneData(moduleDataList)
     }
 
     if (isEditMode.value) {
-      await updateRehabAssessment({ id: assessmentId.value, ...payload })
-      message.success('评估保存成功')
+      const id = assessmentId.value
+      await updateRehabAssessment({ id, ...payload })
+      if (route.fullPath !== savingRoute) {
+        return
+      }
+      // The form is disabled and covered by the loading mask while the
+      // request is in flight, so this current snapshot cannot absorb a new
+      // user edit. It does include any form-local normalization that happened
+      // while the request was being built.
       markSavedState()
-      if (action === 'back') {
-        push(`/rehab/assessment/detail/${assessmentId.value}`)
+      const hasNewerEdits = hasUnsavedChanges.value
+      message.success(hasNewerEdits ? '评估保存成功；保存期间有新的修改，请再次保存' : '评估保存成功')
+      if (action === 'back' && !hasNewerEdits) {
+        push(`/rehab/assessment/detail/${id}`)
       }
       return
     }
 
     const resp = await createRehabAssessment(payload)
-    message.success('评估创建成功')
+    if (route.fullPath !== savingRoute) {
+      return
+    }
     markSavedState()
+    const hasNewerEdits = hasUnsavedChanges.value
+    message.success(hasNewerEdits ? '评估创建成功；保存期间有新的修改，请再次保存' : '评估创建成功')
 
-    if (action === 'back') {
+    if (action === 'back' && !hasNewerEdits) {
       push(`/rehab/assessment/detail/${resp.id}`)
       return
     }
-    replace(`/rehab/assessment/edit/${resp.id}`)
+    if (!hasNewerEdits) {
+      replace(`/rehab/assessment/edit/${resp.id}`)
+    }
   } catch (error: any) {
     if (error?.message) {
       message.error(error.message)
@@ -502,30 +574,42 @@ const loadEditDetail = async (id: number) => {
   const detail = await getRehabAssessment(id)
   const assessment = detail?.assessment || {}
 
-  formData.patientId = assessment.patientId
-  formData.episodeId = assessment.episodeId
-  formData.assessmentType = assessment.assessmentType
-  formData.assessmentDate = Array.isArray(assessment.assessmentDate)
-    ? assessment.assessmentDate
-        .slice(0, 3)
-        .map((part: number, index: number) => (index === 0 ? String(part) : String(part).padStart(2, '0')))
-        .join('-')
-    : assessment.assessmentDate || dayjs().format('YYYY-MM-DD')
-  formData.chiefFocus = assessment.chiefFocus || ''
-  formData.painScore = assessment.painScore
-  formData.redFlagNotes = assessment.redFlagNotes || ''
-  formData.note = assessment.note || ''
+  suppressPatientEpisodeReset.value = true
+  episodeOptionsRequestId.value += 1
+  try {
+    Object.assign(formData, {
+      patientId: assessment.patientId,
+      episodeId: assessment.episodeId,
+      assessmentType: assessment.assessmentType,
+      assessmentDate: Array.isArray(assessment.assessmentDate)
+        ? assessment.assessmentDate
+            .slice(0, 3)
+            .map((part: number, index: number) => (index === 0 ? String(part) : String(part).padStart(2, '0')))
+            .join('-')
+        : assessment.assessmentDate || dayjs().format('YYYY-MM-DD'),
+      chiefFocus: assessment.chiefFocus || '',
+      painScore: assessment.painScore,
+      redFlagNotes: assessment.redFlagNotes || '',
+      note: assessment.note || ''
+    })
 
-  appendPatientOption(detail?.patient)
-  await ensureCurrentPatientOption(formData.patientId)
-  await loadEpisodeOptions()
+    appendPatientOption(detail?.patient)
+    await ensureCurrentPatientOption(formData.patientId)
+    await loadEpisodeOptions(assessment.patientId)
 
-  const moduleData = getModuleDataForAssessmentType(assessment.assessmentType, detail?.moduleDataList || [])
-  ensureTypeFormData(assessment.assessmentType)
-  if (assessment.assessmentType) {
-    moduleFormDataMap[assessment.assessmentType] = moduleData
+    const moduleData = getModuleDataForAssessmentType(assessment.assessmentType, detail?.moduleDataList || [])
+    ensureTypeFormData(assessment.assessmentType)
+    if (assessment.assessmentType) {
+      moduleFormDataMap[assessment.assessmentType] = moduleData
+    }
+    await settleRenderedModuleFormData(assessment.assessmentType)
+    markSavedState()
+  } finally {
+    // The patient watcher is queued by the assignment above. Keep the guard
+    // through its flush so it cannot erase the historic Episode afterwards.
+    await nextTick()
+    suppressPatientEpisodeReset.value = false
   }
-  markSavedState()
 }
 
 const handleReset = async () => {
@@ -544,6 +628,21 @@ const goBack = () => {
   }
   push('/rehab/assessment')
 }
+
+onBeforeRouteLeave(async () => {
+  if (submitLoading.value) {
+    return false
+  }
+  if (!hasUnsavedChanges.value) {
+    return true
+  }
+  try {
+    await message.confirm('当前评估存在未保存修改，确认离开将丢失这些修改。')
+    return true
+  } catch {
+    return false
+  }
+})
 
 onMounted(async () => {
   loading.value = true

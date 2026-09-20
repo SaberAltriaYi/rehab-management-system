@@ -41,6 +41,8 @@ public interface ErrorCodeConstants {
     ErrorCode ASSESSMENT_ATTACHMENT_SIZE_EXCEEDED = new ErrorCode(1_011_004_009, "评估附件不能超过 16 MB");
     ErrorCode ASSESSMENT_ATTACHMENT_STORE_FAILED = new ErrorCode(1_011_004_010, "评估附件保存失败");
 
+    ErrorCode ASSESSMENT_OWNER_CHANGE_FORBIDDEN = new ErrorCode(1_011_004_011, "已有评估不允许更换患者，请为目标患者创建新评估");
+
     ErrorCode REPORT_NOT_EXISTS = new ErrorCode(1_011_005_000, "报告不存在");
     ErrorCode REPORT_DOCX_NOT_EXISTS = new ErrorCode(1_011_005_001, "报告 DOCX 文件不存在，请重新生成");
     ErrorCode REPORT_PDF_NOT_EXISTS = new ErrorCode(1_011_005_002, "报告 PDF 文件不存在");

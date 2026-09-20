@@ -136,7 +136,8 @@ public class RehabAssessmentServiceImpl implements RehabAssessmentService {
             }
         }
         ensurePrimaryModuleData(assessment.getId(), assessment.getAssessmentType());
-        refreshAssessmentDerivedStatus(assessment.getId());
+        refreshAssessmentDerivedStatus(assessment.getId(),
+                RehabAssessmentConstants.STATUS_DRAFT.equals(reqVO.getStatus()));
 
         createOperationLog(assessment.getId(), RehabOperationTypeConstants.ASSESSMENT_CREATE, operatorUserId,
                 null, assessmentRecordMapper.selectById(assessment.getId()), "创建评估记录");
@@ -153,6 +154,11 @@ public class RehabAssessmentServiceImpl implements RehabAssessmentService {
         RehabAssessmentRecordDO oldAssessment = validateAssessmentExists(reqVO.getId());
         validatePatientReadable(oldAssessment.getPatientId(), operatorUserId);
         ensureAssessmentEditable(oldAssessment);
+        // Ordinary edits must never move historical assessments between people.
+        // Attachments, reports and plans already refer to the original identity.
+        if (!ObjUtil.equals(oldAssessment.getPatientId(), reqVO.getPatientId())) {
+            throw exception(ASSESSMENT_OWNER_CHANGE_FORBIDDEN);
+        }
 
         RehabEpisodeDO episode = validateEpisodeExists(reqVO.getEpisodeId());
         validateEpisodeBelongsToPatient(episode, reqVO.getPatientId());
@@ -175,7 +181,8 @@ public class RehabAssessmentServiceImpl implements RehabAssessmentService {
             }
         }
         ensurePrimaryModuleData(reqVO.getId(), updateObj.getAssessmentType());
-        refreshAssessmentDerivedStatus(reqVO.getId());
+        refreshAssessmentDerivedStatus(reqVO.getId(),
+                RehabAssessmentConstants.STATUS_DRAFT.equals(reqVO.getStatus()));
 
         RehabAssessmentRecordDO newAssessment = assessmentRecordMapper.selectById(reqVO.getId());
         createOperationLog(reqVO.getId(), RehabOperationTypeConstants.ASSESSMENT_UPDATE, operatorUserId,
@@ -277,7 +284,11 @@ public class RehabAssessmentServiceImpl implements RehabAssessmentService {
         RehabAssessmentModuleDataDO oldData = moduleDataMapper.selectByAssessmentIdAndModuleType(reqVO.getAssessmentId(), reqVO.getModuleType());
         RehabAssessmentModuleDataDO saved = upsertModuleData(reqVO.getAssessmentId(), reqVO.getModuleType(), reqVO.getModuleStatus(),
                 reqVO.getDataJson(), reqVO.getSourceType(), reqVO.getVersion(), reqVO.getNote());
-        refreshAssessmentDerivedStatus(reqVO.getAssessmentId());
+        // A caller performing a recoverable segment save can explicitly keep
+        // the parent assessment in draft even when this happens to be the
+        // only completed module. This avoids an autosave becoming a clinical
+        // completion transition.
+        refreshAssessmentDerivedStatus(reqVO.getAssessmentId(), Boolean.TRUE.equals(reqVO.getKeepAssessmentDraft()));
 
         createOperationLog(reqVO.getAssessmentId(), RehabOperationTypeConstants.ASSESSMENT_PARSE, operatorUserId,
                 oldData, saved, "保存模块数据: " + reqVO.getModuleType());
@@ -465,14 +476,14 @@ public class RehabAssessmentServiceImpl implements RehabAssessmentService {
         if (StrUtil.isBlank(moduleType)) {
             throw exception(ASSESSMENT_TYPE_INVALID);
         }
-        upsertModuleData(assessmentId, moduleType, RehabAssessmentConstants.MODULE_STATUS_COMPLETED,
+        upsertModuleData(assessmentId, moduleType, RehabAssessmentConstants.MODULE_STATUS_NOT_STARTED,
                 Collections.emptyMap(), RehabAssessmentConstants.MODULE_SOURCE_MANUAL, "v1",
                 "按评估类型自动初始化占位模块");
     }
 
     private String generateAssessmentNo(Long id) {
         String datePart = ASSESSMENT_NO_DATE_FORMATTER.format(LocalDateTime.now());
-        return "ASM" + datePart + String.format("%04d", id % 10000);
+        return "ASM" + datePart + "-" + id;
     }
 
     private Collection<Long> intersectPatientIds(Collection<Long> baseIds, Collection<Long> extraIds) {
@@ -566,6 +577,10 @@ public class RehabAssessmentServiceImpl implements RehabAssessmentService {
     }
 
     private void refreshAssessmentDerivedStatus(Long assessmentId) {
+        refreshAssessmentDerivedStatus(assessmentId, false);
+    }
+
+    private void refreshAssessmentDerivedStatus(Long assessmentId, boolean keepDraft) {
         RehabAssessmentRecordDO assessment = assessmentRecordMapper.selectById(assessmentId);
         if (assessment == null || ObjUtil.equals(assessment.getStatus(), RehabAssessmentConstants.STATUS_ARCHIVED)) {
             return;
@@ -590,7 +605,7 @@ public class RehabAssessmentServiceImpl implements RehabAssessmentService {
                 .setRawInputStatus(rawInputStatus);
 
         if (!ObjUtil.equals(assessment.getStatus(), RehabAssessmentConstants.STATUS_REVIEWED)) {
-            if (ObjUtil.equals(rawInputStatus, RehabAssessmentConstants.RAW_INPUT_COMPLETE)) {
+            if (!keepDraft && ObjUtil.equals(rawInputStatus, RehabAssessmentConstants.RAW_INPUT_COMPLETE)) {
                 updateObj.setStatus(RehabAssessmentConstants.STATUS_COMPLETED);
             } else {
                 updateObj.setStatus(RehabAssessmentConstants.STATUS_DRAFT);
