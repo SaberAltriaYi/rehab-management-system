@@ -18,6 +18,15 @@ const image = 'mysql:8.4.10'
 const container = `rehab-desktop-bootstrap-${process.pid}`
 const rootPassword = randomBytes(32).toString('base64url')
 const database = 'ruoyi-vue-pro'
+const schemaHistorySeed = readFileSync(
+  resolve(projectRoot, 'deploy/internal/init-schema-history.sql'),
+  'utf8'
+)
+const expectedSchemaHistoryCount =
+  schemaHistorySeed.match(/^\s*\('\d{3}',/gm)?.length ?? 0
+if (expectedSchemaHistoryCount === 0) {
+  throw new Error('迁移账本基线脚本未找到任何版本')
+}
 
 const initializationScripts = [
   'sql/mysql/ruoyi-vue-pro.sql',
@@ -188,8 +197,9 @@ function verifyFreshImport(dump) {
     '--execute',
     "SELECT CONCAT((SELECT COUNT(*) FROM system_users),'|',(SELECT COUNT(*) FROM rehab_patient),'|',(SELECT COUNT(*) FROM internal_schema_history),'|',(SELECT COUNT(*) FROM system_users WHERE username='admin' AND password='!desktop-runtime-sets-password!'));"
   ]).stdout.trim()
-  if (result !== '1|0|19|1') {
-    throw new Error(`脱敏快照恢复后验收失败，预期 1|0|19|1，实际 ${result}`)
+  const expected = `1|0|${expectedSchemaHistoryCount}|1`
+  if (result !== expected) {
+    throw new Error(`脱敏快照恢复后验收失败，预期 ${expected}，实际 ${result}`)
   }
 }
 
