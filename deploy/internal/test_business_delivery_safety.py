@@ -45,6 +45,34 @@ class InternalBusinessDeliverySafetyTest(unittest.TestCase):
         self.assertIn('selected.full_path IN (', script)
         self.assertNotIn("'/report/jimu-report'", script)
         self.assertNotIn("'/report/jimu-bi'", script)
+        # Page routes without scoped button grants produce view-only menus.
+        self.assertIn('INSERT INTO system_role_menu (role_id, menu_id', script)
+        self.assertIn("role.code = 'super_admin'", script)
+        self.assertIn('AND NOT EXISTS (', script)
+        for permission in (
+            'crm:customer:create', 'bpm:category:create', 'bpm:category:delete',
+            'erp:product:create', 'erp:stock:query',
+            'point:sign-in-config:update', 'report:go-view-project:delete',
+        ):
+            with self.subTest(permission=permission):
+                self.assertIn("'" + permission + "'", script)
+        self.assertNotIn('report:go-view-data:get-by-sql', script)
+        self.assertNotIn('report:go-view-data:get-by-http', script)
+        for path in (
+            '/bpm/task/todo', '/bpm/task/done',
+            '/erp/stock/warehouse', '/erp/stock/record',
+            '/erp/stock/in', '/erp/stock/out',
+        ):
+            with self.subTest(path=path):
+                self.assertIn("'" + path + "'", script)
+        self.assertIn('CREATE TEMPORARY TABLE rehab_reviewed_extra_button', script)
+        for permission in ('erp:stock-in:update-status', 'erp:stock-out:update-status'):
+            self.assertIn("'" + permission + "'", script)
+        for unreviewed in (
+            "'/erp/stock/move'", "'/erp/stock/check'",
+            'erp:stock-in:export', 'erp:stock-out:export',
+        ):
+            self.assertNotIn(unreviewed, script)
 
 
 if __name__ == '__main__':
