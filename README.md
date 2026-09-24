@@ -36,6 +36,12 @@
 下载后请同时下载发布页中的 `SHA256SUMS.txt` 并校验文件。不要使用来源不明或校验不一致的
 安装包。
 
+## iOS、Android 与微信小程序
+
+治疗师/管理员端和患者端共用一套 UniApp（Vue 3）工程：[`yudao-ui/yudao-ui-rehab-uniapp/`](yudao-ui/yudao-ui-rehab-uniapp/)，支持 App-Plus（iOS/Android）和微信小程序构建。当前 MVP 包含员工工作台/患者摘要、患者今日任务与打卡、报告摘要和通知；构建、API 域名、AppID 与签名说明见[移动端 README](yudao-ui/yudao-ui-rehab-uniapp/README.md)。
+
+这次交付的是源码，不是已签名的 APK/IPA 或已审核小程序。**患者登录默认关闭**：现有 API 只用手机号 + 患者编号认证，安全性不足；未完成后端身份认证改造和安全审查前，不得公开启用患者登录或使用真实患者数据。原生商店上架和微信发布还需要平台 AppID、有效 HTTPS 域名、签名/隐私资料与审核，当前均未提供。
+
 ## 后台入口与使用说明
 
 安装完成后，先启动 Docker Desktop，再打开“康复管理系统”启动器，点击“启动服务”；等待
@@ -49,8 +55,7 @@ MySQL、Redis、后端和管理端全部健康后，点击“打开系统”。�
 
 **[康复管理系统后台管理使用说明](docs/admin-user-guide.md)**
 
-移动设备不能访问桌面版的 `127.0.0.1`。同一 Wi-Fi/局域网访问需要先完成
-[局域网一键部署](deploy/lan/README.md)，再使用部署设备的具体私网 IP 进入后台。
+手机、平板不能通过本机 `127.0.0.1` 访问桌面服务。原生 App / 微信小程序需把移动端 `VITE_REHAB_API_ORIGIN` 配置为设备可访问的 HTTPS API 域名，服务端必须代理 `/admin-api/` 与 `/app-api/`；微信平台还要将域名加入合法 request 域名。局域网内部测试可按[局域网一键部署](deploy/lan/README.md)配置并使用部署设备的私网 IP，且需在测试设备信任相应证书。
 
 ## 主要功能
 

@@ -1,0 +1,11 @@
+node_modules/
+unpackage/
+dist/
+.env.local
+.env.*.local
+*.keystore
+*.jks
+*.mobileprovision
+*.p12
+*.p8
+*.cer
