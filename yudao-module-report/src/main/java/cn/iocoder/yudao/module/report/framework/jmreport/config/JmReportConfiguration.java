@@ -7,6 +7,7 @@ import cn.iocoder.yudao.module.report.framework.jmreport.core.service.JmOnlDragE
 import cn.iocoder.yudao.module.report.framework.jmreport.core.service.JmReportTokenServiceImpl;
 import cn.iocoder.yudao.module.system.api.permission.PermissionApi;
 import org.jeecg.modules.jmreport.api.JmReportTokenServiceI;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.Configuration;
@@ -18,6 +19,7 @@ import org.springframework.context.annotation.Primary;
  * @author 芋道源码
  */
 @Configuration(proxyBeanMethods = false)
+@ConditionalOnProperty(name = "yudao.report.third-party-enabled", havingValue = "true")
 @ComponentScan(basePackages = "org.jeecg.modules.jmreport") // 扫描积木报表的包
 public class JmReportConfiguration {
 

@@ -18,6 +18,7 @@ public interface ErrorCodeConstants {
 
     ErrorCode CRM_BINDING_NOT_EXISTS = new ErrorCode(1_011_001_000, "CRM 绑定记录不存在");
     ErrorCode CRM_BINDING_CONFLICT = new ErrorCode(1_011_001_001, "CRM 客户已绑定其他患者，发生冲突");
+    ErrorCode CRM_CUSTOMER_NOT_ACCESSIBLE = new ErrorCode(1_011_001_002, "CRM 客户不存在或当前租户不可访问");
 
     ErrorCode ASSIGNMENT_PRIMARY_ALREADY_EXISTS = new ErrorCode(1_011_002_000, "该患者已存在主责治疗师");
     ErrorCode ASSIGNMENT_NOT_EXISTS = new ErrorCode(1_011_002_001, "治疗师分配记录不存在");

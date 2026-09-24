@@ -12,8 +12,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.validation.annotation.Validated;
 
 import javax.annotation.Resource;
+import java.util.Objects;
 
 import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionUtil.exception;
+import static cn.iocoder.yudao.framework.security.core.util.SecurityFrameworkUtils.getLoginUserId;
 import static cn.iocoder.yudao.module.report.enums.ErrorCodeConstants.GO_VIEW_PROJECT_NOT_EXISTS;
 
 /**
@@ -56,14 +58,22 @@ public class GoViewProjectServiceImpl implements GoViewProjectService {
     }
 
     private void validateProjectExists(Long id) {
-        if (goViewProjectMapper.selectById(id) == null) {
+        // The tenant interceptor limits the row to the current tenant. A permission
+        // to edit projects must not grant access to other users' projects.
+        if (!isMine(goViewProjectMapper.selectById(id))) {
             throw exception(GO_VIEW_PROJECT_NOT_EXISTS);
         }
     }
 
+    private boolean isMine(GoViewProjectDO project) {
+        Long userId = getLoginUserId();
+        return project != null && userId != null && Objects.equals(project.getCreator(), userId.toString());
+    }
+
     @Override
     public GoViewProjectDO getProject(Long id) {
-        return goViewProjectMapper.selectById(id);
+        GoViewProjectDO project = goViewProjectMapper.selectById(id);
+        return isMine(project) ? project : null;
     }
 
     @Override

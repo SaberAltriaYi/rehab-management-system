@@ -27,6 +27,7 @@ case "$MODE" in
     [ "${#BASELINE_THROUGH}" -eq 3 ] || fail "baseline 版本必须为三位数字"
     [ "${CONFIRM_BASELINE:-}" = "BASELINE-REHAB-INTERNAL" ] \
       || fail "baseline 只登记历史，不验证业务 Schema；需人工核验和备份后显式设置 CONFIRM_BASELINE=BASELINE-REHAB-INTERNAL"
+    [ "$BASELINE_THROUGH" -le 19 ] || fail "baseline 只允许历史初始化版本 001-019；新增迁移必须实际执行"
     ;;
   *) fail "用法：$0 verify-files|status|apply|baseline <version>" ;;
 esac

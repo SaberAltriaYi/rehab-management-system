@@ -7,7 +7,12 @@ import cn.iocoder.yudao.module.report.controller.admin.goview.vo.project.GoViewP
 import cn.iocoder.yudao.module.report.controller.admin.goview.vo.project.GoViewProjectUpdateReqVO;
 import cn.iocoder.yudao.module.report.dal.dataobject.goview.GoViewProjectDO;
 import cn.iocoder.yudao.module.report.dal.mysql.goview.GoViewProjectMapper;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
+import cn.iocoder.yudao.framework.security.core.LoginUser;
 import org.springframework.context.annotation.Import;
 
 import javax.annotation.Resource;
@@ -33,6 +38,19 @@ public class GoViewProjectServiceImplTest extends BaseDbUnitTest {
     @Resource
     private GoViewProjectMapper goViewProjectMapper;
 
+    @BeforeEach
+    public void setUpUser() {
+        LoginUser user = new LoginUser();
+        user.setId(42L);
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(user, null));
+    }
+
+    @AfterEach
+    public void clearUser() {
+        SecurityContextHolder.clearContext();
+    }
+
     @Test
     public void testCreateProject_success() {
         // 准备参数
@@ -50,7 +68,7 @@ public class GoViewProjectServiceImplTest extends BaseDbUnitTest {
     @Test
     public void testUpdateProject_success() {
         // mock 数据
-        GoViewProjectDO dbGoViewProject = randomPojo(GoViewProjectDO.class);
+        GoViewProjectDO dbGoViewProject = randomPojo(GoViewProjectDO.class, o -> o.setCreator("42"));
         goViewProjectMapper.insert(dbGoViewProject);// @Sql: 先插入出一条存在的数据
         // 准备参数
         GoViewProjectUpdateReqVO reqVO = randomPojo(GoViewProjectUpdateReqVO.class, o -> {
@@ -77,7 +95,7 @@ public class GoViewProjectServiceImplTest extends BaseDbUnitTest {
     @Test
     public void testDeleteProject_success() {
         // mock 数据
-        GoViewProjectDO dbGoViewProject = randomPojo(GoViewProjectDO.class);
+        GoViewProjectDO dbGoViewProject = randomPojo(GoViewProjectDO.class, o -> o.setCreator("42"));
         goViewProjectMapper.insert(dbGoViewProject);// @Sql: 先插入出一条存在的数据
         // 准备参数
         Long id = dbGoViewProject.getId();
@@ -100,7 +118,7 @@ public class GoViewProjectServiceImplTest extends BaseDbUnitTest {
     @Test
     public void testGetProject() {
         // mock 数据
-        GoViewProjectDO dbGoViewProject = randomPojo(GoViewProjectDO.class);
+        GoViewProjectDO dbGoViewProject = randomPojo(GoViewProjectDO.class, o -> o.setCreator("42"));
         goViewProjectMapper.insert(dbGoViewProject);// @Sql: 先插入出一条存在的数据
         // 准备参数
         Long id = dbGoViewProject.getId();
@@ -109,6 +127,18 @@ public class GoViewProjectServiceImplTest extends BaseDbUnitTest {
         GoViewProjectDO goViewProject = goViewProjectService.getProject(id);
         // 断言
         assertPojoEquals(dbGoViewProject, goViewProject);
+    }
+
+    @Test
+    public void testOtherUsersProjectIsNotVisibleOrMutable() {
+        GoViewProjectDO other = randomPojo(GoViewProjectDO.class, o -> o.setCreator("43"));
+        goViewProjectMapper.insert(other);
+        assertNull(goViewProjectService.getProject(other.getId()));
+        assertServiceException(() -> goViewProjectService.deleteProject(other.getId()), GO_VIEW_PROJECT_NOT_EXISTS);
+        GoViewProjectUpdateReqVO update = randomPojo(GoViewProjectUpdateReqVO.class,
+                o -> { o.setId(other.getId()); o.setStatus(randomCommonStatus()); });
+        assertServiceException(() -> goViewProjectService.updateProject(update), GO_VIEW_PROJECT_NOT_EXISTS);
+        assertNotNull(goViewProjectMapper.selectById(other.getId()));
     }
 
     @Test

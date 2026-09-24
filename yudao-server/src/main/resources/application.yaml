@@ -307,8 +307,6 @@ yudao:
     unit-test-enable: false # 是否生成单元测试
   tenant: # 多租户相关配置项
     enable: true
-    ignore-urls:
-      - /jmreport/* # 积木报表，无法携带租户编号
     ignore-visit-urls:
       - /admin-api/system/user/profile/**
       - /admin-api/system/auth/**

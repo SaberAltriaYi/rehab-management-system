@@ -131,11 +131,47 @@ class MigrationGuardTests(unittest.TestCase):
 
     def test_all_historical_versions_block_replay(self):
         for version, _, _, _ in self.fixture.rows:
+            if int(version) > 19:  # 020+ are separately reviewed additive upgrades
+                continue
             with self.subTest(version=version):
                 self.fixture.set_state(missing=(version,))
                 result = self.fixture.run('apply')
                 self.assertNotEqual(result.returncode, 0)
                 self.assertIn('初始化迁移 ' + version, result.stderr)
+        self.fixture.assert_read_only(self)
+
+    def test_new_versions_cannot_be_false_baselined(self):
+        result = self.fixture.run('baseline', '023', CONFIRM_BASELINE='BASELINE-REHAB-INTERNAL')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('001-019', result.stderr)
+        self.assertFalse(self.fixture.log.exists())
+
+    def test_new_erp_migration_is_pending_when_not_installed(self):
+        self.fixture.set_state(missing=('023',))
+        result = self.fixture.run('status')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('PENDING: 023', result.stdout)
+        self.fixture.assert_read_only(self)
+
+    def test_new_bpm_migration_is_pending_when_not_installed(self):
+        self.fixture.set_state(missing=('022',))
+        result = self.fixture.run('status')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('PENDING: 022', result.stdout)
+        self.fixture.assert_read_only(self)
+
+    def test_new_member_migration_is_pending_when_not_installed(self):
+        self.fixture.set_state(missing=('021',))
+        result = self.fixture.run('status')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('PENDING: 021', result.stdout)
+        self.fixture.assert_read_only(self)
+
+    def test_new_report_migration_is_pending_when_not_installed(self):
+        self.fixture.set_state(missing=('020',))
+        result = self.fixture.run('status')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('PENDING: 020', result.stdout)
         self.fixture.assert_read_only(self)
 
     def test_apply_current_database_is_noop(self):
@@ -243,7 +279,8 @@ sys.exit(subprocess.run(command, input=sql, text=True).returncode)
         result = self.fixture.run('apply')
         self.assertNotEqual(result.returncode, 0)
         self.assertIn('初始化迁移 015', result.stderr)
-        self.assertEqual(self.sql('SELECT COUNT(*) FROM internal_schema_history;', True), '18')
+        self.assertEqual(self.sql('SELECT COUNT(*) FROM internal_schema_history;', True),
+                         str(len(self.fixture.rows) - 1))
         self.assert_sentinel()
 
     def test_real_complete_history_is_noop(self):

@@ -3,12 +3,13 @@ CREATE TABLE IF NOT EXISTS "report_go_view_project" (
     "name" varchar NOT NULL,
     "pic_url" varchar,
     "content" varchar,
-    "status" varchar NOT NULL,
+    "status" integer NOT NULL,
     "remark" varchar,
     "creator" varchar DEFAULT '',
     "create_time" datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updater" varchar DEFAULT '',
     "update_time" datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     "deleted" bit NOT NULL DEFAULT FALSE,
+    "tenant_id" bigint NOT NULL DEFAULT 0,
     PRIMARY KEY ("id")
 ) COMMENT 'GoView 项目表';

@@ -8,6 +8,7 @@ import cn.iocoder.yudao.framework.common.exception.ServiceException;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.framework.common.util.json.JsonUtils;
+import cn.iocoder.yudao.framework.tenant.core.context.TenantContextHolder;
 import cn.iocoder.yudao.module.rehab.controller.admin.episode.vo.RehabEpisodeRespVO;
 import cn.iocoder.yudao.module.rehab.controller.admin.patient.vo.*;
 import cn.iocoder.yudao.module.rehab.dal.dataobject.assignment.RehabTherapistAssignmentDO;
@@ -369,6 +370,11 @@ public class RehabPatientServiceImpl implements RehabPatientService {
     public RehabPatientCrmBindingRespVO bindCrm(RehabPatientBindCrmReqVO reqVO, Long operatorUserId) {
         RehabPatientDO patient = validatePatientExists(reqVO.getPatientId());
         validatePatientReadable(reqVO.getPatientId(), operatorUserId);
+        // JdbcTemplate does not apply the MyBatis tenant interceptor. Never bind an ID
+        // without first establishing that the customer belongs to this tenant.
+        if (queryCrmCustomerMeta(reqVO.getCrmCustomerId()) == null) {
+            throw exception(CRM_CUSTOMER_NOT_ACCESSIBLE);
+        }
 
         RehabPatientCheckCrmConflictReqVO conflictReqVO = new RehabPatientCheckCrmConflictReqVO();
         conflictReqVO.setPatientId(reqVO.getPatientId());
@@ -678,9 +684,16 @@ public class RehabPatientServiceImpl implements RehabPatientService {
     }
 
     private CrmCustomerMeta queryCrmCustomerMeta(Long crmCustomerId) {
+        Long tenantId = TenantContextHolder.getTenantId();
+        if (tenantId == null) {
+            return null; // Fail closed when invoked outside an authenticated tenant context.
+        }
         try {
-            return jdbcTemplate.query("SELECT id, name, mobile FROM crm_customer WHERE id = ? AND deleted = 0 LIMIT 1",
-                    ps -> ps.setLong(1, crmCustomerId),
+            return jdbcTemplate.query("SELECT id, name, mobile FROM crm_customer WHERE id = ? AND tenant_id = ? AND deleted = 0 LIMIT 1",
+                    ps -> {
+                        ps.setLong(1, crmCustomerId);
+                        ps.setLong(2, tenantId);
+                    },
                     rs -> rs.next() ? new CrmCustomerMeta(rs.getLong("id"), rs.getString("name"), rs.getString("mobile")) : null);
         } catch (DataAccessException ex) {
             log.warn("查询 CRM 客户失败，crmCustomerId={}", crmCustomerId, ex);
@@ -689,9 +702,16 @@ public class RehabPatientServiceImpl implements RehabPatientService {
     }
 
     private MemberUserMeta queryMemberUserMeta(Long memberUserId) {
+        Long tenantId = TenantContextHolder.getTenantId();
+        if (tenantId == null) {
+            return null;
+        }
         try {
-            return jdbcTemplate.query("SELECT id, nickname, mobile, status FROM member_user WHERE id = ? AND deleted = 0 LIMIT 1",
-                    ps -> ps.setLong(1, memberUserId),
+            return jdbcTemplate.query("SELECT id, nickname, mobile, status FROM member_user WHERE id = ? AND tenant_id = ? AND deleted = 0 LIMIT 1",
+                    ps -> {
+                        ps.setLong(1, memberUserId);
+                        ps.setLong(2, tenantId);
+                    },
                     rs -> rs.next() ? new MemberUserMeta(rs.getLong("id"), rs.getString("nickname"),
                             rs.getString("mobile"), rs.getInt("status")) : null);
         } catch (DataAccessException ex) {

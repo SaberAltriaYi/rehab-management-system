@@ -29,6 +29,22 @@ jobs:
       - name: Build production server
         run: deploy/internal/build-server-isolated.sh
 
+  business-integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+      # This is a build/test gate only. The internal production release still
+      # uses the default profile above and must not package these modules.
+      - name: Test optional institution modules and dependencies
+        run: mvn -B -Prehab-business-integration -pl yudao-server -am test
+      - name: Package optional modules in the CI-only job
+        run: mvn -B -Prehab-business-integration -pl yudao-server -am -DskipTests package
+
   frontend:
     runs-on: ubuntu-latest
     defaults:

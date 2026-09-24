@@ -7,6 +7,8 @@ spring:
   autoconfigure:
     # noinspection SpringBootApplicationYaml
     exclude:
+      - org.jeecg.modules.jmreport.config.init.JimuReportConfiguration # 第三方报表尚未完成租户/权限审计，禁止自动注册
+      - org.jeecgframework.minidao.auto.MinidaoAutoConfiguration # 随报表依赖加载时会无边界扫描应用类路径；一并关闭
       - com.alibaba.druid.spring.boot.autoconfigure.DruidDataSourceAutoConfigure # 排除 Druid 的自动配置，使用 dynamic-datasource-spring-boot-starter 配置多数据源
       - org.springframework.ai.vectorstore.qdrant.autoconfigure.QdrantVectorStoreAutoConfiguration # 禁用 AI 模块的 Qdrant，手动创建
       - org.springframework.ai.vectorstore.milvus.autoconfigure.MilvusVectorStoreAutoConfiguration # 禁用 AI 模块的 Milvus，手动创建

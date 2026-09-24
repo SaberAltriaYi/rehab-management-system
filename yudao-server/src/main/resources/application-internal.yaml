@@ -5,6 +5,8 @@ server:
 spring:
   autoconfigure:
     exclude:
+      - org.jeecg.modules.jmreport.config.init.JimuReportConfiguration # 第三方报表尚未完成租户/权限审计，禁止自动注册
+      - org.jeecgframework.minidao.auto.MinidaoAutoConfiguration # 随报表依赖加载时会无边界扫描应用类路径；一并关闭
       - com.alibaba.druid.spring.boot.autoconfigure.DruidDataSourceAutoConfigure
       - org.springframework.ai.vectorstore.qdrant.autoconfigure.QdrantVectorStoreAutoConfiguration
       - org.springframework.ai.vectorstore.milvus.autoconfigure.MilvusVectorStoreAutoConfiguration
