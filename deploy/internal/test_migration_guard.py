@@ -10,6 +10,7 @@ never open its application database, and remove only their own test databases.
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import shutil
 import subprocess
@@ -97,6 +98,11 @@ class MigrationGuardTests(unittest.TestCase):
         result = self.fixture.run('verify-files')
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertFalse(self.fixture.log.exists())
+
+    def test_fresh_database_ledger_contains_only_immutable_baseline(self):
+        ledger = (ROOT / 'deploy/internal/init-schema-history.sql').read_text()
+        versions = re.findall(r"^\s*\('(\d{3})',", ledger, re.MULTILINE)
+        self.assertEqual(versions, [f'{version:03d}' for version in range(1, 20)])
 
     def test_status_complete_is_read_only(self):
         result = self.fixture.run()

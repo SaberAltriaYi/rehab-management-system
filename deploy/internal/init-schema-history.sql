@@ -1,5 +1,6 @@
 -- 仅由 MySQL 在全新数据卷完成全部业务 SQL 后执行。
--- 固定值必须与 migrations.manifest 一致；preflight/migrate.sh verify-files 会逐项核对。
+-- 全新数据库只登记不可重放的初始化基线 001-019；020+ 必须实际执行后再登记。
+-- preflight/migrate.sh verify-files 会核对历史基线并拒绝预登记增量迁移。
 CREATE TABLE IF NOT EXISTS `internal_schema_history` (
   `version` VARCHAR(32) NOT NULL COMMENT '迁移版本',
   `checksum` CHAR(64) NOT NULL COMMENT '脚本 SHA-256',
@@ -34,11 +35,7 @@ VALUES
   ('016', '08d3d8de2480523a95c1a1062f71494b695f92085db52b8112ef29ea26ddc302', 'sql/mysql/rehab-step10-integrity-v1.sql', '核心关系完整性约束', 'docker-init', b'1', 0),
   ('017', '60cba3977703f1af12f6ee692da4730c5610c3ed4d7c7c69aa05767402b08480', 'sql/mysql/rehab-step11-auth-hardening-v1.sql', '停用并轮换演示 OAuth2 客户端', 'docker-init', b'1', 0),
   ('018', 'e85a527672f5ac2ae82768ea4644bd9a37f33bdf63cd46eff968ecdfab26f948', 'sql/mysql/rehab-step12-internal-login-client-v1.sql', '保留无外部授权能力的内部登录客户端', 'docker-init', b'1', 0),
-  ('019', 'eed12ce59f4cdedec7cef2cb495ce33560c644d8e54b7aae843df6e668901cfc', 'sql/mysql/rehab-step13-disable-undelivered-menus-v1.sql', '关闭未交付模块菜单', 'docker-init', b'1', 0),
-  ('020', '29fa149cbad592f00ae30d5740e0116673eb241591149c5d7b72da2bdcffb120', 'sql/mysql/rehab-report-go-view-project-v1.sql', '报表GoView项目租户表', 'docker-init', b'1', 0),
-  ('021', '38de230ced2356461012db8291217fffb8a94e57fb32a5b0718ec5fb93b3a853', 'sql/mysql/rehab-member-remaining-v1.sql', '会员扩展七表', 'docker-init', b'1', 0),
-  ('022', 'c4c1fbb24dc91e34addfefaabafbef0389b842cf64b14e62265fa53a29669755', 'sql/mysql/rehab-bpm-core-v1.sql', 'BPM流程八表', 'docker-init', b'1', 0),
-  ('023', 'a650926756f203d79f9d6c0cb2051df389dee894c073632407a077253643a810', 'sql/mysql/rehab-erp-core-v1.sql', 'ERP库存财务三十三表', 'docker-init', b'1', 0)
+  ('019', 'eed12ce59f4cdedec7cef2cb495ce33560c644d8e54b7aae843df6e668901cfc', 'sql/mysql/rehab-step13-disable-undelivered-menus-v1.sql', '关闭未交付模块菜单', 'docker-init', b'1', 0)
 ON DUPLICATE KEY UPDATE
   `checksum` = VALUES(`checksum`),
   `script_path` = VALUES(`script_path`),

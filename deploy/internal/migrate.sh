@@ -53,8 +53,13 @@ verify_manifest_files() {
     actual_checksum=$(shasum -a 256 "$migration_file" | awk '{print $1}')
     [ "$actual_checksum" = "$expected_checksum" ] \
       || fail "迁移文件校验和漂移：$relative_file"
-    grep -Fq "'$version', '$expected_checksum', '$relative_file', '$description'" "$INIT_LEDGER" \
-      || fail "全新数据库迁移账本缺少或不匹配版本：$version"
+    ledger_entry="'$version', '$expected_checksum', '$relative_file', '$description'"
+    if [ "$version" -le 19 ]; then
+      grep -Fq "$ledger_entry" "$INIT_LEDGER" \
+        || fail "全新数据库迁移账本缺少或不匹配历史版本：$version"
+    elif grep -Fq "$ledger_entry" "$INIT_LEDGER"; then
+      fail "全新数据库迁移账本不可预登记增量迁移 $version；必须实际执行后再登记"
+    fi
   done < "$MANIFEST"
   [ "$previous_version" -ge 19 ] || fail "迁移清单缺少已发布历史基线"
 }

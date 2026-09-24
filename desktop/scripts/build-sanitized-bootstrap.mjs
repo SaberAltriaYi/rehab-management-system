@@ -18,15 +18,9 @@ const image = 'mysql:8.4.10'
 const container = `rehab-desktop-bootstrap-${process.pid}`
 const rootPassword = randomBytes(32).toString('base64url')
 const database = 'ruoyi-vue-pro'
-const schemaHistorySeed = readFileSync(
-  resolve(projectRoot, 'deploy/internal/init-schema-history.sql'),
-  'utf8'
-)
-const expectedSchemaHistoryCount =
-  schemaHistorySeed.match(/^\s*\('\d{3}',/gm)?.length ?? 0
-if (expectedSchemaHistoryCount === 0) {
-  throw new Error('迁移账本基线脚本未找到任何版本')
-}
+// A fresh install baselines only immutable migrations 001-019. Later
+// additive migrations must not be marked as applied until actually executed.
+const expectedSchemaHistoryCount = 19
 
 const initializationScripts = [
   'sql/mysql/ruoyi-vue-pro.sql',

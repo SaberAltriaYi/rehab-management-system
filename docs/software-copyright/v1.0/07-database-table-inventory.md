@@ -41,4 +41,4 @@ V1.0 数据库迁移定义 34 张 `rehab_` 业务表。通用用户、角色、�
 | `rehab_ai_review_log` | AI 人工复核记录 |
 | `rehab_ai_suggestion_bundle` | AI 建议汇总 |
 
-迁移账本位于 `deploy/internal/migrations.manifest`，当前固定为 001–019。生产升级必须通过校验和迁移脚本执行，不能修改已在现有数据库登记的迁移内容。
+迁移清单位于 `deploy/internal/migrations.manifest`，当前跟踪 001–023。全新数据卷只预登记不可重放的初始化基线 001–019；020+ 是增量迁移，必须实际执行后才能写入账本，不能预先标记为已应用。生产升级必须通过校验和迁移脚本执行，不能修改已在现有数据库登记的迁移内容。
