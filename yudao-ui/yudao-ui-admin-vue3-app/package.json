@@ -4,6 +4,7 @@
   "description": "运动康复评估与业务管理系统 Web 管理端",
   "author": "杨玺龙",
   "private": true,
+  "packageManager": "pnpm@10.15.1",
   "scripts": {
     "i": "pnpm install",
     "dev": "vite --mode env.local",
@@ -155,8 +156,8 @@
   "homepage": "https://github.com/SaberAltriaYi/rehab-management-system",
   "web-types": "./web-types.json",
   "engines": {
-    "node": ">= 16.0.0",
-    "pnpm": ">=8.6.0"
+    "node": ">=22.15.0 <23",
+    "pnpm": "10.15.1"
   },
   "pnpm": {
     "overrides": {
