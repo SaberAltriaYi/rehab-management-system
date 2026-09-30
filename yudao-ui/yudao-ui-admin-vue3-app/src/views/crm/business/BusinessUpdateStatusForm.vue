@@ -34,12 +34,11 @@
 import * as BusinessApi from '@/api/crm/business'
 import * as BusinessStatusApi from '@/api/crm/business/status'
 
-const { t } = useI18n() // 国际化
 const message = useMessage() // 消息弹窗
 
 const dialogVisible = ref(false) // 弹窗的是否展示
 const formLoading = ref(false) // 表单的加载中
-const formData = ref({
+const formData = ref<{ id?: number; statusId?: number; endStatus?: number; status?: number }>({
   id: undefined,
   statusId: undefined,
   endStatus: undefined,
@@ -49,7 +48,7 @@ const formRules = reactive({
   status: [{ required: true, message: '商机阶段不能为空', trigger: 'blur' }]
 })
 const formRef = ref() // 表单 Ref
-const statusList = ref([]) // 商机状态列表
+const statusList = ref<BusinessStatusApi.BusinessStatusSimpleVO[]>([]) // 商机状态列表
 
 /** 打开弹窗 */
 const open = async (business: BusinessApi.BusinessVO) => {
@@ -75,16 +74,21 @@ defineExpose({ open }) // 提供 open 方法，用于打开弹窗
 const emit = defineEmits(['success']) // 定义 success 事件，用于操作成功后的回调
 const submitForm = async () => {
   // 校验表单
-  if (!formRef) return
+  if (!formRef.value) return
   const valid = await formRef.value.validate()
   if (!valid) return
+  const { id, status } = formData.value
+  if (id === undefined || status === undefined) {
+    message.error('商机状态未加载')
+    return
+  }
   // 提交请求
   formLoading.value = true
   try {
     await BusinessApi.updateBusinessStatus({
-      id: formData.value.id,
-      statusId: formData.value.status > 0 ? formData.value.status : undefined,
-      endStatus: formData.value.status < 0 ? -formData.value.status : undefined
+      id,
+      statusId: status > 0 ? status : undefined,
+      endStatus: status < 0 ? -status : undefined
     })
     message.success('更新商机状态成功')
     dialogVisible.value = false

@@ -27,7 +27,7 @@ export const IoTOtaTaskApi = {
   },
 
   // 创建 OTA 升级任务
-  createOtaTask: async (data: OtaTask) => {
+  createOtaTask: async (data: Omit<OtaTask, 'status'>) => {
     return await request.post({ url: `/iot/ota/task/create`, data })
   },
 

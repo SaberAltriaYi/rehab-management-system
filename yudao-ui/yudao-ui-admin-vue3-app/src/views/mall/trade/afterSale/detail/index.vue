@@ -1,13 +1,13 @@
 <template>
-  <ContentWrap>
+  <ContentWrap v-if="formData?.order">
     <!-- 订单信息 -->
     <el-descriptions title="订单信息">
       <el-descriptions-item label="订单号: ">{{ formData.orderNo }}</el-descriptions-item>
       <el-descriptions-item label="配送方式: ">
-        <dict-tag :type="DICT_TYPE.TRADE_DELIVERY_TYPE" :value="formData.order.deliveryType" />
+        <dict-tag :type="DICT_TYPE.TRADE_DELIVERY_TYPE" :value="formData.order.deliveryType ?? ''" />
       </el-descriptions-item>
       <el-descriptions-item label="订单类型: ">
-        <dict-tag :type="DICT_TYPE.TRADE_ORDER_TYPE" :value="formData.order.type" />
+        <dict-tag :type="DICT_TYPE.TRADE_ORDER_TYPE" :value="formData.order.type ?? ''" />
       </el-descriptions-item>
       <el-descriptions-item label="收货人: ">
         {{ formData.order.receiverName }}
@@ -16,7 +16,7 @@
         {{ formData.order.userRemark }}
       </el-descriptions-item>
       <el-descriptions-item label="订单来源: ">
-        <dict-tag :type="DICT_TYPE.TERMINAL" :value="formData.order.terminal" />
+        <dict-tag :type="DICT_TYPE.TERMINAL" :value="formData.order.terminal ?? ''" />
       </el-descriptions-item>
       <el-descriptions-item label="联系电话: ">
         {{ formData.order.receiverMobile }}
@@ -26,7 +26,7 @@
         {{ formData.order.payOrderId }}
       </el-descriptions-item>
       <el-descriptions-item label="付款方式: ">
-        <dict-tag :type="DICT_TYPE.PAY_CHANNEL_CODE" :value="formData.order.payChannelCode" />
+        <dict-tag :type="DICT_TYPE.PAY_CHANNEL_CODE" :value="formData.order.payChannelCode ?? ''" />
       </el-descriptions-item>
       <el-descriptions-item label="买家: ">{{ formData?.user?.nickname }}</el-descriptions-item>
     </el-descriptions>
@@ -35,7 +35,7 @@
     <el-descriptions title="售后信息">
       <el-descriptions-item label="退款编号: ">{{ formData.no }}</el-descriptions-item>
       <el-descriptions-item label="申请时间: ">
-        {{ formatDate(formData.auditTime) }}
+        {{ formatDate(formData.auditTime ?? '') }}
       </el-descriptions-item>
       <el-descriptions-item label="售后类型: ">
         <dict-tag :type="DICT_TYPE.TRADE_AFTER_SALE_TYPE" :value="formData.type" />
@@ -52,11 +52,11 @@
       </el-descriptions-item>
       <el-descriptions-item label="凭证图片: ">
         <el-image
-          v-for="(item, index) in formData.applyPicUrls"
+          v-for="(item, index) in formData.applyPicUrls ?? []"
           :key="index"
-          :src="item.url"
+          :src="item"
           class="mr-10px h-60px w-60px"
-          @click="imagePreview(formData.applyPicUrls)"
+          @click="imagePreview(formData.applyPicUrls ?? [])"
         />
       </el-descriptions-item>
     </el-descriptions>
@@ -154,7 +154,6 @@ import { DICT_TYPE, getDictLabel, getDictObj } from '@/utils/dict'
 import { formatDate } from '@/utils/formatTime'
 import UpdateAuditReasonForm from '@/views/mall/trade/afterSale/form/AfterSaleDisagreeForm.vue'
 import { createImageViewer } from '@/components/ImageViewer'
-import { isArray } from '@/utils/is'
 import { useTagsViewStore } from '@/store/modules/tagsView'
 
 defineOptions({ name: 'TradeAfterSaleDetail' })
@@ -163,10 +162,7 @@ const { t } = useI18n() // 国际化
 const message = useMessage() // 消息弹窗
 const { params } = useRoute() // 查询参数
 const { push, currentRoute } = useRouter() // 路由
-const formData = ref({
-  order: {},
-  logs: []
-})
+const formData = ref<AfterSaleApi.TradeAfterSaleDetailVO | null>(null)
 const updateAuditReasonFormRef = ref() // 拒绝售后表单 Ref
 
 /** 获得 userType 颜色 */
@@ -194,6 +190,7 @@ const getDetail = async () => {
     if (res == null) {
       message.notifyError('售后订单不存在')
       close()
+      return
     }
     formData.value = res
   }
@@ -201,6 +198,7 @@ const getDetail = async () => {
 
 /** 同意售后 */
 const agree = async () => {
+  if (!formData.value) return
   try {
     // 二次确认
     await message.confirm('是否同意售后？')
@@ -213,11 +211,13 @@ const agree = async () => {
 
 /** 拒绝售后 */
 const disagree = async () => {
+  if (!formData.value) return
   updateAuditReasonFormRef.value?.open(formData.value)
 }
 
 /** 确认收货 */
 const receive = async () => {
+  if (!formData.value) return
   try {
     // 二次确认
     await message.confirm('是否确认收货？')
@@ -230,6 +230,7 @@ const receive = async () => {
 
 /** 拒绝收货 */
 const refuse = async () => {
+  if (!formData.value) return
   try {
     // 二次确认
     await message.confirm('是否拒绝收货？')
@@ -242,6 +243,7 @@ const refuse = async () => {
 
 /** 确认退款 */
 const refund = async () => {
+  if (!formData.value) return
   try {
     // 二次确认
     await message.confirm('是否确认退款？')
@@ -253,18 +255,8 @@ const refund = async () => {
 }
 
 /** 图片预览 */
-const imagePreview = (args) => {
-  const urlList = []
-  if (isArray(args)) {
-    args.forEach((item) => {
-      urlList.push(item.url)
-    })
-  } else {
-    urlList.push(args)
-  }
-  createImageViewer({
-    urlList
-  })
+const imagePreview = (urlList: string[]) => {
+  createImageViewer({ urlList })
 }
 const { delView } = useTagsViewStore() // 视图操作
 /** 关闭 tag */

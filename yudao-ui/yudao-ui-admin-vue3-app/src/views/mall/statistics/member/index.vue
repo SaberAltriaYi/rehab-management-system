@@ -24,7 +24,7 @@
       <el-col v-loading="loading" :sm="6" :xs="12">
         <SummaryCard
           :decimals="2"
-          :value="fenToYuan(summary?.rechargePrice || 0)"
+          :value="Number(fenToYuan(summary?.rechargePrice || 0))"
           icon="fa-solid:money-check-alt"
           icon-bg-color="text-yellow-500"
           icon-color="bg-yellow-100"
@@ -35,7 +35,7 @@
       <el-col v-loading="loading" :sm="6" :xs="12">
         <SummaryCard
           :decimals="2"
-          :value="fenToYuan(summary?.expensePrice || 0)"
+          :value="Number(fenToYuan(summary?.expensePrice || 0))"
           icon="fa-solid:yen-sign"
           icon-bg-color="text-green-500"
           icon-color="bg-green-100"

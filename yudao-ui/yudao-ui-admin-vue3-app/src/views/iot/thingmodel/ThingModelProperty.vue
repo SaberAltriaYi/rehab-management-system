@@ -22,7 +22,7 @@
         IoTDataSpecsDataTypeEnum.INT,
         IoTDataSpecsDataTypeEnum.DOUBLE,
         IoTDataSpecsDataTypeEnum.FLOAT
-      ].includes(property.dataType || '')
+      ].some((type) => type === property.dataType)
     "
     v-model="property.dataSpecs"
   />
@@ -56,7 +56,7 @@
   </el-form-item>
   <!-- 文本型配置 -->
   <el-form-item
-    v-if="property.dataType === IoTDataSpecsDataTypeEnum.TEXT"
+    v-if="property.dataType === IoTDataSpecsDataTypeEnum.TEXT && property.dataSpecs"
     label="数据长度"
     prop="property.dataSpecs.length"
   >
@@ -103,7 +103,7 @@ import {
   ThingModelNumberDataSpecs,
   ThingModelStructDataSpecs
 } from './dataSpecs'
-import { ThingModelProperty, validateBoolName } from '@/api/iot/thingmodel'
+import { ThingModelProperty, ThingModelDataSpecs, validateBoolName } from '@/api/iot/thingmodel'
 import { isEmpty } from '@/utils/is'
 import {
   getDataTypeOptions,
@@ -127,14 +127,15 @@ const getDataTypeOptions2 = computed(() => {
 
 /** 属性值的数据类型切换时初始化相关数据 */
 const handleChange = (dataType: any) => {
-  property.value.dataSpecs = {}
+  const dataSpecs: ThingModelDataSpecs = {}
+  property.value.dataSpecs = dataSpecs
   property.value.dataSpecsList = []
   // 不是列表型数据才设置 dataSpecs.dataType
   ![
     IoTDataSpecsDataTypeEnum.ENUM,
     IoTDataSpecsDataTypeEnum.BOOL,
     IoTDataSpecsDataTypeEnum.STRUCT
-  ].includes(dataType) && (property.value.dataSpecs.dataType = dataType)
+  ].includes(dataType) && (dataSpecs.dataType = dataType)
   switch (dataType) {
     case IoTDataSpecsDataTypeEnum.ENUM:
       property.value.dataSpecsList.push({

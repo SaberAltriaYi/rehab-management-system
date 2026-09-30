@@ -65,6 +65,21 @@ import Tinyflow from '@/components/Tinyflow/Tinyflow.vue'
 import * as WorkflowApi from '@/api/ai/workflow'
 // TODO @lesan：要不使用 ICon 哪个组件哈
 import { Delete } from '@element-plus/icons-vue'
+import { isAxiosError } from 'axios'
+
+interface TestParameter {
+  key: string
+  value: string
+}
+
+interface StartParameter {
+  name: string
+  dataType: string
+  description?: string
+  disabled?: boolean
+  required?: boolean
+  defaultValue?: string
+}
 
 defineProps<{
   provider: any
@@ -73,11 +88,13 @@ defineProps<{
 const tinyflowRef = ref()
 const workflowData = inject('workflowData') as Ref
 const showTestDrawer = ref(false)
-const params4Test = ref([])
-const paramsOfStartNode = ref({})
-const testResult = ref(null)
+const params4Test = ref<TestParameter[]>([])
+const paramsOfStartNode = ref<Record<string, StartParameter>>({})
+const testResult = ref<unknown>(null)
 const loading = ref(false)
-const error = ref(null)
+const error = ref<string | null>(null)
+
+const errorMessage = (cause: unknown): string => cause instanceof Error ? cause.message : String(cause)
 
 /** 展示工作流测试抽屉 */
 const testWorkflowModel = () => {
@@ -96,13 +113,13 @@ const goRun = async () => {
 
     // 获取参数定义
     const parameters = startNode.data?.parameters || []
-    const paramDefinitions = {}
+    const paramDefinitions: Record<string, string> = {}
     parameters.forEach((param) => {
       paramDefinitions[param.name] = param.dataType
     })
 
     // 参数类型转换
-    const convertedParams = {}
+    const convertedParams: Record<string, unknown> = {}
     for (const { key, value } of params4Test.value) {
       const paramKey = key.trim()
       if (!paramKey) continue
@@ -115,7 +132,7 @@ const goRun = async () => {
       try {
         convertedParams[paramKey] = convertParamValue(value, dataType)
       } catch (e) {
-        throw new Error(`参数 ${paramKey} 转换失败: ${e.message}`)
+        throw new Error(`参数 ${paramKey} 转换失败: ${errorMessage(e)}`)
       }
     }
 
@@ -127,7 +144,9 @@ const goRun = async () => {
     const response = await WorkflowApi.testWorkflow(data)
     testResult.value = response
   } catch (err) {
-    error.value = err.response?.data?.message || '运行失败，请检查参数和网络连接'
+    error.value = isAxiosError(err) && typeof err.response?.data?.message === 'string'
+      ? err.response.data.message
+      : '运行失败，请检查参数和网络连接'
   } finally {
     loading.value = false
   }
@@ -142,15 +161,15 @@ watch(showTestDrawer, (value) => {
 
   // 获取参数定义
   const parameters = startNode.data?.parameters || []
-  const paramDefinitions = {}
+  const paramDefinitions: Record<string, StartParameter> = {}
 
   // 加入参数选项方便用户添加非必须参数
   parameters.forEach((param) => {
     paramDefinitions[param.name] = param
   })
 
-  function mergeIfRequiredButNotSet(target) {
-    let needPushList = []
+  function mergeIfRequiredButNotSet(target: TestParameter[]) {
+    const needPushList: TestParameter[] = []
     for (let key in paramDefinitions) {
       let param = paramDefinitions[key]
 
@@ -210,7 +229,7 @@ const convertParamValue = (value, dataType) => {
       try {
         return JSON.parse(value)
       } catch (e) {
-        throw new Error(`JSON格式错误: ${e.message}`)
+        throw new Error(`JSON格式错误: ${errorMessage(e)}`)
       }
     default:
       throw new Error(`不支持的类型: ${dataType}`)

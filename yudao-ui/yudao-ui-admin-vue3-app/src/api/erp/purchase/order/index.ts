@@ -1,13 +1,33 @@
 import request from '@/config/axios'
 
 // ERP 采购订单 VO
+export interface PurchaseOrderItemVO {
+  id: number
+  productId: number
+  count: number
+  inCount: number
+  returnCount: number
+  productName?: string
+  productUnitName?: string
+  productBarCode?: string
+  productPrice?: number
+  taxPercent?: number
+  taxPrice?: number
+  remark?: string
+  stockCount?: number
+}
+
 export interface PurchaseOrderVO {
   id: number // 订单工单编号
   no: string // 采购订单号
-  customerId: number // 客户编号
+  supplierId: number // 供应商编号
+  accountId: number // 结算账户编号
   orderTime: Date // 订单时间
   totalCount: number // 合计数量
   totalPrice: number // 合计金额，单位：元
+  discountPercent: number // 优惠率
+  fileUrl?: string // 附件地址
+  items?: PurchaseOrderItemVO[] // 列表响应可能不包含明细
   status: number // 状态
   remark: string // 备注
   outCount: number // 采购出库数量

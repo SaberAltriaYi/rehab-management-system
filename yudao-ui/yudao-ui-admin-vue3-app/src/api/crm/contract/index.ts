@@ -31,7 +31,7 @@ export interface ContractVO {
   creator: string
   creatorName: string
   updateTime?: Date
-  products?: [
+  products?: Array<
     {
       id: number
       productId: number
@@ -43,7 +43,7 @@ export interface ContractVO {
       count: number
       totalPrice: number
     }
-  ]
+  >
 }
 
 // 查询 CRM 合同列表

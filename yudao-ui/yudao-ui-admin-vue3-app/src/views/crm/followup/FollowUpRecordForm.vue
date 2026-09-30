@@ -74,11 +74,13 @@
 
   <!-- 弹窗 -->
   <ContactListModal
+    v-if="formData.bizId != null"
     ref="contactTableSelectRef"
     :customer-id="formData.bizId"
     @success="handleAddContact"
   />
   <BusinessListModal
+    v-if="formData.bizId != null"
     ref="businessTableSelectRef"
     :customer-id="formData.bizId"
     @success="handleAddBusiness"
@@ -86,7 +88,7 @@
 </template>
 <script lang="ts" setup>
 import { DICT_TYPE, getIntDictOptions } from '@/utils/dict'
-import { FollowUpRecordApi, FollowUpRecordVO } from '@/api/crm/followup'
+import { FollowUpRecordApi, type FollowUpRecordCreateReqVO } from '@/api/crm/followup'
 import { BizTypeEnum } from '@/api/crm/permission'
 import FollowUpRecordBusinessForm from './components/FollowUpRecordBusinessForm.vue'
 import FollowUpRecordContactForm from './components/FollowUpRecordContactForm.vue'
@@ -101,11 +103,25 @@ const { t } = useI18n() // 国际化
 const message = useMessage() // 消息弹窗
 
 const dialogVisible = ref(false) // 弹窗的是否展示
-const dialogTitle = ref('') // 弹窗的标题
 const formLoading = ref(false) // 表单的加载中：1）修改时的数据加载；2）提交的按钮禁用
-const formData = ref({
+const formData = ref<{
+  bizType?: number
+  bizId?: number
+  type?: number
+  content: string
+  picUrls: string[]
+  fileUrls: string[]
+  nextTime?: Date | string
+  businesses: BusinessApi.BusinessVO[]
+  contacts: ContactApi.ContactVO[]
+}>({
   bizType: undefined,
   bizId: undefined,
+  type: undefined,
+  content: '',
+  picUrls: [],
+  fileUrls: [],
+  nextTime: undefined,
   businesses: [],
   contacts: []
 })
@@ -130,15 +146,24 @@ defineExpose({ open }) // 提供 open 方法，用于打开弹窗
 const emit = defineEmits(['success']) // 定义 success 事件，用于操作成功后的回调
 const submitForm = async () => {
   // 校验表单
-  await formRef.value.validate()
+  if (!formRef.value) return
+  const valid = await formRef.value.validate()
+  if (!valid) return
+  const { bizType, bizId, type, content, nextTime } = formData.value
+  if (bizType === undefined || bizId === undefined || type === undefined || !content || !nextTime) {
+    message.error('跟进内容或关联业务未加载')
+    return
+  }
   // 提交请求
   formLoading.value = true
   try {
-    const data = {
-      ...formData.value,
+    const data: FollowUpRecordCreateReqVO = {
+      bizType, bizId, type, content, nextTime,
+      picUrls: formData.value.picUrls,
+      fileUrls: formData.value.fileUrls,
       contactIds: formData.value.contacts.map((item) => item.id),
       businessIds: formData.value.businesses.map((item) => item.id)
-    } as unknown as FollowUpRecordVO
+    }
     await FollowUpRecordApi.createFollowUpRecord(data)
     message.success(t('common.createSuccess'))
     dialogVisible.value = false
@@ -154,7 +179,7 @@ const contactTableSelectRef = ref<InstanceType<typeof ContactListModal>>()
 const handleOpenContact = () => {
   contactTableSelectRef.value?.open()
 }
-const handleAddContact = (contactId: [], newContacts: ContactApi.ContactVO[]) => {
+const handleAddContact = (_contactId: number[], newContacts: ContactApi.ContactVO[]) => {
   newContacts.forEach((contact) => {
     if (!formData.value.contacts.some((item) => item.id === contact.id)) {
       formData.value.contacts.push(contact)
@@ -167,7 +192,7 @@ const businessTableSelectRef = ref<InstanceType<typeof BusinessListModal>>()
 const handleOpenBusiness = () => {
   businessTableSelectRef.value?.open()
 }
-const handleAddBusiness = (businessId: [], newBusinesses: BusinessApi.BusinessVO[]) => {
+const handleAddBusiness = (_businessId: number[], newBusinesses: BusinessApi.BusinessVO[]) => {
   newBusinesses.forEach((business) => {
     if (!formData.value.businesses.some((item) => item.id === business.id)) {
       formData.value.businesses.push(business)
@@ -181,6 +206,11 @@ const resetForm = () => {
   formData.value = {
     bizId: undefined,
     bizType: undefined,
+    type: undefined,
+    content: '',
+    picUrls: [],
+    fileUrls: [],
+    nextTime: undefined,
     businesses: [],
     contacts: []
   }

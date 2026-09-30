@@ -94,22 +94,22 @@
   </el-row>
 </template>
 <script setup lang="ts">
+import type { FormInstance } from 'element-plus'
+import type { BusinessVO } from '@/api/crm/business'
 import * as ProductApi from '@/api/crm/product'
 import { erpPriceInputFormatter, erpPriceMultiply } from '@/utils'
 import { DICT_TYPE } from '@/utils/dict'
 
-const props = defineProps<{
-  products: undefined
-  disabled: false
-}>()
+type ProductRow = Partial<NonNullable<BusinessVO['products']>[number]> & { count: number }
+const props = defineProps<{ products: ProductRow[]; disabled: boolean }>()
 const formLoading = ref(false) // 表单的加载中
-const formData = ref([])
+const formData = ref<ProductRow[]>([])
 const formRules = reactive({
   productId: [{ required: true, message: '产品不能为空', trigger: 'blur' }],
   businessPrice: [{ required: true, message: '合同价格不能为空', trigger: 'blur' }],
   count: [{ required: true, message: '产品数量不能为空', trigger: 'blur' }]
 })
-const formRef = ref([]) // 表单 Ref
+const formRef = ref<FormInstance>() // 表单 Ref
 const productList = ref<ProductApi.ProductVO[]>([]) // 产品列表
 
 /** 初始化设置产品项 */
@@ -142,7 +142,7 @@ watch(
 
 /** 新增按钮操作 */
 const handleAdd = () => {
-  const row = {
+  const row: ProductRow = {
     id: undefined,
     productId: undefined,
     productUnit: undefined, // 产品单位
@@ -160,7 +160,7 @@ const handleDelete = (index: number) => {
 }
 
 /** 处理产品变更 */
-const onChangeProduct = (productId, row) => {
+const onChangeProduct = (productId: number, row: ProductRow) => {
   const product = productList.value.find((item) => item.id === productId)
   if (product) {
     row.productUnit = product.unit
@@ -172,7 +172,7 @@ const onChangeProduct = (productId, row) => {
 
 /** 表单校验 */
 const validate = () => {
-  return formRef.value.validate()
+  return formRef.value?.validate()
 }
 defineExpose({ validate })
 

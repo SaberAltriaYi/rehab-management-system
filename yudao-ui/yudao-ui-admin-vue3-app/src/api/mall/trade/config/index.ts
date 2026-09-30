@@ -1,6 +1,7 @@
 import request from '@/config/axios'
 
 export interface ConfigVO {
+  deliveryExpressFreePrice: number // 快递满额包邮金额（分）
   brokerageEnabled: boolean
   brokerageEnabledCondition: number
   brokerageBindMode: number

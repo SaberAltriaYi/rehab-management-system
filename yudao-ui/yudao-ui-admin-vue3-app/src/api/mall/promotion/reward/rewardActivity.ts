@@ -5,14 +5,14 @@ export interface RewardActivityVO {
   name?: string
   startTime?: Date
   endTime?: Date
-  startAndEndTime?: Date[] // 只前端使用
+  startAndEndTime?: [Date, Date] // 只前端使用：日期区间
   remark?: string
   conditionType?: number
   productScope?: number
   rules: RewardRule[]
   // 如下仅用于表单，不提交
   productScopeValues?: number[] // 商品范围：值为品类编号列表、商品编号列表
-  productCategoryIds?: number[]
+  productCategoryIds?: number | number[]
   productSpuIds?: number[]
 }
 

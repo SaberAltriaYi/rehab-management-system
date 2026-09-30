@@ -22,7 +22,7 @@ import { HotZoneProperty } from './config'
 
 /** 热区 */
 defineOptions({ name: 'HotZone' })
-const props = defineProps<{ property: HotZoneProperty }>()
+defineProps<{ property: HotZoneProperty }>()
 </script>
 
 <style scoped lang="scss">

@@ -55,7 +55,7 @@
       <UploadImg v-model="formData.picUrl" :disabled="isDetail" height="80px" />
     </el-form-item>
     <el-form-item label="商品轮播图" prop="sliderPicUrls">
-      <UploadImgs v-model="formData.sliderPicUrls" :disabled="isDetail" />
+      <UploadImgs v-model="sliderPicUrls" :disabled="isDetail" />
     </el-form-item>
   </el-form>
 </template>
@@ -91,6 +91,10 @@ const formData = reactive<Spu>({
   sliderPicUrls: [], // 商品轮播图
   introduction: '', // 商品简介
   brandId: undefined // 商品品牌
+})
+const sliderPicUrls = computed({
+  get: () => formData.sliderPicUrls ?? [],
+  set: (urls: string[]) => { formData.sliderPicUrls = urls }
 })
 const rules = reactive({
   name: [required],

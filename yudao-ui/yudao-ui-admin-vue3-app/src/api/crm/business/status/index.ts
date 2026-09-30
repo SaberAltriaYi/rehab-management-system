@@ -1,14 +1,24 @@
 import request from '@/config/axios'
 
+export interface BusinessStatusStageVO {
+  id?: number
+  name: string
+  percent?: number
+  endStatus?: number
+  key?: string
+}
+
 export interface BusinessStatusTypeVO {
   id: number
   name: string
   deptIds: number[]
-  statuses?: {
-    id: number
-    name: string
-    percent: number
-  }
+  statuses?: BusinessStatusStageVO[]
+}
+
+export interface BusinessStatusSimpleVO {
+  id: number
+  name: string
+  percent: number
 }
 
 export const DEFAULT_STATUSES = [
@@ -38,7 +48,7 @@ export const getBusinessStatusPage = async (params: any) => {
 }
 
 // 新增商机状态组
-export const createBusinessStatus = async (data: BusinessStatusTypeVO) => {
+export const createBusinessStatus = async (data: Omit<BusinessStatusTypeVO, 'id'>) => {
   return await request.post({ url: `/crm/business-status/create`, data })
 }
 
@@ -63,6 +73,6 @@ export const getBusinessStatusTypeSimpleList = async () => {
 }
 
 // 获得商机阶段列表
-export const getBusinessStatusSimpleList = async (typeId: number) => {
+export const getBusinessStatusSimpleList = async (typeId: number): Promise<BusinessStatusSimpleVO[]> => {
   return await request.get({ url: `/crm/business-status/status-simple-list`, params: { typeId } })
 }

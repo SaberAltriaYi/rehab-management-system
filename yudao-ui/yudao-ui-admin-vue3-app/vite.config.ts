@@ -15,12 +15,16 @@ function pathResolve(dir: string) {
 export default ({command, mode}: ConfigEnv): UserConfig => {
     let env = {} as any
     const isBuild = command === 'build'
-    if (!isBuild) {
-        env = loadEnv((process.argv[3] === '--mode' ? process.argv[4] : process.argv[3]), root)
-    } else {
-        env = loadEnv(mode, root)
-    }
     const isInternal = mode === 'internal'
+    // Release builds stage only reviewed env files, never this workstation's .env.local.
+    const envRoot = isInternal && process.env.REHAB_INTERNAL_ENV_DIR
+        ? resolve(process.env.REHAB_INTERNAL_ENV_DIR)
+        : root
+    if (!isBuild) {
+        env = loadEnv((process.argv[3] === '--mode' ? process.argv[4] : process.argv[3]), envRoot)
+    } else {
+        env = loadEnv(mode, envRoot)
+    }
     const internalAliases = isInternal
         ? [
             {
@@ -44,6 +48,7 @@ export default ({command, mode}: ConfigEnv): UserConfig => {
         ]
         : []
     return {
+        envDir: envRoot,
         base: env.VITE_BASE_PATH,
         root: root,
         // 服务端渲染

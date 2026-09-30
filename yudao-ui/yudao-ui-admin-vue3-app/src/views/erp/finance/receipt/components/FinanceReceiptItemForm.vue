@@ -68,7 +68,8 @@
   <SaleReturnRefundEnableList ref="saleReturnRefundEnableListRef" @success="handleAddSaleReturn" />
 </template>
 <script setup lang="ts">
-import { ProductVO } from '@/api/erp/product/product'
+import type { FormInstance, SummaryMethod } from 'element-plus'
+import type { FinanceReceiptItem } from '@/views/erp/shared/FinanceSettlementItem'
 import { erpPriceInputFormatter, getSumValue } from '@/utils'
 import SaleOutReceiptEnableList from '@/views/erp/sale/out/components/SaleOutReceiptEnableList.vue'
 import SaleReturnRefundEnableList from '@/views/erp/sale/return/components/SaleReturnRefundEnableList.vue'
@@ -77,30 +78,30 @@ import { ErpBizType } from '@/utils/constants'
 import { SaleReturnVO } from '@/api/erp/sale/return'
 
 const props = defineProps<{
-  items: undefined
-  customerId: undefined
-  disabled: false
+  items: FinanceReceiptItem[]
+  customerId?: number
+  disabled: boolean
 }>()
 const message = useMessage()
 
 const formLoading = ref(false) // 表单的加载中
-const formData = ref([])
+const formData = ref<FinanceReceiptItem[]>([])
 const formRules = reactive({
   receiptPrice: [{ required: true, message: '本次收款不能为空', trigger: 'blur' }]
 })
-const formRef = ref([]) // 表单 Ref
-const productList = ref<ProductVO[]>([]) // 产品列表
+const formRef = ref<FormInstance>() // 表单 Ref
 
 /** 初始化设置出库项 */
 watch(
   () => props.items,
-  async (val) => {
+  (val) => {
     formData.value = val
   },
   { immediate: true }
 )
 
 /** 合计 */
+type SummaryMethodProps = Parameters<SummaryMethod<FinanceReceiptItem>>[0]
 const getSummaries = (param: SummaryMethodProps) => {
   const { columns, data } = param
   const sums: string[] = []
@@ -110,7 +111,8 @@ const getSummaries = (param: SummaryMethodProps) => {
       return
     }
     if (['totalPrice', 'receiptedPrice', 'receiptPrice'].includes(column.property)) {
-      const sum = getSumValue(data.map((item) => Number(item[column.property])))
+      const property = column.property as 'totalPrice' | 'receiptedPrice' | 'receiptPrice'
+      const sum = getSumValue(data.map((item) => Number(item[property])))
       sums[index] = erpPriceInputFormatter(sum)
     } else {
       sums[index] = ''
@@ -170,6 +172,7 @@ const handleDelete = (index: number) => {
 
 /** 表单校验 */
 const validate = () => {
+  if (!formRef.value) throw new Error('收款条目表单尚未就绪')
   return formRef.value.validate()
 }
 defineExpose({ validate })

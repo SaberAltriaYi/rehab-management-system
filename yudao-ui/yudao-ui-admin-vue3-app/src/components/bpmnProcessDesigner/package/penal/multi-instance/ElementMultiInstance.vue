@@ -118,55 +118,11 @@ const props = defineProps({
 })
 const prefix = inject('prefix')
 const loopCharacteristics = ref('')
-//默认配置，用来覆盖原始不存在的选项，避免报错
-const defaultLoopInstanceForm = ref({
-  completionCondition: '',
-  loopCardinality: '',
-  extensionElements: [],
-  asyncAfter: false,
-  asyncBefore: false,
-  exclusive: false
-})
 const loopInstanceForm = ref<any>({})
-const bpmnElement = ref(null)
-const multiLoopInstance = ref(null)
+const bpmnElement = ref<{ businessObject?: { extensionElements?: { values: { $type: string; value?: string | number }[] } } } | null>(null)
+const multiLoopInstance = ref<{ completionCondition?: unknown; loopCardinality?: unknown } | null>(null)
 const bpmnInstances = () => (window as any)?.bpmnInstances
 
-const getElementLoop = (businessObject) => {
-  if (!businessObject.loopCharacteristics) {
-    loopCharacteristics.value = 'Null'
-    loopInstanceForm.value = {}
-    return
-  }
-  if (businessObject.loopCharacteristics.$type === 'bpmn:StandardLoopCharacteristics') {
-    loopCharacteristics.value = 'StandardLoop'
-    loopInstanceForm.value = {}
-    return
-  }
-  if (businessObject.loopCharacteristics.isSequential) {
-    loopCharacteristics.value = 'SequentialMultiInstance'
-  } else {
-    loopCharacteristics.value = 'ParallelMultiInstance'
-  }
-  // 合并配置
-  loopInstanceForm.value = {
-    ...defaultLoopInstanceForm.value,
-    ...businessObject.loopCharacteristics,
-    completionCondition: businessObject.loopCharacteristics?.completionCondition?.body ?? '',
-    loopCardinality: businessObject.loopCharacteristics?.loopCardinality?.body ?? ''
-  }
-  // 保留当前元素 businessObject 上的 loopCharacteristics 实例
-  multiLoopInstance.value = bpmnInstances().bpmnElement.businessObject.loopCharacteristics
-  // 更新表单
-  if (
-    businessObject.loopCharacteristics.extensionElements &&
-    businessObject.loopCharacteristics.extensionElements.values &&
-    businessObject.loopCharacteristics.extensionElements.values.length
-  ) {
-    loopInstanceForm.value['timeCycle'] =
-      businessObject.loopCharacteristics.extensionElements.values[0].body
-  }
-}
 
 const changeLoopCharacteristicsType = (type) => {
   // this.loopInstanceForm = { ...this.defaultLoopInstanceForm }; // 切换类型取消原表单配置
@@ -310,7 +266,7 @@ const otherExtensions = ref()
 const getElementLoopNew = () => {
   if (props.type === 'UserTask') {
     const extensionElements =
-      bpmnElement.value.businessObject?.extensionElements ??
+      bpmnElement.value?.businessObject?.extensionElements ??
       bpmnInstances().moddle.create('bpmn:ExtensionElements', { values: [] })
     approveMethod.value = extensionElements.values.filter(
       (ex) => ex.$type === `${prefix}:ApproveMethod`
@@ -344,7 +300,7 @@ const updateLoopCharacteristics = () => {
         'bpmn:MultiInstanceLoopCharacteristics',
         { isSequential: false, collection: '${coll_userList}' }
       )
-      multiLoopInstance.value.completionCondition = bpmnInstances().moddle.create(
+      multiLoopInstance.value!.completionCondition = bpmnInstances().moddle.create(
         'bpmn:FormalExpression',
         {
           body: '${ nrOfCompletedInstances/nrOfInstances >= ' + approveRatio.value / 100 + '}'
@@ -356,7 +312,7 @@ const updateLoopCharacteristics = () => {
         'bpmn:MultiInstanceLoopCharacteristics',
         { isSequential: false, collection: '${coll_userList}' }
       )
-      multiLoopInstance.value.completionCondition = bpmnInstances().moddle.create(
+      multiLoopInstance.value!.completionCondition = bpmnInstances().moddle.create(
         'bpmn:FormalExpression',
         {
           body: '${ nrOfCompletedInstances > 0 }'
@@ -368,13 +324,13 @@ const updateLoopCharacteristics = () => {
         'bpmn:MultiInstanceLoopCharacteristics',
         { isSequential: true, collection: '${coll_userList}' }
       )
-      multiLoopInstance.value.loopCardinality = bpmnInstances().moddle.create(
+      multiLoopInstance.value!.loopCardinality = bpmnInstances().moddle.create(
         'bpmn:FormalExpression',
         {
           body: '1'
         }
       )
-      multiLoopInstance.value.completionCondition = bpmnInstances().moddle.create(
+      multiLoopInstance.value!.completionCondition = bpmnInstances().moddle.create(
         'bpmn:FormalExpression',
         {
           body: '${ nrOfCompletedInstances >= nrOfInstances }'

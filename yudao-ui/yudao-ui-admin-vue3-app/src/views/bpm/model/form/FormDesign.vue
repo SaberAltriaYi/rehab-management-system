@@ -70,12 +70,7 @@ import * as FormApi from '@/api/bpm/form'
 import { setConfAndFields2 } from '@/utils/formCreate'
 import { BpmModelFormType } from '@/utils/constants'
 
-const props = defineProps({
-  formList: {
-    type: Array,
-    required: true
-  }
-})
+defineProps<{ formList: FormApi.FormVO[] }>()
 
 const formRef = ref()
 

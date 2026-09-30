@@ -162,12 +162,13 @@
   />
 </template>
 <script setup lang="ts">
+import type { WarehouseTransactionFormData } from '@/views/erp/shared/WarehouseTransactionItem'
 import { PurchaseInApi, PurchaseInVO } from '@/api/erp/purchase/in'
 import PurchaseInItemForm from './components/PurchaseInItemForm.vue'
 import { AccountApi, AccountVO } from '@/api/erp/finance/account'
 import { erpPriceInputFormatter, erpPriceMultiply } from '@/utils'
 import PurchaseOrderInEnableList from '@/views/erp/purchase/order/components/PurchaseOrderInEnableList.vue'
-import { PurchaseOrderVO } from '@/api/erp/purchase/order'
+import { PurchaseOrderApi, type PurchaseOrderVO } from '@/api/erp/purchase/order'
 import * as UserApi from '@/api/system/user'
 import { SupplierApi, SupplierVO } from '@/api/erp/purchase/supplier'
 
@@ -181,7 +182,7 @@ const dialogVisible = ref(false) // 弹窗的是否展示
 const dialogTitle = ref('') // 弹窗的标题
 const formLoading = ref(false) // 表单的加载中：1）修改时的数据加载；2）提交的按钮禁用
 const formType = ref('') // 表单的类型：create - 新增；update - 修改；detail - 详情
-const formData = ref({
+const formData = ref<WarehouseTransactionFormData>({
   id: undefined,
   supplierId: undefined,
   accountId: undefined,
@@ -218,9 +219,9 @@ watch(
       return
     }
     // 计算
-    const totalPrice = val.items.reduce((prev, curr) => prev + curr.totalPrice, 0)
+    const totalPrice = val.items.reduce((prev, curr) => prev + (curr.totalPrice ?? 0), 0)
     const discountPrice =
-      val.discountPercent != null ? erpPriceMultiply(totalPrice, val.discountPercent / 100.0) : 0
+      (val.discountPercent != null ? erpPriceMultiply(totalPrice, val.discountPercent / 100.0) : 0) ?? 0
     formData.value.discountPrice = discountPrice
     formData.value.totalPrice = totalPrice - discountPrice + val.otherPrice
   },
@@ -237,7 +238,8 @@ const open = async (type: string, id?: number) => {
   if (id) {
     formLoading.value = true
     try {
-      formData.value = await PurchaseInApi.getPurchaseIn(id)
+      const saved = await PurchaseInApi.getPurchaseIn(id)
+      formData.value = { ...saved, fileUrl: saved.fileUrl ?? '' }
     } finally {
       formLoading.value = false
     }
@@ -261,7 +263,22 @@ const openPurchaseOrderInEnableList = () => {
   purchaseOrderInEnableListRef.value.open()
 }
 
-const handlePurchaseOrderChange = (order: PurchaseOrderVO) => {
+const handlePurchaseOrderChange = async (selected: PurchaseOrderVO) => {
+  // The selector uses the page endpoint; always load its complete item list.
+  const order: PurchaseOrderVO = await PurchaseOrderApi.getPurchaseOrder(selected.id)
+  const remainingItems = (order.items ?? [])
+    .map((item) => ({
+      ...item,
+      orderItemId: item.id,
+      id: undefined,
+      totalCount: item.count,
+      count: item.count - (item.inCount ?? 0)
+    }))
+    .filter((item) => item.count > 0)
+  if (remainingItems.length === 0) {
+    message.error('该采购订单暂无可入库的产品')
+    return
+  }
   // 将订单设置到入库单
   formData.value.orderId = order.id
   formData.value.orderNo = order.no
@@ -269,15 +286,8 @@ const handlePurchaseOrderChange = (order: PurchaseOrderVO) => {
   formData.value.accountId = order.accountId
   formData.value.discountPercent = order.discountPercent
   formData.value.remark = order.remark
-  formData.value.fileUrl = order.fileUrl
-  // 将订单项设置到入库单项
-  order.items.forEach((item) => {
-    item.totalCount = item.count
-    item.count = item.totalCount - item.inCount
-    item.orderItemId = item.id
-    item.id = undefined
-  })
-  formData.value.items = order.items.filter((item) => item.count > 0)
+  formData.value.fileUrl = order.fileUrl ?? ''
+  formData.value.items = remainingItems
 }
 
 /** 提交表单 */
@@ -313,7 +323,7 @@ const resetForm = () => {
     accountId: undefined,
     inTime: undefined,
     remark: undefined,
-    fileUrl: undefined,
+    fileUrl: '',
     discountPercent: 0,
     discountPrice: 0,
     totalPrice: 0,

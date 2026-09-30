@@ -196,11 +196,11 @@ const handleGenerateImage = async () => {
     const req = {
       prompt: prompt.value,
       modelId: matchedModel.id,
-      width: imageSize.width,
-      height: imageSize.height,
+      width: Number(imageSize.width),
+      height: Number(imageSize.height),
       version: selectVersion.value,
       referImageUrl: referImageUrl.value
-    } as ImageMidjourneyImagineReqVO
+    } satisfies ImageMidjourneyImagineReqVO
     await ImageApi.midjourneyImagine(req)
   } finally {
     // 回调

@@ -302,7 +302,6 @@ import { PropType } from 'vue'
 
 defineOptions({ name: 'InfraCodegenGenerateInfoForm' })
 
-const message = useMessage() // 消息弹窗
 const props = defineProps({
   table: {
     type: Object as PropType<Nullable<CodegenApi.CodegenTableVO>>,
@@ -349,7 +348,7 @@ const rules = reactive({
   treeNameColumnId: [required]
 })
 
-const tables = ref([]) // 表定义列表
+const tables = ref<CodegenApi.CodegenTableVO[]>([]) // 表定义列表
 const menus = ref<any[]>([])
 const menuTreeProps = {
   label: 'name'
@@ -362,7 +361,7 @@ watch(
     formData.value = table as any
     // 加载表列表
     if (table.dataSourceConfigId >= 0) {
-      tables.value = await CodegenApi.getCodegenTableList(formData.value.dataSourceConfigId)
+      tables.value = await CodegenApi.getCodegenTableList(table.dataSourceConfigId)
     }
   },
   {

@@ -11,6 +11,8 @@ export interface MailAccountVO {
   starttlsEnable: boolean
 }
 
+export type MailAccountSaveReqVO = Omit<MailAccountVO, 'id'> & { id?: number }
+
 // 查询邮箱账号列表
 export const getMailAccountPage = async (params: PageParam) => {
   return await request.get({ url: '/system/mail-account/page', params })
@@ -22,12 +24,12 @@ export const getMailAccount = async (id: number) => {
 }
 
 // 新增邮箱账号
-export const createMailAccount = async (data: MailAccountVO) => {
+export const createMailAccount = async (data: MailAccountSaveReqVO) => {
   return await request.post({ url: '/system/mail-account/create', data })
 }
 
 // 修改邮箱账号
-export const updateMailAccount = async (data: MailAccountVO) => {
+export const updateMailAccount = async (data: MailAccountSaveReqVO & { id: number }) => {
   return await request.put({ url: '/system/mail-account/update', data })
 }
 

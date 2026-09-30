@@ -189,6 +189,7 @@
 
 <script setup lang="ts">
 import { dateFormatter } from '@/utils/formatTime'
+import { ElMessageBox } from 'element-plus'
 import { AlertRecordApi, AlertRecord } from '@/api/iot/alert/record'
 import { AlertConfigApi, AlertConfig } from '@/api/iot/alert/config'
 import { ProductApi, ProductVO } from '@/api/iot/product/product'

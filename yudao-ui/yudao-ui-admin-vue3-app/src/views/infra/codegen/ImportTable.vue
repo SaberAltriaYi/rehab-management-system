@@ -9,7 +9,7 @@
           placeholder="请选择数据源"
         >
           <el-option
-            v-for="config in dataSourceConfigList"
+            v-for="config in dataSourceConfigListWithId"
             :key="config.id"
             :label="config.name"
             :value="config.id"
@@ -92,6 +92,12 @@ const queryParams = reactive({
 })
 const queryFormRef = ref() // 搜索的表单
 const dataSourceConfigList = ref<DataSourceConfigApi.DataSourceConfigVO[]>([]) // 数据源列表
+const dataSourceConfigListWithId = computed(() =>
+  dataSourceConfigList.value.filter(
+    (config): config is DataSourceConfigApi.DataSourceConfigVO & { id: number } =>
+      config.id != null
+  )
+)
 
 /** 查询表数据 */
 const getList = async () => {

@@ -49,7 +49,7 @@ const formData = ref({
 })
 const formRules = reactive({}) // 表单的校验
 const formRef = ref() // 表单 Ref
-const tagList = ref([]) // 公众号标签列表
+const tagList = ref<Array<{ tagId: number; name: string }>>([]) // 公众号标签精简列表
 
 /** 打开弹窗 */
 const open = async (id: number) => {

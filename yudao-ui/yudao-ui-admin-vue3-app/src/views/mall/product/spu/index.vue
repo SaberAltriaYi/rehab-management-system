@@ -286,7 +286,7 @@ const queryParams = ref({
   pageSize: 10,
   tabType: 0,
   name: '',
-  categoryId: undefined,
+  categoryId: undefined as number | undefined,
   createTime: undefined
 }) // 查询参数
 const queryFormRef = ref() // 搜索的表单Ref
@@ -434,7 +434,9 @@ onActivated(() => {
 onMounted(async () => {
   // 解析路由的 categoryId
   if (route.query.categoryId) {
-    queryParams.value.categoryId = route.query.categoryId
+    const rawCategoryId = route.query.categoryId
+    const categoryId = Number(Array.isArray(rawCategoryId) ? rawCategoryId[0] : rawCategoryId)
+    if (Number.isFinite(categoryId)) queryParams.value.categoryId = categoryId
   }
   // 获得商品信息
   await getTabsCount()

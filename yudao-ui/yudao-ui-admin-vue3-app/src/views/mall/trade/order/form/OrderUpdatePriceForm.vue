@@ -21,7 +21,6 @@
 <script lang="ts" setup>
 import * as TradeOrderApi from '@/api/mall/trade/order'
 import { convertToInteger, floatToFixed2, formatToFraction } from '@/utils'
-import { cloneDeep } from 'lodash-es'
 
 defineOptions({ name: 'OrderUpdatePriceForm' })
 
@@ -30,7 +29,7 @@ const message = useMessage() // 消息弹窗
 
 const dialogVisible = ref(false) // 弹窗的是否展示
 const formLoading = ref(false) // 表单的加载中：1）修改时的数据加载；2）提交的按钮禁用
-const formData = ref({
+const formData = ref<{ id?: number; adjustPrice: number | string; payPrice: string; newPayPrice: string }>({
   id: undefined, // 订单编号
   adjustPrice: 0, // 订单调价
   payPrice: '', // 应付金额(总)
@@ -68,11 +67,11 @@ const submitForm = async () => {
   // 提交请求
   formLoading.value = true
   try {
-    const data = cloneDeep(unref(formData))
-    data.adjustPrice = convertToInteger(data.adjustPrice)
-    delete data.payPrice
-    delete data.newPayPrice
-    await TradeOrderApi.updateOrderPrice(data)
+    if (formData.value.id === undefined) throw new Error('订单编号不存在')
+    await TradeOrderApi.updateOrderPrice({
+      id: formData.value.id,
+      adjustPrice: convertToInteger(Number(formData.value.adjustPrice))
+    })
     message.success(t('common.updateSuccess'))
     dialogVisible.value = false
     // 发送操作成功的事件

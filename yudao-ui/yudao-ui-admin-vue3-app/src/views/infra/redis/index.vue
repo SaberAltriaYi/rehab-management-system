@@ -165,15 +165,15 @@ const usedmemoryEchartChika = reactive<any>({
 const commandStatsRefChika = reactive({
   title: {
     text: '命令统计',
-    left: 'center'
+    left: 'center' as const
   },
   tooltip: {
-    trigger: 'item',
+    trigger: 'item' as const,
     formatter: '{a} <br/>{b} : {c} ({d}%)'
   },
   legend: {
-    type: 'scroll',
-    orient: 'vertical',
+    type: 'scroll' as const,
+    orient: 'vertical' as const,
     right: 30,
     top: 10,
     bottom: 20,
@@ -185,11 +185,11 @@ const commandStatsRefChika = reactive({
   series: [
     {
       name: '命令',
-      type: 'pie',
+      type: 'pie' as const,
       radius: [20, 120],
       center: ['40%', '60%'],
       data: [] as any[],
-      roseType: 'radius',
+      roseType: 'radius' as const,
       label: {
         show: true
       },

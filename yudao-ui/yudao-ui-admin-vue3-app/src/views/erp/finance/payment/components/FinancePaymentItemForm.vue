@@ -74,7 +74,8 @@
   />
 </template>
 <script setup lang="ts">
-import { ProductVO } from '@/api/erp/product/product'
+import type { FormInstance, SummaryMethod } from 'element-plus'
+import type { FinancePaymentItem } from '@/views/erp/shared/FinanceSettlementItem'
 import { erpPriceInputFormatter, getSumValue } from '@/utils'
 import PurchaseInPaymentEnableList from '@/views/erp/purchase/in/components/PurchaseInPaymentEnableList.vue'
 import PurchaseReturnRefundEnableList from '@/views/erp/purchase/return/components/PurchaseReturnRefundEnableList.vue'
@@ -83,30 +84,30 @@ import { ErpBizType } from '@/utils/constants'
 import { PurchaseReturnVO } from '@/api/erp/purchase/return'
 
 const props = defineProps<{
-  items: undefined
-  supplierId: undefined
-  disabled: false
+  items: FinancePaymentItem[]
+  supplierId?: number
+  disabled: boolean
 }>()
 const message = useMessage()
 
 const formLoading = ref(false) // 表单的加载中
-const formData = ref([])
+const formData = ref<FinancePaymentItem[]>([])
 const formRules = reactive({
   paymentPrice: [{ required: true, message: '本次付款不能为空', trigger: 'blur' }]
 })
-const formRef = ref([]) // 表单 Ref
-const productList = ref<ProductVO[]>([]) // 产品列表
+const formRef = ref<FormInstance>() // 表单 Ref
 
 /** 初始化设置入库项 */
 watch(
   () => props.items,
-  async (val) => {
+  (val) => {
     formData.value = val
   },
   { immediate: true }
 )
 
 /** 合计 */
+type SummaryMethodProps = Parameters<SummaryMethod<FinancePaymentItem>>[0]
 const getSummaries = (param: SummaryMethodProps) => {
   const { columns, data } = param
   const sums: string[] = []
@@ -116,7 +117,8 @@ const getSummaries = (param: SummaryMethodProps) => {
       return
     }
     if (['totalPrice', 'paidPrice', 'paymentPrice'].includes(column.property)) {
-      const sum = getSumValue(data.map((item) => Number(item[column.property])))
+      const property = column.property as 'totalPrice' | 'paidPrice' | 'paymentPrice'
+      const sum = getSumValue(data.map((item) => Number(item[property])))
       sums[index] = erpPriceInputFormatter(sum)
     } else {
       sums[index] = ''
@@ -176,6 +178,7 @@ const handleDelete = (index: number) => {
 
 /** 表单校验 */
 const validate = () => {
+  if (!formRef.value) throw new Error('付款条目表单尚未就绪')
   return formRef.value.validate()
 }
 defineExpose({ validate })

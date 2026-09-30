@@ -208,7 +208,7 @@ const queryParams = ref({
   createTime: []
 })
 const queryFormRef = ref() // 搜索的表单
-const appList = ref([]) // 支付应用列表集合
+const appList = ref<Pick<PayAppApi.AppVO, 'id' | 'name'>[]>([]) // 支付应用列表集合
 
 /** 搜索按钮操作 */
 const handleQuery = () => {

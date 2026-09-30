@@ -24,6 +24,12 @@ export interface FollowUpRecordVO {
   creatorName?: string
 }
 
+// Creation submits only client-editable fields; the id and creator are assigned by the server.
+export type FollowUpRecordCreateReqVO = Pick<
+  FollowUpRecordVO,
+  'bizType' | 'bizId' | 'type' | 'content' | 'picUrls' | 'fileUrls' | 'businessIds' | 'contactIds'
+> & { nextTime: Date | string }
+
 // 跟进记录 API
 export const FollowUpRecordApi = {
   // 查询跟进记录分页
@@ -32,7 +38,7 @@ export const FollowUpRecordApi = {
   },
 
   // 新增跟进记录
-  createFollowUpRecord: async (data: FollowUpRecordVO) => {
+  createFollowUpRecord: async (data: FollowUpRecordCreateReqVO) => {
     return await request.post({ url: `/crm/follow-up-record/create`, data })
   },
 

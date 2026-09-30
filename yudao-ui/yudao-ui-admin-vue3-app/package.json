@@ -4,6 +4,7 @@
   "description": "运动康复评估与业务管理系统 Web 管理端",
   "author": "杨玺龙",
   "private": true,
+  "packageManager": "pnpm@10.15.1",
   "scripts": {
     "i": "pnpm install",
     "dev": "vite --mode env.local",
@@ -15,7 +16,7 @@
     "build:test": "node --max_old_space_size=4096 ./node_modules/vite/bin/vite.js build --mode test",
     "build:stage": "node --max_old_space_size=4096 ./node_modules/vite/bin/vite.js build --mode stage",
     "build:prod": "node --max_old_space_size=4096 ./node_modules/vite/bin/vite.js build --mode prod",
-    "build:internal": "node --max_old_space_size=4096 ./node_modules/vite/bin/vite.js build --mode internal",
+    "build:internal": "node ../../desktop/scripts/run-internal-build.mjs",
     "serve:dev": "vite preview --mode dev",
     "serve:prod": "vite preview --mode prod",
     "serve:internal": "vite preview --mode internal",
@@ -46,6 +47,7 @@
     "crypto-js": "^4.2.0",
     "dayjs": "^1.11.10",
     "diagram-js": "^12.8.0",
+    "dom7": "4.0.6",
     "driver.js": "^1.3.1",
     "echarts": "6.1.0",
     "echarts-wordcloud": "^2.1.0",
@@ -83,10 +85,10 @@
     "xml-js": "^1.6.11"
   },
   "devDependencies": {
-    "@form-create/designer": "^3.2.6",
-    "@form-create/element-ui": "^3.2.11",
     "@commitlint/cli": "^19.0.1",
     "@commitlint/config-conventional": "^19.0.0",
+    "@form-create/designer": "^3.2.6",
+    "@form-create/element-ui": "^3.2.11",
     "@iconify/json": "^2.2.187",
     "@intlify/unplugin-vue-i18n": "^2.0.0",
     "@purge-icons/generated": "^0.9.0",
@@ -155,8 +157,8 @@
   "homepage": "https://github.com/SaberAltriaYi/rehab-management-system",
   "web-types": "./web-types.json",
   "engines": {
-    "node": ">= 16.0.0",
-    "pnpm": ">=8.6.0"
+    "node": ">=22.15.0 <23",
+    "pnpm": "10.15.1"
   },
   "pnpm": {
     "overrides": {
@@ -178,5 +180,6 @@
       "nanoid@^3.0.0": "3.3.18",
       "nanoid@^5.0.0": "5.1.16"
     }
-  }
+  },
+  "packageManager": "pnpm@10.15.1"
 }

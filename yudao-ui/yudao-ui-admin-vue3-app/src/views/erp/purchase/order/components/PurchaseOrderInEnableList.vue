@@ -147,9 +147,9 @@ const queryFormRef = ref() // 搜索的表单
 const productList = ref<ProductVO[]>([]) // 产品列表
 
 /** 选中行 */
-const currentRowValue = ref(undefined) // 选中行的 value
-const currentRow = ref(undefined) // 选中行
-const handleCurrentChange = (row) => {
+const currentRowValue = ref<number>() // 选中行的 value
+const currentRow = ref<PurchaseOrderVO>() // 选中行
+const handleCurrentChange = (row: PurchaseOrderVO | undefined) => {
   currentRow.value = row
 }
 
@@ -169,6 +169,7 @@ const emits = defineEmits<{
   (e: 'success', value: PurchaseOrderVO): void
 }>()
 const submitForm = () => {
+  if (!currentRow.value) return
   try {
     emits('success', currentRow.value)
   } finally {

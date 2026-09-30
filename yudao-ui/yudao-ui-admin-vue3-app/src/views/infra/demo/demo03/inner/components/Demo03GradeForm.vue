@@ -18,7 +18,7 @@
 import { Demo03StudentApi } from '@/api/infra/demo/demo03/inner'
 
 const props = defineProps<{
-  studentId: number // 学生编号（主表的关联字段）
+  studentId?: number // 新建主表时编号尚未分配
 }>()
 const formLoading = ref(false) // 表单的加载中
 const formData = ref<any>({})

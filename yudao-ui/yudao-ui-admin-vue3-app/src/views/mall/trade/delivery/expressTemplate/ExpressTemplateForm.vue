@@ -148,7 +148,16 @@ const dialogVisible = ref(false) // 弹窗的是否展示
 const dialogTitle = ref('') // 弹窗的标题
 const formLoading = ref(false) // 表单的加载中：1）修改时的数据加载；2）提交的按钮禁用
 const formType = ref('') // 表单的类型：create - 新增；update - 修改
-const formData = ref({
+// 表单以元显示金额，提交时再转换为 API 使用的分。
+type ExpressTemplateFormData = {
+  id?: number
+  name: string
+  chargeMode: number
+  sort: number
+  charges: DeliveryExpressTemplateApi.ExpressTemplateChargeVO[]
+  frees: DeliveryExpressTemplateApi.ExpressTemplateFreeVO[]
+}
+const formData = ref<ExpressTemplateFormData>({
   id: undefined,
   name: '',
   chargeMode: 1,
@@ -183,11 +192,11 @@ const open = async (type: string, id?: number) => {
       columnTitle.value = columnTitleMap.get(formData.value.chargeMode)
       formData.value.charges.forEach((item) => {
         // 前端价格以元展示
-        item.startPrice = fenToYuan(item.startPrice)
-        item.extraPrice = fenToYuan(item.extraPrice)
+        item.startPrice = Number(fenToYuan(item.startPrice))
+        item.extraPrice = Number(fenToYuan(item.extraPrice))
       })
       formData.value.frees.forEach((item) => {
-        item.freePrice = fenToYuan(item.freePrice)
+        item.freePrice = Number(fenToYuan(item.freePrice))
       })
     }
   } finally {
@@ -206,7 +215,7 @@ const submitForm = async () => {
   // 提交请求
   formLoading.value = true
   try {
-    const data = cloneDeep(formData.value) as DeliveryExpressTemplateApi.DeliveryExpressTemplateVO
+    const data: DeliveryExpressTemplateApi.DeliveryExpressTemplateVO = cloneDeep(formData.value)
     // 前端价格以元展示，提交到后端。用分计算
     data.charges.forEach((item) => {
       item.startPrice = yuanToFen(item.startPrice)

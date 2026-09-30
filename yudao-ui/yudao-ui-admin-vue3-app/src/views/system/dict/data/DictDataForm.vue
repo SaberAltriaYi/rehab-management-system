@@ -71,7 +71,7 @@ const dialogVisible = ref(false) // 弹窗的是否展示
 const dialogTitle = ref('') // 弹窗的标题
 const formLoading = ref(false) // 表单的加载中：1）修改时的数据加载；2）提交的按钮禁用
 const formType = ref('') // 表单的类型：create - 新增；update - 修改
-const formData = ref({
+const formData = ref<Omit<DictDataApi.DictDataSaveReqVO, 'sort'> & { sort?: number }>({
   id: undefined,
   sort: undefined,
   label: '',
@@ -143,18 +143,24 @@ defineExpose({ open }) // 提供 open 方法，用于打开弹窗
 const emit = defineEmits(['success']) // 定义 success 事件，用于操作成功后的回调
 const submitForm = async () => {
   // 校验表单
-  if (!formRef) return
+  if (!formRef.value) return
   const valid = await formRef.value.validate()
   if (!valid) return
+  const { id, sort } = formData.value
+  if (sort === undefined) {
+    message.error('数据顺序不能为空')
+    return
+  }
   // 提交请求
   formLoading.value = true
   try {
-    const data = formData.value as DictDataApi.DictDataVO
+    const data: DictDataApi.DictDataSaveReqVO = { ...formData.value, sort }
     if (formType.value === 'create') {
       await DictDataApi.createDictData(data)
       message.success(t('common.createSuccess'))
     } else {
-      await DictDataApi.updateDictData(data)
+      if (id === undefined) throw new Error('字典数据编号未加载')
+      await DictDataApi.updateDictData({ ...data, id })
       message.success(t('common.updateSuccess'))
     }
     dialogVisible.value = false

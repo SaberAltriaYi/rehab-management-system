@@ -31,7 +31,7 @@ import {
   StatisticsPerformanceRespVO
 } from '@/api/crm/statistics/performance'
 
-defineOptions({ name: 'ContractPricePerformance' })
+defineOptions({ name: 'ReceivablePricePerformance' })
 const props = defineProps<{ queryParams: any }>() // 搜索参数
 
 const loading = ref(false) // 加载中
@@ -120,7 +120,6 @@ const echartsOption = reactive<EChartsOption>({
       type: 'value',
       name: '',
       axisTick: {
-        alignWithLabel: true,
         lineStyle: {
           width: 0
         }
@@ -177,7 +176,7 @@ const loadData = async () => {
         : 'NULL'
     )
   }
-  if (echartsOption.series && echartsOption.series[2] && echartsOption.series[1]['data']) {
+  if (echartsOption.series && echartsOption.series[2] && echartsOption.series[2]['data']) {
     echartsOption.series[2]['data'] = performanceList.map(
       (s: StatisticsPerformanceRespVO) => s.lastYearCount
     )
@@ -195,8 +194,10 @@ const loadData = async () => {
 }
 
 // 初始化数据
-const columnsData = reactive([])
-const tableData = reactive([
+type PerformanceColumn = { label: string; prop: string }
+type PerformanceRow = { title: string } & Record<string, string | number>
+const columnsData = reactive<PerformanceColumn[]>([])
+const tableData = reactive<PerformanceRow[]>([
   { title: '当月回款金额统计（元）' },
   { title: '上月回款金额统计（元）' },
   { title: '去年当月回款金额统计（元）' },

@@ -92,7 +92,7 @@ const resetForm = () => {
   }
   formRef.value?.resetFields()
 }
-const deliveryExpressList = ref([])
+const deliveryExpressList = ref<DeliveryExpressApi.DeliveryExpressVO[]>([])
 onMounted(async () => {
   deliveryExpressList.value = await DeliveryExpressApi.getSimpleDeliveryExpressList()
 })

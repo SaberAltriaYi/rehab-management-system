@@ -153,6 +153,7 @@
   </Dialog>
 </template>
 <script setup lang="ts">
+import type { WarehouseOrderFormData } from '@/views/erp/shared/WarehouseTransactionItem'
 import { SaleOrderApi, SaleOrderVO } from '@/api/erp/sale/order'
 import SaleOrderItemForm from './components/SaleOrderItemForm.vue'
 import { CustomerApi, CustomerVO } from '@/api/erp/sale/customer'
@@ -170,7 +171,7 @@ const dialogVisible = ref(false) // 弹窗的是否展示
 const dialogTitle = ref('') // 弹窗的标题
 const formLoading = ref(false) // 表单的加载中：1）修改时的数据加载；2）提交的按钮禁用
 const formType = ref('') // 表单的类型：create - 新增；update - 修改；detail - 详情
-const formData = ref({
+const formData = ref<WarehouseOrderFormData>({
   id: undefined,
   customerId: undefined,
   accountId: undefined,
@@ -206,9 +207,9 @@ watch(
     if (!val) {
       return
     }
-    const totalPrice = val.items.reduce((prev, curr) => prev + curr.totalPrice, 0)
+    const totalPrice = val.items.reduce((prev, curr) => prev + (curr.totalPrice ?? 0), 0)
     const discountPrice =
-      val.discountPercent != null ? erpPriceMultiply(totalPrice, val.discountPercent / 100.0) : 0
+      (val.discountPercent != null ? erpPriceMultiply(totalPrice, val.discountPercent / 100.0) : 0) ?? 0
     formData.value.discountPrice = discountPrice
     formData.value.totalPrice = totalPrice - discountPrice
   },
@@ -225,7 +226,8 @@ const open = async (type: string, id?: number) => {
   if (id) {
     formLoading.value = true
     try {
-      formData.value = await SaleOrderApi.getSaleOrder(id)
+      const saved = await SaleOrderApi.getSaleOrder(id)
+      formData.value = { ...saved, fileUrl: saved.fileUrl ?? '' }
     } finally {
       formLoading.value = false
     }
@@ -277,7 +279,7 @@ const resetForm = () => {
     saleUserId: undefined,
     orderTime: undefined,
     remark: undefined,
-    fileUrl: undefined,
+    fileUrl: '',
     discountPercent: 0,
     discountPrice: 0,
     totalPrice: 0,

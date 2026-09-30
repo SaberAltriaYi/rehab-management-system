@@ -230,8 +230,8 @@ const queryParams = reactive({
   loginDate: [],
   createTime: [],
   tagIds: [],
-  levelId: null,
-  groupId: null
+  levelId: undefined,
+  groupId: undefined
 })
 const queryFormRef = ref() // 搜索的表单
 const updateLevelFormRef = ref() // 修改会员等级表单

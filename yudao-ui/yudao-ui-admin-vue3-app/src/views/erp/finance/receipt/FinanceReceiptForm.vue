@@ -146,6 +146,7 @@
 </template>
 <script setup lang="ts">
 import { FinanceReceiptApi, FinanceReceiptVO } from '@/api/erp/finance/receipt'
+import type { FinanceReceiptDraft } from '@/views/erp/shared/FinanceSettlementItem'
 import FinanceReceiptItemForm from './components/FinanceReceiptItemForm.vue'
 import { erpPriceInputFormatter } from '@/utils'
 import * as UserApi from '@/api/system/user'
@@ -162,7 +163,7 @@ const dialogVisible = ref(false) // 弹窗的是否展示
 const dialogTitle = ref('') // 弹窗的标题
 const formLoading = ref(false) // 表单的加载中：1）修改时的数据加载；2）提交的按钮禁用
 const formType = ref('') // 表单的类型：create - 新增；update - 修改；detail - 详情
-const formData = ref({
+const formData = ref<FinanceReceiptDraft>({
   id: undefined,
   customerId: undefined,
   accountId: undefined,
@@ -214,7 +215,8 @@ const open = async (type: string, id?: number) => {
   if (id) {
     formLoading.value = true
     try {
-      formData.value = await FinanceReceiptApi.getFinanceReceipt(id)
+      const saved = await FinanceReceiptApi.getFinanceReceipt(id)
+      formData.value = { ...saved, fileUrl: saved.fileUrl ?? '' }
     } finally {
       formLoading.value = false
     }
@@ -266,7 +268,7 @@ const resetForm = () => {
     financeUserId: undefined,
     receiptTime: undefined,
     remark: undefined,
-    fileUrl: undefined,
+    fileUrl: '',
     totalPrice: 0,
     discountPrice: 0,
     receiptPrice: 0,

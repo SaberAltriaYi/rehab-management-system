@@ -1,6 +1,6 @@
 <template>
   <div>
-    <Dialog v-model="dialogVisible" :title="dialogTitle" width="830px" @closed="close">
+    <Dialog v-model="dialogVisible" :title="dialogTitle" width="830px">
       <el-form
         ref="formRef"
         v-loading="formLoading"
@@ -191,6 +191,7 @@
 import { CommonStatusEnum } from '@/utils/constants'
 import { DICT_TYPE, getDictOptions } from '@/utils/dict'
 import * as ChannelApi from '@/api/pay/channel'
+import type { UploadRequestOptions } from 'element-plus'
 
 defineOptions({ name: 'AlipayChannelForm' })
 
@@ -325,27 +326,27 @@ const fileBeforeUpload = (file) => {
   return isRightSize
 }
 
-const appCertUpload = (event) => {
-  const readFile = new FileReader()
-  readFile.onload = (e: any) => {
-    formData.value.config.appCertContent = e.target.result
-  }
-  readFile.readAsText(event.file)
-}
+const readCertificate = (event: UploadRequestOptions, save: (content: string) => void): Promise<void> =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      if (typeof reader.result !== 'string') {
+        reject(new Error('证书内容读取失败'))
+        return
+      }
+      save(reader.result)
+      resolve()
+    }
+    reader.onerror = () => reject(reader.error ?? new Error('证书读取失败'))
+    reader.readAsText(event.file)
+  })
 
-const alipayPublicCertUpload = (event) => {
-  const readFile = new FileReader()
-  readFile.onload = (e: any) => {
-    formData.value.config.alipayPublicCertContent = e.target.result
-  }
-  readFile.readAsText(event.file)
-}
+const appCertUpload = (event: UploadRequestOptions) =>
+  readCertificate(event, (content) => { formData.value.config.appCertContent = content })
 
-const rootCertUpload = (event) => {
-  const readFile = new FileReader()
-  readFile.onload = (e: any) => {
-    formData.value.config.rootCertContent = e.target.result
-  }
-  readFile.readAsText(event.file)
-}
+const alipayPublicCertUpload = (event: UploadRequestOptions) =>
+  readCertificate(event, (content) => { formData.value.config.alipayPublicCertContent = content })
+
+const rootCertUpload = (event: UploadRequestOptions) =>
+  readCertificate(event, (content) => { formData.value.config.rootCertContent = content })
 </script>

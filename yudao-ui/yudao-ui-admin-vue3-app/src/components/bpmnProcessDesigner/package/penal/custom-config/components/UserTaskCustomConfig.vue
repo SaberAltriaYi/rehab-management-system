@@ -231,7 +231,7 @@ const rejectHandlerTypeEl = ref()
 const rejectHandlerType = ref()
 const returnNodeIdEl = ref()
 const returnNodeId = ref()
-const returnTaskList = ref([])
+const returnTaskList = ref<Array<{ id: string; name: string }>>([])
 
 // 审批人为空时
 const assignEmptyHandlerTypeEl = ref()
@@ -250,7 +250,7 @@ const btnDisplayNameBlurEvent = (index: number) => {
 }
 
 // 字段权限
-const fieldsPermissionEl = ref([])
+const fieldsPermissionEl = ref<Array<{ field: string; title: string; permission: FieldPermissionType }>>([])
 const { formType, fieldsPermissionConfig, getNodeConfigFormFields } = useFormFieldsPermission(
   FieldPermissionType.READ
 )
@@ -454,7 +454,7 @@ watch(
 function findAllPredecessorsExcludingStart(elementId, modeler) {
   const elementRegistry = modeler.get('elementRegistry')
   const allConnections = elementRegistry.filter((element) => element.type === 'bpmn:SequenceFlow')
-  const predecessors = new Set() // 使用 Set 来避免重复节点
+  const predecessors = new Set<{ id: string; name: string }>() // 使用 Set 来避免重复节点
   const visited = new Set() // 用于记录已访问的节点
 
   // 检查是否是开始事件节点

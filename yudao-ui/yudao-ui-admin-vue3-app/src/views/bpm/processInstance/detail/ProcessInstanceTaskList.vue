@@ -72,7 +72,8 @@ const props = defineProps({
 const tasks = ref([]) // 流程任务的数组
 
 /** 查看表单 */
-const fApi = ref<ApiAttrs>() // form-create 的 API 操作类
+type ReadOnlyFormApi = ApiAttrs & { disabled(disabled: boolean): void }
+const fApi = ref<{ fapi: ReadOnlyFormApi } | null>(null) // form-create 组件在实例上暴露 fapi
 const taskForm = ref({
   rule: [],
   option: {},
@@ -86,7 +87,7 @@ const handleFormDetail = async (row: any) => {
   taskFormVisible.value = true
   // 隐藏提交、重置按钮，设置禁用只读
   await nextTick()
-  fApi.value.fapi.btn.show(false)
+  fApi.value?.fapi.btn.show(false)
   fApi.value?.fapi?.resetBtn.show(false)
   fApi.value?.fapi?.disabled(true)
 }
