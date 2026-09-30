@@ -17,7 +17,10 @@ import cn.iocoder.yudao.module.rehab.dal.mysql.task.RehabExerciseTaskMapper;
 import cn.iocoder.yudao.module.rehab.dal.mysql.task.RehabTaskScheduleMapper;
 import cn.iocoder.yudao.module.rehab.dal.mysql.trigger.RehabReassessmentTriggerMapper;
 import cn.iocoder.yudao.module.rehab.enums.RehabRoleCodeConstants;
+import cn.iocoder.yudao.module.rehab.enums.RehabEpisodeConstants;
+import cn.iocoder.yudao.module.rehab.enums.RehabStageConstants;
 import cn.iocoder.yudao.module.rehab.service.RehabDataPermissionService;
+import cn.iocoder.yudao.module.rehab.service.episode.RehabEpisodeService;
 import cn.iocoder.yudao.module.system.api.permission.PermissionApi;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import org.junit.jupiter.api.BeforeEach;
@@ -65,6 +68,8 @@ class RehabCarePlanServiceImplTest {
     private PermissionApi permissionApi;
     @Mock
     private AdminUserApi adminUserApi;
+    @Mock
+    private RehabEpisodeService episodeService;
 
     @BeforeEach
     void setUp() {
@@ -86,6 +91,7 @@ class RehabCarePlanServiceImplTest {
         ReflectionTestUtils.setField(carePlanService, "triggerMapper", triggerMapper);
         ReflectionTestUtils.setField(carePlanService, "dataPermissionService", dataPermissionService);
         ReflectionTestUtils.setField(carePlanService, "adminUserApi", adminUserApi);
+        ReflectionTestUtils.setField(carePlanService, "episodeService", episodeService);
 
         lenient().when(permissionApi.hasAnyRoles(anyLong(), anyString())).thenReturn(false);
     }
@@ -120,6 +126,43 @@ class RehabCarePlanServiceImplTest {
                 Objects.equals(item.getId(), 30001L)
                         && item.getPlanNo() != null
                         && item.getPlanNo().startsWith("PLN")));
+    }
+
+    @Test
+    void createActivePlan_shouldMoveEpisodeToInProgress() {
+        RehabCarePlanCreateReqVO reqVO = new RehabCarePlanCreateReqVO();
+        reqVO.setPatientId(10001L);
+        reqVO.setEpisodeId(13001L);
+        reqVO.setPlanName("立即执行计划");
+        reqVO.setStatus("active");
+        reqVO.setStartDate(LocalDate.now());
+
+        when(permissionApi.hasAnyRoles(1L, RehabRoleCodeConstants.SUPER_ADMIN)).thenReturn(true);
+        when(patientMapper.selectById(10001L)).thenReturn(RehabPatientDO.builder().id(10001L).build());
+        when(episodeMapper.selectById(13001L)).thenReturn(RehabEpisodeDO.builder()
+                .id(13001L)
+                .patientId(10001L)
+                .currentStage(RehabStageConstants.ASSESSING)
+                .status(RehabEpisodeConstants.STATUS_ACTIVE)
+                .build());
+        when(planMapper.selectActiveByPatientEpisode(10001L, 13001L)).thenReturn(null);
+        doAnswer(invocation -> {
+            RehabCarePlanDO item = invocation.getArgument(0);
+            item.setId(30002L);
+            return 1;
+        }).when(planMapper).insert(any(RehabCarePlanDO.class));
+        when(planMapper.selectById(30002L)).thenReturn(RehabCarePlanDO.builder()
+                .id(30002L)
+                .patientId(10001L)
+                .episodeId(13001L)
+                .status("active")
+                .build());
+
+        carePlanService.createPlan(reqVO, 1L);
+
+        verify(episodeService).changeStage(argThat(item ->
+                Objects.equals(item.getId(), 13001L)
+                        && Objects.equals(item.getCurrentStage(), RehabStageConstants.IN_PROGRESS)), eq(1L));
     }
 
     @Test

@@ -1,0 +1,21 @@
+{
+  "name": "rehab-admin-mini",
+  "appid": "__UNI__REHAB_ADMIN_MINI",
+  "description": "康复管理端小程序 MVP",
+  "versionName": "1.0.0",
+  "versionCode": "100",
+  "transformPx": false,
+  "app-plus": {
+    "usingComponents": true
+  },
+  "mp-weixin": {
+    "appid": "",
+    "setting": {
+      "urlCheck": false
+    },
+    "usingComponents": true
+  },
+  "h5": {
+    "title": "rehab-admin-mini"
+  }
+}

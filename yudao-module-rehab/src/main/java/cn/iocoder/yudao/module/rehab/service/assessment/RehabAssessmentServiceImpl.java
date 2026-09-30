@@ -9,6 +9,7 @@ import cn.iocoder.yudao.framework.common.util.json.JsonUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.framework.mybatis.core.query.LambdaQueryWrapperX;
 import cn.iocoder.yudao.module.rehab.controller.admin.assessment.vo.*;
+import cn.iocoder.yudao.module.rehab.controller.admin.episode.vo.RehabEpisodeChangeStageReqVO;
 import cn.iocoder.yudao.module.rehab.controller.admin.episode.vo.RehabEpisodeRespVO;
 import cn.iocoder.yudao.module.rehab.controller.admin.patient.vo.RehabPatientRespVO;
 import cn.iocoder.yudao.module.rehab.dal.dataobject.assessment.*;
@@ -19,8 +20,11 @@ import cn.iocoder.yudao.module.rehab.dal.mysql.episode.RehabEpisodeMapper;
 import cn.iocoder.yudao.module.rehab.dal.mysql.patient.RehabPatientMapper;
 import cn.iocoder.yudao.module.rehab.dal.mysql.report.RehabReportMapper;
 import cn.iocoder.yudao.module.rehab.enums.RehabAssessmentConstants;
+import cn.iocoder.yudao.module.rehab.enums.RehabEpisodeConstants;
 import cn.iocoder.yudao.module.rehab.enums.RehabOperationTypeConstants;
+import cn.iocoder.yudao.module.rehab.enums.RehabStageConstants;
 import cn.iocoder.yudao.module.rehab.service.RehabDataPermissionService;
+import cn.iocoder.yudao.module.rehab.service.episode.RehabEpisodeService;
 import cn.iocoder.yudao.module.rehab.service.log.RehabAuditLogService;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import cn.iocoder.yudao.module.system.api.user.dto.AdminUserRespDTO;
@@ -89,6 +93,8 @@ public class RehabAssessmentServiceImpl implements RehabAssessmentService {
     private RehabSfmaSummaryBuilder sfmaSummaryBuilder;
     @Resource
     private RehabSfmaBookProtocol sfmaBookProtocol;
+    @Resource
+    private RehabEpisodeService episodeService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -137,6 +143,7 @@ public class RehabAssessmentServiceImpl implements RehabAssessmentService {
         }
         ensurePrimaryModuleData(assessment.getId(), assessment.getAssessmentType());
         refreshAssessmentDerivedStatus(assessment.getId());
+        syncEpisodeStageAfterAssessment(assessment.getId(), operatorUserId);
 
         createOperationLog(assessment.getId(), RehabOperationTypeConstants.ASSESSMENT_CREATE, operatorUserId,
                 null, assessmentRecordMapper.selectById(assessment.getId()), "创建评估记录");
@@ -176,6 +183,7 @@ public class RehabAssessmentServiceImpl implements RehabAssessmentService {
         }
         ensurePrimaryModuleData(reqVO.getId(), updateObj.getAssessmentType());
         refreshAssessmentDerivedStatus(reqVO.getId());
+        syncEpisodeStageAfterAssessment(reqVO.getId(), operatorUserId);
 
         RehabAssessmentRecordDO newAssessment = assessmentRecordMapper.selectById(reqVO.getId());
         createOperationLog(reqVO.getId(), RehabOperationTypeConstants.ASSESSMENT_UPDATE, operatorUserId,
@@ -278,6 +286,7 @@ public class RehabAssessmentServiceImpl implements RehabAssessmentService {
         RehabAssessmentModuleDataDO saved = upsertModuleData(reqVO.getAssessmentId(), reqVO.getModuleType(), reqVO.getModuleStatus(),
                 reqVO.getDataJson(), reqVO.getSourceType(), reqVO.getVersion(), reqVO.getNote());
         refreshAssessmentDerivedStatus(reqVO.getAssessmentId());
+        syncEpisodeStageAfterAssessment(reqVO.getAssessmentId(), operatorUserId);
 
         createOperationLog(reqVO.getAssessmentId(), RehabOperationTypeConstants.ASSESSMENT_PARSE, operatorUserId,
                 oldData, saved, "保存模块数据: " + reqVO.getModuleType());
@@ -465,7 +474,7 @@ public class RehabAssessmentServiceImpl implements RehabAssessmentService {
         if (StrUtil.isBlank(moduleType)) {
             throw exception(ASSESSMENT_TYPE_INVALID);
         }
-        upsertModuleData(assessmentId, moduleType, RehabAssessmentConstants.MODULE_STATUS_COMPLETED,
+        upsertModuleData(assessmentId, moduleType, RehabAssessmentConstants.MODULE_STATUS_PARTIAL,
                 Collections.emptyMap(), RehabAssessmentConstants.MODULE_SOURCE_MANUAL, "v1",
                 "按评估类型自动初始化占位模块");
     }
@@ -499,6 +508,10 @@ public class RehabAssessmentServiceImpl implements RehabAssessmentService {
         data.setModuleType(moduleType);
         data.setModuleStatus(StrUtil.blankToDefault(moduleStatus, RehabAssessmentConstants.MODULE_STATUS_COMPLETED));
         data.setDataJson(buildAndSerializeModuleData(moduleType, dataJson));
+        if (ObjUtil.equals(data.getModuleStatus(), RehabAssessmentConstants.MODULE_STATUS_COMPLETED)
+                && !isModulePayloadComplete(data)) {
+            data.setModuleStatus(RehabAssessmentConstants.MODULE_STATUS_PARTIAL);
+        }
         data.setSourceType(StrUtil.blankToDefault(sourceType, RehabAssessmentConstants.MODULE_SOURCE_MANUAL));
         data.setVersion(StrUtil.blankToDefault(version, "v1"));
         data.setNote(note);
@@ -577,7 +590,7 @@ public class RehabAssessmentServiceImpl implements RehabAssessmentService {
             rawInputStatus = RehabAssessmentConstants.RAW_INPUT_MISSING;
         } else {
             long completedCount = modules.stream()
-                    .filter(item -> ObjUtil.equals(item.getModuleStatus(), RehabAssessmentConstants.MODULE_STATUS_COMPLETED))
+                    .filter(this::isModuleComplete)
                     .count();
             if (completedCount == modules.size()) {
                 rawInputStatus = RehabAssessmentConstants.RAW_INPUT_COMPLETE;
@@ -587,7 +600,9 @@ public class RehabAssessmentServiceImpl implements RehabAssessmentService {
         }
 
         RehabAssessmentRecordDO updateObj = new RehabAssessmentRecordDO().setId(assessmentId)
-                .setRawInputStatus(rawInputStatus);
+                .setRawInputStatus(rawInputStatus)
+                .setQualityGrade(resolveQualityGrade(rawInputStatus, assessment.getStatus()))
+                .setConfidenceGrade(resolveConfidenceGrade(rawInputStatus, assessment.getStatus()));
 
         if (!ObjUtil.equals(assessment.getStatus(), RehabAssessmentConstants.STATUS_REVIEWED)) {
             if (ObjUtil.equals(rawInputStatus, RehabAssessmentConstants.RAW_INPUT_COMPLETE)) {
@@ -597,6 +612,121 @@ public class RehabAssessmentServiceImpl implements RehabAssessmentService {
             }
         }
         assessmentRecordMapper.updateById(updateObj);
+    }
+
+    private boolean isModuleComplete(RehabAssessmentModuleDataDO module) {
+        if (!ObjUtil.equals(module.getModuleStatus(), RehabAssessmentConstants.MODULE_STATUS_COMPLETED)) {
+            return false;
+        }
+        return isModulePayloadComplete(module);
+    }
+
+    private boolean isModulePayloadComplete(RehabAssessmentModuleDataDO module) {
+        if (!ObjUtil.equals(module.getModuleType(), RehabAssessmentConstants.MODULE_STATIC)) {
+            return true;
+        }
+        try {
+            Map<String, Object> payload = JsonUtils.parseObject(module.getDataJson(), Map.class);
+            if (!isStaticBasicInfoComplete(castMap(payload == null ? null : payload.get("basic_info")))) {
+                return false;
+            }
+            Map<String, Object> staticSummary = castMap(payload == null ? null : payload.get("static_summary"));
+            if (staticSummary == null) {
+                return false;
+            }
+            return sumMissingCount(staticSummary, "posterior_view_summary")
+                    + sumMissingCount(staticSummary, "lateral_view_summary")
+                    + sumMissingCount(staticSummary, "anterior_view_summary") == 0;
+        } catch (RuntimeException ex) {
+            log.warn("[assessment][quality] 静态评估完整性解析失败，按不完整处理. moduleId={}", module.getId());
+            return false;
+        }
+    }
+
+    private boolean isStaticBasicInfoComplete(Map<String, Object> basicInfo) {
+        if (basicInfo == null) {
+            return false;
+        }
+        return isFilled(basicInfo.get("name"))
+                && isFilled(basicInfo.get("assessment_date"))
+                && isFilled(basicInfo.get("assessor"))
+                && isFilled(basicInfo.get("height_cm"))
+                && isFilled(basicInfo.get("weight_kg"))
+                && isFilled(basicInfo.get("age"))
+                && isFilled(basicInfo.get("gender"));
+    }
+
+    private boolean isFilled(Object value) {
+        return value != null && (!(value instanceof CharSequence)
+                || StrUtil.isNotBlank(value.toString()));
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> castMap(Object value) {
+        return value instanceof Map ? (Map<String, Object>) value : null;
+    }
+
+    private int sumMissingCount(Map<String, Object> staticSummary, String key) {
+        Map<String, Object> view = castMap(staticSummary.get(key));
+        Object value = view == null ? null : view.get("missing_count");
+        return value instanceof Number ? ((Number) value).intValue() : 1;
+    }
+
+    private String resolveQualityGrade(String rawInputStatus, String currentStatus) {
+        if (ObjUtil.equals(currentStatus, RehabAssessmentConstants.STATUS_REVIEWED)
+                && ObjUtil.equals(rawInputStatus, RehabAssessmentConstants.RAW_INPUT_COMPLETE)) {
+            return RehabAssessmentConstants.QUALITY_A;
+        }
+        if (ObjUtil.equals(rawInputStatus, RehabAssessmentConstants.RAW_INPUT_COMPLETE)) {
+            return RehabAssessmentConstants.QUALITY_B;
+        }
+        if (ObjUtil.equals(rawInputStatus, RehabAssessmentConstants.RAW_INPUT_PARTIAL)) {
+            return RehabAssessmentConstants.QUALITY_C;
+        }
+        return RehabAssessmentConstants.QUALITY_D;
+    }
+
+    private String resolveConfidenceGrade(String rawInputStatus, String currentStatus) {
+        if (ObjUtil.equals(currentStatus, RehabAssessmentConstants.STATUS_REVIEWED)
+                && ObjUtil.equals(rawInputStatus, RehabAssessmentConstants.RAW_INPUT_COMPLETE)) {
+            return RehabAssessmentConstants.CONFIDENCE_HIGH;
+        }
+        if (ObjUtil.equals(rawInputStatus, RehabAssessmentConstants.RAW_INPUT_COMPLETE)) {
+            return RehabAssessmentConstants.CONFIDENCE_MEDIUM;
+        }
+        return RehabAssessmentConstants.CONFIDENCE_LOW;
+    }
+
+    private void syncEpisodeStageAfterAssessment(Long assessmentId, Long operatorUserId) {
+        RehabAssessmentRecordDO assessment = assessmentRecordMapper.selectById(assessmentId);
+        if (assessment == null || assessment.getEpisodeId() == null) {
+            return;
+        }
+        RehabEpisodeDO episode = episodeMapper.selectById(assessment.getEpisodeId());
+        if (episode == null || !ObjUtil.equals(episode.getStatus(), RehabEpisodeConstants.STATUS_ACTIVE)) {
+            return;
+        }
+        String targetStage = null;
+        String remark = null;
+        if (ObjUtil.equals(episode.getCurrentStage(), RehabStageConstants.INTAKE)
+                || ObjUtil.equals(episode.getCurrentStage(), RehabStageConstants.PENDING_ASSESSMENT)) {
+            targetStage = RehabStageConstants.ASSESSING;
+            remark = "开始评估，系统自动进入评估中";
+        } else if (ObjUtil.equals(episode.getCurrentStage(), RehabStageConstants.REASSESSING)
+                && (ObjUtil.equals(assessment.getStatus(), RehabAssessmentConstants.STATUS_COMPLETED)
+                || ObjUtil.equals(assessment.getStatus(), RehabAssessmentConstants.STATUS_REVIEWED))) {
+            targetStage = RehabStageConstants.IN_PROGRESS;
+            remark = "复评完成，系统自动返回执行中";
+        }
+        if (targetStage == null) {
+            return;
+        }
+        RehabEpisodeChangeStageReqVO reqVO = new RehabEpisodeChangeStageReqVO();
+        reqVO.setId(episode.getId());
+        reqVO.setCurrentStage(targetStage);
+        reqVO.setStatus(RehabEpisodeConstants.STATUS_ACTIVE);
+        reqVO.setRemark(remark);
+        episodeService.changeStage(reqVO, operatorUserId);
     }
 
     private void createOperationLog(Long assessmentId, String operationType, Long operatorUserId,

@@ -1,0 +1,70 @@
+{
+  "pages": [
+    {
+      "path": "pages/login/index",
+      "style": {
+        "navigationBarTitleText": "患者登录"
+      }
+    },
+    {
+      "path": "pages/bind/index",
+      "style": {
+        "navigationBarTitleText": "身份绑定"
+      }
+    },
+    {
+      "path": "pages/home/index",
+      "style": {
+        "navigationBarTitleText": "康复首页"
+      }
+    },
+    {
+      "path": "pages/report/index",
+      "style": {
+        "navigationBarTitleText": "我的报告"
+      }
+    },
+    {
+      "path": "pages/plan/index",
+      "style": {
+        "navigationBarTitleText": "我的计划"
+      }
+    },
+    {
+      "path": "pages/task/today",
+      "style": {
+        "navigationBarTitleText": "今日任务"
+      }
+    },
+    {
+      "path": "pages/checkin/submit",
+      "style": {
+        "navigationBarTitleText": "训练打卡"
+      }
+    },
+    {
+      "path": "pages/history/index",
+      "style": {
+        "navigationBarTitleText": "训练历史"
+      }
+    },
+    {
+      "path": "pages/notification/index",
+      "style": {
+        "navigationBarTitleText": "通知中心"
+      }
+    },
+    {
+      "path": "pages/profile/index",
+      "style": {
+        "navigationBarTitleText": "我的"
+      }
+    }
+  ],
+  "globalStyle": {
+    "navigationBarTextStyle": "black",
+    "navigationBarTitleText": "康复患者端",
+    "navigationBarBackgroundColor": "#ffffff",
+    "backgroundColor": "#f8fafc"
+  }
+}

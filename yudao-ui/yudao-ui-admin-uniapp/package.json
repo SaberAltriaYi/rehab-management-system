@@ -1,0 +1,10 @@
+{
+  "name": "rehab-admin-mini",
+  "version": "1.0.0",
+  "private": true,
+  "description": "康复管理端 UniApp（Step 5 MVP）",
+  "scripts": {
+    "dev:h5": "uni -p h5",
+    "build:h5": "uni build -p h5"
+  }
+}

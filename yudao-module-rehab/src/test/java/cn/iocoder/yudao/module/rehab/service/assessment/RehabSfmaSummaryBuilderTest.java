@@ -112,6 +112,50 @@ class RehabSfmaSummaryBuilderTest {
     }
 
     @Test
+    void enrichWithSummary_shouldProjectCompletedBookWorkflowToLegacyBreakoutAndReport() {
+        Map<String, Object> workflow = new HashMap<>();
+        workflow.put("status", "completed");
+        workflow.put("steps", List.of(new HashMap<String, Object>() {{
+            put("test_code", "mse_prone_press_up");
+            put("status", "completed");
+            put("classification", "DN");
+        }}));
+
+        Map<String, Object> bookProtocol = new HashMap<>();
+        bookProtocol.put("workflows", new HashMap<String, Object>() {{
+            put("mse", workflow);
+        }});
+
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("book_protocol", bookProtocol);
+        payload.put("mse_breakout", new HashMap<String, Object>() {{
+            put("breakout_status", "not_started");
+        }});
+        payload.put("top_tier", new HashMap<String, Object>() {{
+            put("multi_segmental_extension", new HashMap<String, Object>() {{
+                put("classification", "DN");
+            }});
+        }});
+
+        Map<String, Object> enriched = builder.enrichWithSummary(payload);
+
+        Map<String, Object> breakouts = (Map<String, Object>) enriched.get("breakouts");
+        Map<String, Object> mse = (Map<String, Object>) breakouts.get("mse_breakout");
+        assertEquals("completed", mse.get("status"));
+        assertTrue(String.valueOf(mse.get("source_id")).startsWith(RehabSfmaBookProtocol.PROTOCOL_ID + ":"));
+
+        Map<String, Object> summary = (Map<String, Object>) enriched.get("summary");
+        Map<String, Object> breakoutSummaryItem = (Map<String, Object>) summary.get("breakout_summary_item");
+        Map<String, Object> mseSummary = (Map<String, Object>) breakoutSummaryItem.get("multi_segmental_extension");
+        assertEquals("completed", mseSummary.get("breakout_status"));
+        assertTrue(String.valueOf(mseSummary.get("summary_text")).contains("原书版"));
+
+        Map<String, Object> topTierSummaryItem = (Map<String, Object>) summary.get("top_tier_summary_item");
+        Map<String, Object> mseTopTier = (Map<String, Object>) topTierSummaryItem.get("multi_segmental_extension");
+        assertEquals(true, mseTopTier.get("breakout_completed"));
+    }
+
+    @Test
     void enrichWithSummary_shouldOrderRecommendationsByDnFpDpAndHierarchy() {
         Map<String, Object> topTier = new HashMap<>();
         String[] allTests = new String[]{

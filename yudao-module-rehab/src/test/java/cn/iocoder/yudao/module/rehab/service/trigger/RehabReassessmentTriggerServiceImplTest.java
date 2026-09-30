@@ -2,6 +2,7 @@ package cn.iocoder.yudao.module.rehab.service.trigger;
 
 import cn.iocoder.yudao.framework.common.exception.ServiceException;
 import cn.iocoder.yudao.module.rehab.controller.admin.trigger.vo.RehabReassessmentTriggerCreateReqVO;
+import cn.iocoder.yudao.module.rehab.controller.admin.trigger.vo.RehabReassessmentTriggerHandleReqVO;
 import cn.iocoder.yudao.module.rehab.dal.dataobject.plan.RehabCarePlanDO;
 import cn.iocoder.yudao.module.rehab.dal.dataobject.trigger.RehabReassessmentTriggerDO;
 import cn.iocoder.yudao.module.rehab.dal.mysql.log.RehabPlanOperationLogMapper;
@@ -10,7 +11,9 @@ import cn.iocoder.yudao.module.rehab.dal.mysql.plan.RehabCarePlanMapper;
 import cn.iocoder.yudao.module.rehab.dal.mysql.progress.RehabProgressRecordMapper;
 import cn.iocoder.yudao.module.rehab.dal.mysql.trigger.RehabReassessmentTriggerMapper;
 import cn.iocoder.yudao.module.rehab.enums.RehabRoleCodeConstants;
+import cn.iocoder.yudao.module.rehab.enums.RehabStageConstants;
 import cn.iocoder.yudao.module.rehab.service.RehabDataPermissionService;
+import cn.iocoder.yudao.module.rehab.service.episode.RehabEpisodeService;
 import cn.iocoder.yudao.module.system.api.permission.PermissionApi;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import org.junit.jupiter.api.BeforeEach;
@@ -48,6 +51,8 @@ class RehabReassessmentTriggerServiceImplTest {
     private PermissionApi permissionApi;
     @Mock
     private AdminUserApi adminUserApi;
+    @Mock
+    private RehabEpisodeService episodeService;
 
     @BeforeEach
     void setUp() {
@@ -64,6 +69,7 @@ class RehabReassessmentTriggerServiceImplTest {
         ReflectionTestUtils.setField(triggerService, "planOperationLogMapper", planOperationLogMapper);
         ReflectionTestUtils.setField(triggerService, "dataPermissionService", dataPermissionService);
         ReflectionTestUtils.setField(triggerService, "adminUserApi", adminUserApi);
+        ReflectionTestUtils.setField(triggerService, "episodeService", episodeService);
 
         lenient().when(permissionApi.hasAnyRoles(anyLong(), anyString())).thenReturn(false);
     }
@@ -107,6 +113,28 @@ class RehabReassessmentTriggerServiceImplTest {
         Long id = triggerService.createTrigger(reqVO, 1L);
 
         assertEquals(45001L, id);
+    }
+
+    @Test
+    void convertToReassessment_shouldMoveEpisodeToReassessing() {
+        RehabReassessmentTriggerHandleReqVO reqVO = new RehabReassessmentTriggerHandleReqVO();
+        reqVO.setId(45001L);
+        reqVO.setRemark("开始复评");
+
+        when(permissionApi.hasAnyRoles(1L, RehabRoleCodeConstants.SUPER_ADMIN)).thenReturn(true);
+        when(triggerMapper.selectById(45001L)).thenReturn(RehabReassessmentTriggerDO.builder()
+                .id(45001L)
+                .planId(40001L)
+                .patientId(10001L)
+                .episodeId(13001L)
+                .triggerStatus("pending")
+                .build());
+
+        triggerService.convertToReassessment(reqVO, 1L);
+
+        verify(episodeService).changeStage(argThat(item ->
+                item.getId().equals(13001L)
+                        && RehabStageConstants.REASSESSING.equals(item.getCurrentStage())), eq(1L));
     }
 
 }

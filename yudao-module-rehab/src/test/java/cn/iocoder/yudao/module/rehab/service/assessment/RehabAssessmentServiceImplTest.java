@@ -3,6 +3,7 @@ package cn.iocoder.yudao.module.rehab.service.assessment;
 import cn.iocoder.yudao.framework.common.exception.ServiceException;
 import cn.iocoder.yudao.module.rehab.controller.admin.assessment.vo.RehabAssessmentCreateReqVO;
 import cn.iocoder.yudao.module.rehab.controller.admin.assessment.vo.RehabAssessmentCreateRespVO;
+import cn.iocoder.yudao.module.rehab.controller.admin.assessment.vo.RehabAssessmentModuleDataRespVO;
 import cn.iocoder.yudao.module.rehab.controller.admin.assessment.vo.RehabAssessmentModuleDataSaveReqVO;
 import cn.iocoder.yudao.module.rehab.controller.admin.assessment.vo.RehabAssessmentUpdateReqVO;
 import cn.iocoder.yudao.module.rehab.dal.dataobject.assessment.RehabAssessmentAttachmentDO;
@@ -20,8 +21,11 @@ import cn.iocoder.yudao.module.rehab.dal.mysql.episode.RehabEpisodeMapper;
 import cn.iocoder.yudao.module.rehab.dal.mysql.patient.RehabPatientMapper;
 import cn.iocoder.yudao.module.rehab.dal.mysql.report.RehabReportMapper;
 import cn.iocoder.yudao.module.rehab.enums.RehabAssessmentConstants;
+import cn.iocoder.yudao.module.rehab.enums.RehabEpisodeConstants;
 import cn.iocoder.yudao.module.rehab.enums.RehabRoleCodeConstants;
+import cn.iocoder.yudao.module.rehab.enums.RehabStageConstants;
 import cn.iocoder.yudao.module.rehab.service.RehabDataPermissionService;
+import cn.iocoder.yudao.module.rehab.service.episode.RehabEpisodeService;
 import cn.iocoder.yudao.module.system.api.permission.PermissionApi;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import org.junit.jupiter.api.BeforeEach;
@@ -72,6 +76,8 @@ class RehabAssessmentServiceImplTest {
     private PermissionApi permissionApi;
     @Mock
     private AdminUserApi adminUserApi;
+    @Mock
+    private RehabEpisodeService episodeService;
 
     @BeforeEach
     void setUp() {
@@ -91,6 +97,7 @@ class RehabAssessmentServiceImplTest {
         ReflectionTestUtils.setField(assessmentService, "reportMapper", reportMapper);
         ReflectionTestUtils.setField(assessmentService, "dataPermissionService", dataPermissionService);
         ReflectionTestUtils.setField(assessmentService, "adminUserApi", adminUserApi);
+        ReflectionTestUtils.setField(assessmentService, "episodeService", episodeService);
         ReflectionTestUtils.setField(assessmentService, "storagePath", tempDir.toString());
         ReflectionTestUtils.setField(assessmentService, "staticAssessmentSummaryBuilder",
                 new RehabStaticAssessmentSummaryBuilder());
@@ -180,7 +187,12 @@ class RehabAssessmentServiceImplTest {
 
         when(permissionApi.hasAnyRoles(1L, RehabRoleCodeConstants.SUPER_ADMIN)).thenReturn(true);
         when(patientMapper.selectById(10001L)).thenReturn(RehabPatientDO.builder().id(10001L).build());
-        when(episodeMapper.selectById(13001L)).thenReturn(RehabEpisodeDO.builder().id(13001L).patientId(10001L).build());
+        when(episodeMapper.selectById(13001L)).thenReturn(RehabEpisodeDO.builder()
+                .id(13001L)
+                .patientId(10001L)
+                .currentStage(RehabStageConstants.PENDING_ASSESSMENT)
+                .status(RehabEpisodeConstants.STATUS_ACTIVE)
+                .build());
 
         doAnswer(invocation -> {
             RehabAssessmentRecordDO assessment = invocation.getArgument(0);
@@ -226,6 +238,9 @@ class RehabAssessmentServiceImplTest {
                         && item.getDataJson() != null
                         && item.getDataJson().contains("\"static_summary\"")));
         verify(operationLogMapper).insert(any(RehabAssessmentOperationLogDO.class));
+        verify(episodeService).changeStage(argThat(item ->
+                Objects.equals(item.getId(), 13001L)
+                        && Objects.equals(item.getCurrentStage(), RehabStageConstants.ASSESSING)), eq(1L));
     }
 
     @Test
@@ -321,13 +336,17 @@ class RehabAssessmentServiceImplTest {
                         .build()
         ));
 
-        assessmentService.saveModuleData(reqVO, 1L);
+        RehabAssessmentModuleDataRespVO response = assessmentService.saveModuleData(reqVO, 1L);
 
-        verify(moduleDataMapper).updateById(any(RehabAssessmentModuleDataDO.class));
+        assertNotNull(response);
+        verify(moduleDataMapper).updateById(org.mockito.ArgumentMatchers.<RehabAssessmentModuleDataDO>argThat(item ->
+                Objects.equals(item.getModuleStatus(), RehabAssessmentConstants.MODULE_STATUS_PARTIAL)));
         verify(assessmentRecordMapper, atLeastOnce()).updateById(org.mockito.ArgumentMatchers.<RehabAssessmentRecordDO>argThat(item ->
                 Objects.equals(item.getId(), 20001L)
-                        && (Objects.equals(item.getRawInputStatus(), RehabAssessmentConstants.RAW_INPUT_COMPLETE)
-                        || Objects.equals(item.getStatus(), RehabAssessmentConstants.STATUS_COMPLETED))));
+                        && Objects.equals(item.getRawInputStatus(), RehabAssessmentConstants.RAW_INPUT_PARTIAL)
+                        && Objects.equals(item.getStatus(), RehabAssessmentConstants.STATUS_DRAFT)
+                        && Objects.equals(item.getQualityGrade(), RehabAssessmentConstants.QUALITY_C)
+                        && Objects.equals(item.getConfidenceGrade(), RehabAssessmentConstants.CONFIDENCE_LOW)));
         verify(operationLogMapper).insert(any(RehabAssessmentOperationLogDO.class));
     }
 

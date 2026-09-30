@@ -32,6 +32,7 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -106,6 +107,8 @@ class RehabProgressRecordServiceImplTest {
         RehabProgressRecordDO record = progressService.recalculateByPlan(40001L, today, 1L, "test");
 
         assertEquals(RehabPlanConstants.PAIN_TREND_INSUFFICIENT, record.getPainTrend());
+        verify(progressRecordMapper).insert(org.mockito.ArgumentMatchers.<RehabProgressRecordDO>argThat(item ->
+                RehabPlanConstants.PROGRESS_INSUFFICIENT.equals(item.getProgressStatus())));
     }
 
 }

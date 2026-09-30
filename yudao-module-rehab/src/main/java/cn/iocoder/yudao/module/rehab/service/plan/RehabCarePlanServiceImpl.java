@@ -7,6 +7,7 @@ import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.json.JsonUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.module.rehab.controller.admin.plan.vo.*;
+import cn.iocoder.yudao.module.rehab.controller.admin.episode.vo.RehabEpisodeChangeStageReqVO;
 import cn.iocoder.yudao.module.rehab.dal.dataobject.assessment.RehabAssessmentRecordDO;
 import cn.iocoder.yudao.module.rehab.dal.dataobject.checkin.RehabDailyCheckinDO;
 import cn.iocoder.yudao.module.rehab.dal.dataobject.episode.RehabEpisodeDO;
@@ -28,8 +29,11 @@ import cn.iocoder.yudao.module.rehab.dal.mysql.task.RehabTaskScheduleMapper;
 import cn.iocoder.yudao.module.rehab.dal.mysql.trigger.RehabReassessmentTriggerMapper;
 import cn.iocoder.yudao.module.rehab.dal.dataobject.trigger.RehabReassessmentTriggerDO;
 import cn.iocoder.yudao.module.rehab.enums.RehabOperationTypeConstants;
+import cn.iocoder.yudao.module.rehab.enums.RehabEpisodeConstants;
 import cn.iocoder.yudao.module.rehab.enums.RehabPlanConstants;
+import cn.iocoder.yudao.module.rehab.enums.RehabStageConstants;
 import cn.iocoder.yudao.module.rehab.service.RehabDataPermissionService;
+import cn.iocoder.yudao.module.rehab.service.episode.RehabEpisodeService;
 import cn.iocoder.yudao.module.rehab.service.log.RehabAuditLogService;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import cn.iocoder.yudao.module.system.api.user.dto.AdminUserRespDTO;
@@ -79,6 +83,8 @@ public class RehabCarePlanServiceImpl implements RehabCarePlanService {
     private AdminUserApi adminUserApi;
     @Resource
     private RehabAuditLogService auditLogService;
+    @Resource
+    private RehabEpisodeService episodeService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -103,6 +109,7 @@ public class RehabCarePlanServiceImpl implements RehabCarePlanService {
         RehabCarePlanDO latest = planMapper.selectById(plan.getId());
         createOperationLog(plan.getId(), RehabOperationTypeConstants.PLAN_CREATE, operatorUserId,
                 null, latest, "创建训练计划");
+        syncEpisodeStageForActivePlan(latest, operatorUserId);
 
         RehabCarePlanCreateRespVO respVO = new RehabCarePlanCreateRespVO();
         respVO.setId(plan.getId());
@@ -129,6 +136,7 @@ public class RehabCarePlanServiceImpl implements RehabCarePlanService {
         RehabCarePlanDO newPlan = planMapper.selectById(reqVO.getId());
         createOperationLog(reqVO.getId(), RehabOperationTypeConstants.PLAN_UPDATE, operatorUserId,
                 oldPlan, newPlan, "更新训练计划");
+        syncEpisodeStageForActivePlan(newPlan, operatorUserId);
     }
 
     @Override
@@ -199,6 +207,7 @@ public class RehabCarePlanServiceImpl implements RehabCarePlanService {
         RehabCarePlanDO latest = planMapper.selectById(copied.getId());
         createOperationLog(copied.getId(), RehabOperationTypeConstants.PLAN_COPY, operatorUserId,
                 sourcePlan, latest, StrUtil.blankToDefault(reqVO.getRemark(), "复制训练计划"));
+        syncEpisodeStageForActivePlan(latest, operatorUserId);
 
         RehabCarePlanCreateRespVO respVO = new RehabCarePlanCreateRespVO();
         respVO.setId(copied.getId());
@@ -291,6 +300,29 @@ public class RehabCarePlanServiceImpl implements RehabCarePlanService {
         RehabCarePlanDO newPlan = planMapper.selectById(reqVO.getId());
         createOperationLog(reqVO.getId(), opType, operatorUserId, oldPlan, newPlan,
                 StrUtil.blankToDefault(reqVO.getRemark(), "更新计划状态为 " + targetStatus));
+        syncEpisodeStageForActivePlan(newPlan, operatorUserId);
+    }
+
+    private void syncEpisodeStageForActivePlan(RehabCarePlanDO plan, Long operatorUserId) {
+        if (plan == null || !ObjUtil.equals(plan.getStatus(), RehabPlanConstants.PLAN_STATUS_ACTIVE)) {
+            return;
+        }
+        RehabEpisodeDO episode = episodeMapper.selectById(plan.getEpisodeId());
+        if (episode == null || !ObjUtil.equals(episode.getStatus(), RehabEpisodeConstants.STATUS_ACTIVE)
+                || ObjUtil.equals(episode.getCurrentStage(), RehabStageConstants.IN_PROGRESS)) {
+            return;
+        }
+        if (ObjUtil.equals(episode.getCurrentStage(), RehabStageConstants.CLOSED)
+                || ObjUtil.equals(episode.getCurrentStage(), RehabStageConstants.PAUSED)
+                || ObjUtil.equals(episode.getCurrentStage(), RehabStageConstants.REFERRED_OUT)) {
+            return;
+        }
+        RehabEpisodeChangeStageReqVO reqVO = new RehabEpisodeChangeStageReqVO();
+        reqVO.setId(episode.getId());
+        reqVO.setCurrentStage(RehabStageConstants.IN_PROGRESS);
+        reqVO.setStatus(RehabEpisodeConstants.STATUS_ACTIVE);
+        reqVO.setRemark("训练计划已激活，系统自动进入执行中");
+        episodeService.changeStage(reqVO, operatorUserId);
     }
 
     private void fillPlanDefaults(RehabCarePlanDO plan, Long operatorUserId) {

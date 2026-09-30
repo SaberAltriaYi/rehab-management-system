@@ -1,0 +1,64 @@
+{
+  "pages": [
+    {
+      "path": "pages/login/index",
+      "style": {
+        "navigationBarTitleText": "管理端登录"
+      }
+    },
+    {
+      "path": "pages/index/index",
+      "style": {
+        "navigationBarTitleText": "康复工作台"
+      }
+    },
+    {
+      "path": "pages/patient/index",
+      "style": {
+        "navigationBarTitleText": "我的患者"
+      }
+    },
+    {
+      "path": "pages/patient/summary",
+      "style": {
+        "navigationBarTitleText": "患者摘要"
+      }
+    },
+    {
+      "path": "pages/alert/index",
+      "style": {
+        "navigationBarTitleText": "风险提醒"
+      }
+    },
+    {
+      "path": "pages/notification/index",
+      "style": {
+        "navigationBarTitleText": "通知中心"
+      }
+    },
+    {
+      "path": "pages/checkin/history",
+      "style": {
+        "navigationBarTitleText": "打卡历史"
+      }
+    },
+    {
+      "path": "pages/followup/index",
+      "style": {
+        "navigationBarTitleText": "随访备注"
+      }
+    },
+    {
+      "path": "pages/followup/ai-draft",
+      "style": {
+        "navigationBarTitleText": "AI 随访草案"
+      }
+    }
+  ],
+  "globalStyle": {
+    "navigationBarTextStyle": "black",
+    "navigationBarTitleText": "康复管理端",
+    "navigationBarBackgroundColor": "#ffffff",
+    "backgroundColor": "#f5f7fb"
+  }
+}

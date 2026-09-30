@@ -194,6 +194,7 @@ public class RehabSfmaSummaryBuilder {
         syncBookProtocolToLegacyBreakouts(payload);
         Map<String, Map<String, Object>> breakouts = ensureBreakouts(payload, recommendations);
         syncDedicatedCervicalFromNormalized(payload, topTierMap, breakouts, recommendations);
+        restoreBookProtocolBreakoutProjections(payload, breakouts);
         Map<String, Object> summary = buildSummary(payload, topTierMap, recommendations, breakouts);
         Map<String, Object> riskPrecheck = buildRiskPrecheck(topTierMap, breakouts, summary);
         Map<String, Object> reportMapping = buildReportMapping(summary, recommendations, breakouts, riskPrecheck);
@@ -686,6 +687,12 @@ public class RehabSfmaSummaryBuilder {
                 item = mapDedicatedMsrBreakoutSideToLegacy(castToMap(dedicatedMsrBreakout.get("right")));
             } else {
                 item = castToMap(raw.get(key));
+            }
+            Map<String, Object> protocolProjection = castToMap(raw.get(key));
+            if (isBookProtocolProjection(protocolProjection)) {
+                // 原书版工作流是新版事实源。旧版专用表单会携带 not_started 默认值，
+                // 不能反向覆盖已经完成的原书版分解评估。
+                item = protocolProjection;
             }
             if (item == null) {
                 item = new LinkedHashMap<>();
@@ -1497,6 +1504,10 @@ public class RehabSfmaSummaryBuilder {
                     .findFirst();
             Map<String, Object> recommendation = recommendationOpt.orElse(null);
             String breakoutStatus = BREAKOUT_STATUS_NOT_STARTED;
+            Map<String, Object> definitionBreakout = breakouts.get(definition.getBreakoutKey());
+            if (definitionBreakout != null) {
+                breakoutStatus = normalizeBreakoutStatus(definitionBreakout.get("status"));
+            }
             if (recommendation != null) {
                 String breakoutKey = toStringValue(recommendation.get("breakout_key"));
                 Map<String, Object> breakout = breakouts.get(breakoutKey);
@@ -1823,7 +1834,82 @@ public class RehabSfmaSummaryBuilder {
             item.put("summary_text", buildGenericBreakoutSummaryText(key, status, findings));
             result.put(key, item);
         }
+        overrideBreakoutSummaryFromBookProtocol(breakouts, result);
         return result;
+    }
+
+    private boolean isBookProtocolProjection(Map<String, Object> item) {
+        if (item == null) {
+            return false;
+        }
+        String sourceId = toStringValue(item.get("source_id"));
+        return StrUtil.startWith(sourceId, RehabSfmaBookProtocol.PROTOCOL_ID + ":");
+    }
+
+    private void restoreBookProtocolBreakoutProjections(Map<String, Object> payload,
+                                                        Map<String, Map<String, Object>> breakouts) {
+        Map<String, Object> projected = castToMap(payload.get("breakouts"));
+        if (projected == null) {
+            return;
+        }
+        for (String key : BREAKOUT_KEYS) {
+            Map<String, Object> row = castToMap(projected.get(key));
+            if (!isBookProtocolProjection(row)) {
+                continue;
+            }
+            Map<String, Object> normalized = new LinkedHashMap<>(row);
+            normalized.put("status", normalizeBreakoutStatus(row.get("status")));
+            breakouts.put(key, normalized);
+        }
+    }
+
+    /**
+     * 将原书版工作流投影为旧版详情/报告使用的逐动作汇总，保证新旧页面读取同一事实源。
+     */
+    private void overrideBreakoutSummaryFromBookProtocol(Map<String, Map<String, Object>> breakouts,
+                                                         Map<String, Object> result) {
+        Map<String, String> mapping = new LinkedHashMap<>();
+        mapping.put(CERVICAL_FLEXION_TEST_CODE, CERVICAL_FLEXION_BREAKOUT_KEY);
+        mapping.put(CERVICAL_EXTENSION_TEST_CODE, CERVICAL_EXTENSION_BREAKOUT_KEY);
+        mapping.put(CERVICAL_ROTATION_LEFT_TEST_CODE, CERVICAL_ROTATION_BREAKOUT_KEY);
+        mapping.put(CERVICAL_ROTATION_RIGHT_TEST_CODE, CERVICAL_ROTATION_BREAKOUT_KEY);
+        mapping.put(UPPER_EXTREMITY_PATTERN1_LEFT_TEST_CODE, UPPER_EXTREMITY_PATTERN1_BREAKOUT_KEY);
+        mapping.put(UPPER_EXTREMITY_PATTERN1_RIGHT_TEST_CODE, UPPER_EXTREMITY_PATTERN1_BREAKOUT_KEY);
+        mapping.put(UPPER_EXTREMITY_PATTERN2_LEFT_TEST_CODE, "upper_extremity_pattern_left");
+        mapping.put(UPPER_EXTREMITY_PATTERN2_RIGHT_TEST_CODE, "upper_extremity_pattern_right");
+        mapping.put("multi_segmental_flexion", MSF_BREAKOUT_KEY);
+        mapping.put("multi_segmental_extension", MSE_BREAKOUT_KEY);
+        mapping.put("multi_segmental_rotation_left", "msr_left");
+        mapping.put("multi_segmental_rotation_right", "msr_right");
+        mapping.put("single_leg_stance_left", "sls_left");
+        mapping.put("single_leg_stance_right", "sls_right");
+        mapping.put("arms_down_deep_squat", ARMS_DOWN_SQUAT_BREAKOUT_KEY);
+
+        for (Map.Entry<String, String> entry : mapping.entrySet()) {
+            Map<String, Object> row = breakouts.get(entry.getValue());
+            if (!isBookProtocolProjection(row)) {
+                continue;
+            }
+            String status = normalizeBreakoutStatus(row.get("status"));
+            if (BREAKOUT_STATUS_NOT_STARTED.equals(status)) {
+                continue;
+            }
+            List<String> findings = distinct(Arrays.asList(
+                    toStringValue(row.get("findings")),
+                    toStringValue(row.get("rom_key_values")),
+                    toStringValue(row.get("clinician_note"))
+            ));
+            boolean needsManualReview = Boolean.TRUE.equals(row.get("stop_due_to_pain"))
+                    || Boolean.TRUE.equals(row.get("pain_present"));
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("breakout_status", status);
+            item.put("primary_findings", findings);
+            item.put("preliminary_direction", inferBreakoutDirection(row));
+            item.put("needs_manual_review", needsManualReview);
+            item.put("summary_text", "SFMA 原书版分解评估" + mapBreakoutStatusZh(status)
+                    + (findings.isEmpty() ? "" : "：" + String.join("；", findings)));
+            result.put(entry.getKey(), item);
+        }
     }
 
     private Map<String, Object> buildCervicalReportMapping(Map<String, Object> summary, String testCode) {

@@ -7,6 +7,7 @@ import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.json.JsonUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.module.rehab.controller.admin.trigger.vo.*;
+import cn.iocoder.yudao.module.rehab.controller.admin.episode.vo.RehabEpisodeChangeStageReqVO;
 import cn.iocoder.yudao.module.rehab.dal.dataobject.log.RehabPlanOperationLogDO;
 import cn.iocoder.yudao.module.rehab.dal.dataobject.patient.RehabPatientDO;
 import cn.iocoder.yudao.module.rehab.dal.dataobject.plan.RehabCarePlanDO;
@@ -18,8 +19,11 @@ import cn.iocoder.yudao.module.rehab.dal.mysql.plan.RehabCarePlanMapper;
 import cn.iocoder.yudao.module.rehab.dal.mysql.progress.RehabProgressRecordMapper;
 import cn.iocoder.yudao.module.rehab.dal.mysql.trigger.RehabReassessmentTriggerMapper;
 import cn.iocoder.yudao.module.rehab.enums.RehabOperationTypeConstants;
+import cn.iocoder.yudao.module.rehab.enums.RehabEpisodeConstants;
 import cn.iocoder.yudao.module.rehab.enums.RehabPlanConstants;
+import cn.iocoder.yudao.module.rehab.enums.RehabStageConstants;
 import cn.iocoder.yudao.module.rehab.service.RehabDataPermissionService;
+import cn.iocoder.yudao.module.rehab.service.episode.RehabEpisodeService;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import cn.iocoder.yudao.module.system.api.user.dto.AdminUserRespDTO;
 import org.springframework.stereotype.Service;
@@ -55,6 +59,8 @@ public class RehabReassessmentTriggerServiceImpl implements RehabReassessmentTri
     private RehabDataPermissionService dataPermissionService;
     @Resource
     private AdminUserApi adminUserApi;
+    @Resource
+    private RehabEpisodeService episodeService;
 
     @Override
     public PageResult<RehabReassessmentTriggerRespVO> getTriggerPage(RehabReassessmentTriggerPageReqVO reqVO, Long operatorUserId) {
@@ -137,6 +143,12 @@ public class RehabReassessmentTriggerServiceImpl implements RehabReassessmentTri
 
         createPlanLog(trigger.getPlanId(), RehabOperationTypeConstants.PLAN_TRIGGER_REASSESSMENT, operatorUserId,
                 trigger, triggerMapper.selectById(trigger.getId()), StrUtil.blankToDefault(reqVO.getRemark(), "转为复评任务"));
+        RehabEpisodeChangeStageReqVO stageReqVO = new RehabEpisodeChangeStageReqVO();
+        stageReqVO.setId(trigger.getEpisodeId());
+        stageReqVO.setCurrentStage(RehabStageConstants.REASSESSING);
+        stageReqVO.setStatus(RehabEpisodeConstants.STATUS_ACTIVE);
+        stageReqVO.setRemark("复评触发已转为正式复评，系统自动进入复评中");
+        episodeService.changeStage(stageReqVO, operatorUserId);
 
         RehabTriggerConvertRespVO respVO = new RehabTriggerConvertRespVO();
         respVO.setTriggerId(trigger.getId());

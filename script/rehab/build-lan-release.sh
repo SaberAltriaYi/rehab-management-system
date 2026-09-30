@@ -89,6 +89,15 @@ cp -R "$PROJECT_DIR/yudao-ui/yudao-ui-admin-vue3-app/dist-internal" \
 
 backend_commit=$(git -C "$PROJECT_DIR" rev-parse HEAD)
 frontend_commit=$(git -C "$PROJECT_DIR/yudao-ui/yudao-ui-admin-vue3-app" rev-parse HEAD 2>/dev/null || echo monorepo)
+if ! git -C "$PROJECT_DIR" diff --quiet --ignore-submodules=dirty \
+  || ! git -C "$PROJECT_DIR" diff --cached --quiet --ignore-submodules=dirty; then
+  backend_commit="${backend_commit}+dirty"
+fi
+if git -C "$PROJECT_DIR/yudao-ui/yudao-ui-admin-vue3-app" rev-parse --is-inside-work-tree >/dev/null 2>&1 \
+  && { ! git -C "$PROJECT_DIR/yudao-ui/yudao-ui-admin-vue3-app" diff --quiet \
+    || ! git -C "$PROJECT_DIR/yudao-ui/yudao-ui-admin-vue3-app" diff --cached --quiet; }; then
+  frontend_commit="${frontend_commit}+dirty"
+fi
 jar_sha=$(sha256_file "$PROJECT_DIR/yudao-server/target/yudao-server.jar")
 {
   echo "# 康复管理系统局域网发布清单"

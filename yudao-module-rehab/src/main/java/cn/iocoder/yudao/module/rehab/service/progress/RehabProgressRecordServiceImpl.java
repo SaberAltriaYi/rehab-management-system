@@ -305,6 +305,11 @@ public class RehabProgressRecordServiceImpl implements RehabProgressRecordServic
         if (plannedTaskCount <= 0) {
             return RehabPlanConstants.PROGRESS_INSUFFICIENT;
         }
+        // 症状趋势样本不足时不能仅凭短期低完成率判定患者“恶化”；
+        // 低依从性仍由完成率和复评触发规则独立提示。
+        if (ObjUtil.equals(painTrend, RehabPlanConstants.PAIN_TREND_INSUFFICIENT)) {
+            return RehabPlanConstants.PROGRESS_INSUFFICIENT;
+        }
         if (completionRate.compareTo(new BigDecimal("80")) >= 0
                 && !ObjUtil.equals(painTrend, RehabPlanConstants.PAIN_TREND_WORSENED)
                 && symptomEventsCount <= 1) {
