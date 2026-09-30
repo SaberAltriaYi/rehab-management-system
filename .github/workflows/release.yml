@@ -21,7 +21,7 @@ jobs:
           cache: maven
       - uses: pnpm/action-setup@v6
         with:
-          version: 10.11.0
+          version: 10.15.1
       - uses: actions/setup-node@v7
         with:
           node-version: "22"
@@ -34,6 +34,7 @@ jobs:
         run: |
           pnpm install --frozen-lockfile
           pnpm build:internal
+          pnpm ts:check
           pnpm audit:prod
       - name: Build backend
         run: deploy/internal/build-server-isolated.sh

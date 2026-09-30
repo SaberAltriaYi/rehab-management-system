@@ -43,7 +43,7 @@ import {
   IotRuleSceneActionTypeEnum,
   isDeviceTrigger
 } from '@/views/iot/utils/constants'
-import { ElMessage } from 'element-plus'
+import { ElMessage, type FormRules } from 'element-plus'
 import { CommonStatusEnum } from '@/utils/constants'
 
 /** IoT 场景联动规则表单 - 主表单组件 */
@@ -214,7 +214,7 @@ const validateActions = (_rule: any, value: any, callback: any) => {
   callback()
 }
 
-const formRules = reactive({
+const formRules = reactive<FormRules>({
   name: [
     { required: true, message: '场景名称不能为空', trigger: 'blur' },
     { type: 'string', min: 1, max: 50, message: '场景名称长度应在1-50个字符之间', trigger: 'blur' }

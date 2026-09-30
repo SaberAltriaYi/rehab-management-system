@@ -1,5 +1,29 @@
 import request from '@/config/axios'
 
+// 与 PayRefundDetailsRespVO/PayRefundBaseVO 对应。
+export interface RefundDetailVO {
+  id: number
+  merchantRefundId: string
+  channelRefundNo?: string
+  merchantOrderId: string
+  channelOrderNo?: string
+  appId: number
+  appName: string
+  payPrice: number
+  refundPrice: number
+  status: number
+  successTime?: string
+  createTime: string
+  updateTime: string
+  channelCode: string
+  reason: string
+  userIp: string
+  notifyUrl: string
+  channelErrorCode?: string
+  channelErrorMsg?: string
+  channelNotifyData?: string
+}
+
 export interface RefundVO {
   id: number
   merchantId: number
@@ -92,7 +116,7 @@ export const getRefundPage = (params: RefundPageReqVO) => {
 
 // 查询详情退款订单
 export const getRefund = (id: number) => {
-  return request.get({ url: '/pay/refund/get?id=' + id })
+  return request.get<RefundDetailVO>({ url: '/pay/refund/get?id=' + id })
 }
 
 // 新增退款订单

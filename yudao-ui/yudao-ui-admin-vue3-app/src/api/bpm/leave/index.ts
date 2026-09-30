@@ -11,8 +11,13 @@ export type LeaveVO = {
   createTime: string
 }
 
+// A new request has no server-assigned id, state, process instance or creation time.
+export type LeaveCreateReqVO = Pick<LeaveVO, 'type' | 'reason' | 'startTime' | 'endTime'> & {
+  startUserSelectAssignees?: Record<string, number[]>
+}
+
 // 创建请假申请
-export const createLeave = async (data: LeaveVO) => {
+export const createLeave = async (data: LeaveCreateReqVO) => {
   return await request.post({ url: '/bpm/oa/leave/create', data: data })
 }
 

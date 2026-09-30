@@ -113,7 +113,9 @@ const getUserData = async (id: number) => {
 const { currentRoute } = useRouter() // 路由
 const { delView } = useTagsViewStore() // 视图操作
 const route = useRoute()
-const id = route.params.id
+const routeId = route.params.id
+// Router params can be string[]; never pass an invalid identifier to member APIs.
+const id = typeof routeId === 'string' && /^[1-9]\d*$/.test(routeId) ? Number(routeId) : 0
 /* 用户钱包相关信息 */
 const WALLET_INIT_DATA = {
   balance: 0,

@@ -87,7 +87,7 @@ const list = ref([]) // 列表的数据
 const queryParams = reactive({
   pageNo: 1,
   pageSize: 10,
-  bindUserId: null,
+  bindUserId: null as number | null,
   level: '',
   bindUserTime: []
 })

@@ -10,7 +10,7 @@
       <el-descriptions-item label="应用编号">{{ detailData.appId }}</el-descriptions-item>
       <el-descriptions-item label="应用名称">{{ detailData.appName }}</el-descriptions-item>
       <el-descriptions-item label="支付状态">
-        <dict-tag :type="DICT_TYPE.PAY_ORDER_STATUS" :value="detailData.status" size="small" />
+        <dict-tag :type="DICT_TYPE.PAY_ORDER_STATUS" :value="detailData.status ?? ''" size="small" />
       </el-descriptions-item>
       <el-descriptions-item label="支付金额">
         <el-tag type="success" size="small">￥{{ ((detailData.price || 0) / 100.0).toFixed(2) }}</el-tag>
@@ -24,16 +24,16 @@
         {{ (detailData.channelFeeRate || 0).toFixed(2) }}%
       </el-descriptions-item>
       <el-descriptions-item label="支付时间">
-        {{ formatDate(detailData.successTime) }}
+        {{ formatDate(detailData.successTime ?? '') }}
       </el-descriptions-item>
       <el-descriptions-item label="失效时间">
-        {{ formatDate(detailData.expireTime) }}
+        {{ formatDate(detailData.expireTime ?? '') }}
       </el-descriptions-item>
       <el-descriptions-item label="创建时间">
-        {{ formatDate(detailData.createTime) }}
+        {{ formatDate(detailData.createTime ?? '') }}
       </el-descriptions-item>
       <el-descriptions-item label="更新时间">
-        {{ formatDate(detailData.updateTime) }}
+        {{ formatDate(detailData.updateTime ?? '') }}
       </el-descriptions-item>
     </el-descriptions>
     <!-- 分割线 -->
@@ -42,17 +42,17 @@
       <el-descriptions-item label="商品标题">{{ detailData.subject }}</el-descriptions-item>
       <el-descriptions-item label="商品描述">{{ detailData.body }}</el-descriptions-item>
       <el-descriptions-item label="支付渠道">
-        <dict-tag :type="DICT_TYPE.PAY_CHANNEL_CODE" :value="detailData.channelCode" />
+        <dict-tag :type="DICT_TYPE.PAY_CHANNEL_CODE" :value="detailData.channelCode ?? ''" />
       </el-descriptions-item>
       <el-descriptions-item label="支付 IP">{{ detailData.userIp }}</el-descriptions-item>
       <el-descriptions-item label="渠道单号">
-        <el-tag size="mini" type="success" v-if="detailData.channelOrderNo">
+        <el-tag size="small" type="success" v-if="detailData.channelOrderNo">
           {{ detailData.channelOrderNo }}
         </el-tag>
       </el-descriptions-item>
       <el-descriptions-item label="渠道用户">{{ detailData.channelUserId }}</el-descriptions-item>
       <el-descriptions-item label="退款金额">
-        <el-tag size="mini" type="danger">
+        <el-tag size="small" type="danger">
           ￥{{ ((detailData.refundPrice || 0) / 100.0).toFixed(2) }}
         </el-tag>
       </el-descriptions-item>
@@ -78,7 +78,7 @@ defineOptions({ name: 'PayOrderDetail' })
 
 const dialogVisible = ref(false) // 弹窗的是否展示
 const detailLoading = ref(false) // 表单的加载中
-const detailData = ref({
+const detailData = ref<Partial<OrderApi.OrderDetailVO> & { extension: { channelNotifyData?: string } }>({
   extension: {}
 })
 
@@ -88,10 +88,8 @@ const open = async (id: number) => {
   // 设置数据
   detailLoading.value = true
   try {
-    detailData.value = await OrderApi.getOrderDetail(id)
-    if (!detailData.value.extension) {
-      detailData.value.extension = {}
-    }
+    const detail = await OrderApi.getOrderDetail(id)
+    detailData.value = { ...detail, extension: detail.extension ?? {} }
   } finally {
     detailLoading.value = false
   }

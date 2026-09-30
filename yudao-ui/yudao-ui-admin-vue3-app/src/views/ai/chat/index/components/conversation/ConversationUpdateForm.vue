@@ -104,7 +104,7 @@ const open = async (id: number) => {
           obj[key] = data[key]
         }
         return obj
-      }, {})
+      }, { ...formData.value })
     } finally {
       formLoading.value = false
     }

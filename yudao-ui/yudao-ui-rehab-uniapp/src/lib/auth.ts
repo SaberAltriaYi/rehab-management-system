@@ -1,5 +1,4 @@
 import { apiRequest } from './api'
-import { PATIENT_LOGIN_ENABLED } from './config'
 import { saveSession } from './session'
 
 interface TokenResponse {
@@ -31,16 +30,8 @@ export async function loginStaff(input: {
     expiresTime: token.expiresTime, tenantId, userId: token.userId })
 }
 
-export async function loginPatient(input: { tenantName: string; phone: string; patientNo: string }): Promise<void> {
-  if (!PATIENT_LOGIN_ENABLED) {
-    throw new Error('患者登录已关闭：当前后端仅使用手机号和患者编号认证，完成安全审查前不得公开启用。')
-  }
-  const tenantId = await resolveTenantId(input.tenantName)
-  const token = await apiRequest<TokenResponse>('/app-api/app-patient/auth/login', {
-    method: 'POST', auth: false, tenantId,
-    data: { phone: input.phone, bindCode: input.patientNo },
-  })
-  if (!token?.accessToken) throw new Error('登录响应缺少访问令牌。')
-  saveSession({ mode: 'patient', accessToken: token.accessToken, refreshToken: token.refreshToken,
-    expiresTime: token.expiresTime, tenantId, userId: token.userId })
+export async function loginPatient(_input: { tenantName: string; phone: string; patientNo: string }): Promise<void> {
+  // Do not send identifiable fields or save tokens until the new enrollment
+  // protocol and per-platform secure storage have been reviewed and tested.
+  throw new Error('患者登录尚未开放，请联系机构完成线下身份核验。')
 }

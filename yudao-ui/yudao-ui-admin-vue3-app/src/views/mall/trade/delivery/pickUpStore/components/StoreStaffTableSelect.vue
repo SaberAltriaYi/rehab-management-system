@@ -144,7 +144,7 @@ const isCheckAll = ref(false)
 // 全选框是否处于中间状态：不是全部选中 && 任意一个选中
 const isIndeterminate = ref(false)
 // 选中的活动
-const checkedUsers = ref([])
+const checkedUsers = ref<UserApi.UserVO[]>([])
 // 选中状态：key为用户ID，value为是否选中
 const checkedStatus = ref<Record<string, boolean>>({})
 
@@ -152,7 +152,7 @@ const dialogTitle = '选择店员'
 const dialogVisible = ref(false)
 const loading = ref(true) // 列表的加载中
 const total = ref(0) // 列表的总页数
-const list = ref([]) // 列表的数
+const list = ref<UserApi.UserVO[]>([]) // 列表的数据
 const queryParams = reactive({
   pageNo: 1,
   pageSize: 10,
@@ -222,7 +222,7 @@ const handleCheckAll = (checked: boolean) => {
  */
 const handleCheckOne = (checked: boolean, combinationActivity, isCalcCheckAll: boolean) => {
   if (checked) {
-    checkedUsers.value.push(combinationActivity as never)
+    checkedUsers.value.push(combinationActivity)
     checkedStatus.value[combinationActivity.id] = true
   } else {
     const index = findCheckedIndex(combinationActivity)
@@ -259,6 +259,6 @@ const handleEmitChange = () => {
 
 /** 确认选择时的触发事件 */
 const emits = defineEmits<{
-  change: [CombinationActivityApi: any]
+  change: [users: UserApi.UserVO[]]
 }>()
 </script>

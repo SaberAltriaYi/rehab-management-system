@@ -68,6 +68,20 @@ export interface IotThingModelTSLResp {
   services: ThingModelService[]
 }
 
+/** 数据规范只描述取值规则，不包含物模型属性的标识符和访问模式。 */
+export interface ThingModelDataSpecs {
+  dataType?: string
+  max?: string
+  min?: string
+  step?: string
+  length?: number | string
+  size?: number | string
+  childDataType?: string
+  unit?: string
+  unitName?: string
+  dataSpecsList?: ThingModelProperty[]
+}
+
 /** 物模型属性 */
 export interface ThingModelProperty {
   identifier: string
@@ -76,8 +90,8 @@ export interface ThingModelProperty {
   required?: boolean
   dataType: string
   description?: string
-  dataSpecs?: ThingModelProperty
-  dataSpecsList?: ThingModelProperty[]
+  dataSpecs?: ThingModelDataSpecs
+  dataSpecsList?: (ThingModelProperty | DataSpecsEnumOrBoolData)[]
 }
 
 /** 物模型事件 */
@@ -110,8 +124,8 @@ export interface ThingModelParam {
   direction: string
   paraOrder?: number
   dataType: string
-  dataSpecs?: ThingModelProperty
-  dataSpecsList?: ThingModelProperty[]
+  dataSpecs?: ThingModelDataSpecs
+  dataSpecsList?: (ThingModelProperty | DataSpecsEnumOrBoolData)[]
 }
 
 /** 数值型数据规范 */

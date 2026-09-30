@@ -43,7 +43,7 @@
             </div>
           </template>
           <Condition
-            :ref="($event) => (conditionRef[index] = $event)"
+            :ref="($event) => (conditionRef[index] = $event as InstanceType<typeof Condition>)"
             v-model="routerGroups[index]"
           />
         </el-card>
@@ -87,7 +87,7 @@ const currentNode = useWatchNode(props)
 const { nodeName, showInput, clickIcon, blurEvent } = useNodeName(NodeType.ROUTER_BRANCH_NODE)
 const routerGroups = ref<RouterSetting[]>([])
 const nodeOptions = ref<any>([])
-const conditionRef = ref([])
+const conditionRef = ref<Array<InstanceType<typeof Condition> | null>>([])
 
 /** 保存配置 */
 const saveConfig = async () => {

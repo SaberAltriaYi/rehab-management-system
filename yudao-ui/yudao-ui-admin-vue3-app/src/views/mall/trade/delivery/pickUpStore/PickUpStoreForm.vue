@@ -118,6 +118,11 @@ import { CommonStatusEnum } from '@/utils/constants'
 import { defaultProps } from '@/utils/tree'
 import { getAreaTree } from '@/api/system/area'
 import * as ConfigApi from '@/api/mall/trade/config'
+declare global {
+  interface Window {
+    selectAddress?: (location: unknown) => void
+  }
+}
 const { t } = useI18n() // 国际化
 const message = useMessage() // 消息弹窗
 
@@ -126,7 +131,11 @@ const mapDialogVisible = ref(false) // 地图弹窗的是否展示
 const dialogTitle = ref('') // 弹窗的标题
 const formLoading = ref(false) // 表单的加载中：1）修改时的数据加载；2）提交的按钮禁用
 const formType = ref('') // 表单的类型：create - 新增；update - 修改
-const formData = ref({
+// 表单编辑时尚未填写的地理坐标、时间和区域允许缺省，提交时由表单规则校验。
+type PickUpStoreDraft = Partial<DeliveryPickUpStoreApi.DeliveryPickUpStoreVO> &
+  Pick<DeliveryPickUpStoreApi.DeliveryPickUpStoreVO,
+    'name' | 'phone' | 'logo' | 'detailAddress' | 'introduction' | 'status'>
+const formData = ref<PickUpStoreDraft>({
   id: undefined,
   name: '',
   phone: '',
@@ -243,7 +252,7 @@ const initTencentLbsMap = async () => {
       let loc = event.data
       if (loc && loc.module === 'locationPicker') {
         // 防止其他应用也会向该页面 post 信息，需判断 module 是否为 'locationPicker'
-        window.parent.selectAddress(loc)
+        window.parent.selectAddress?.(loc)
       }
     },
     false

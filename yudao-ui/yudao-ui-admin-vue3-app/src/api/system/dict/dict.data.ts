@@ -13,6 +13,9 @@ export interface DictDataVO {
   createTime: Date
 }
 
+// Form submissions do not contain a server-assigned creation time or, on create, an id.
+export type DictDataSaveReqVO = Omit<DictDataVO, 'id' | 'createTime'> & { id?: number }
+
 // 查询字典数据（精简)列表
 export const getSimpleDictDataList = () => {
   return request.get({ url: '/system/dict-data/simple-list' })
@@ -34,12 +37,12 @@ export const getDictDataByType = (dictType: string) => {
 }
 
 // 新增字典数据
-export const createDictData = (data: DictDataVO) => {
+export const createDictData = (data: DictDataSaveReqVO) => {
   return request.post({ url: '/system/dict-data/create', data })
 }
 
 // 修改字典数据
-export const updateDictData = (data: DictDataVO) => {
+export const updateDictData = (data: DictDataSaveReqVO & { id: number }) => {
   return request.put({ url: '/system/dict-data/update', data })
 }
 

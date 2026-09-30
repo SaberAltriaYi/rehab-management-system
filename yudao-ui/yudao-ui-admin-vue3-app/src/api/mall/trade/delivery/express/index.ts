@@ -25,7 +25,7 @@ export const getSimpleDeliveryExpressList = () => {
 }
 
 // 新增快递公司
-export const createDeliveryExpress = async (data: DeliveryExpressVO) => {
+export const createDeliveryExpress = async (data: Omit<DeliveryExpressVO, 'id'>) => {
   return await request.post({ url: '/trade/delivery/express/create', data })
 }
 

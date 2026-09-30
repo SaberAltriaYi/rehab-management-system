@@ -24,7 +24,7 @@ const message = useMessage() // 消息弹窗
 
 const dialogVisible = ref(false) // 弹窗的是否展示
 const formLoading = ref(false) // 表单的加载中：1）修改时的数据加载；2）提交的按钮禁用
-const formData = ref({
+const formData = ref<{ id?: number; auditReason?: string }>({
   id: undefined,
   auditReason: undefined
 })

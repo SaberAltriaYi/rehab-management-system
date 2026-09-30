@@ -27,7 +27,7 @@ export interface BusinessVO {
   creatorName?: string // 创建人名称
   createTime: Date // 创建时间
   updateTime: Date // 更新时间
-  products?: [
+  products?: Array<
     {
       id: number
       productId: number
@@ -39,7 +39,13 @@ export interface BusinessVO {
       count: number
       totalPrice: number
     }
-  ]
+  >
+}
+
+export interface BusinessStatusUpdateReqVO {
+  id: number
+  statusId?: number
+  endStatus?: number
 }
 
 // 查询 CRM 商机列表
@@ -73,7 +79,7 @@ export const updateBusiness = async (data: BusinessVO) => {
 }
 
 // 修改 CRM 商机状态
-export const updateBusinessStatus = async (data: BusinessVO) => {
+export const updateBusinessStatus = async (data: BusinessStatusUpdateReqVO) => {
   return await request.put({ url: `/crm/business/update-status`, data })
 }
 

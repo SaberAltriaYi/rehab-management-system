@@ -77,7 +77,13 @@ const message = useMessage() // 消息弹窗
 
 const dialogVisible = ref(false) // 弹窗的是否展示
 const formLoading = ref(false) // 表单的加载中：1）修改时的数据加载；2）提交的按钮禁用
-const formData = reactive({
+const formData = reactive<{
+  id?: number
+  name: string
+  code: string
+  dataScope?: number
+  dataScopeDeptIds: number[]
+}>({
   id: undefined,
   name: '',
   code: '',
@@ -113,9 +119,13 @@ defineExpose({ open }) // 提供 open 方法，用于打开弹窗
 /** 提交表单 */
 const emit = defineEmits(['success']) // 定义 success 事件，用于操作成功后的回调
 const submitForm = async () => {
+  if (formData.id === undefined || formData.dataScope === undefined) {
+    message.error('角色权限未加载，请重新选择')
+    return
+  }
   formLoading.value = true
   try {
-    const data = {
+    const data: PermissionApi.PermissionAssignRoleDataScopeReqVO = {
       roleId: formData.id,
       dataScope: formData.dataScope,
       dataScopeDeptIds:
@@ -140,13 +150,13 @@ const resetForm = () => {
   deptExpand.value = true
   checkStrictly.value = true
   // 重置表单
-  formData.value = {
+  Object.assign(formData, {
     id: undefined,
     name: '',
     code: '',
     dataScope: undefined,
     dataScopeDeptIds: []
-  }
+  })
   treeRef.value?.setCheckedNodes([])
   formRef.value?.resetFields()
 }

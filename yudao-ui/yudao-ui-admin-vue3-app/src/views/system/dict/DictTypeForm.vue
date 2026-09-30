@@ -52,7 +52,7 @@ const dialogVisible = ref(false) // 弹窗的是否展示
 const dialogTitle = ref('') // 弹窗的标题
 const formLoading = ref(false) // 表单的加载中：1）修改时的数据加载；2）提交的按钮禁用
 const formType = ref('') // 表单的类型：create - 新增；update - 修改
-const formData = ref({
+const formData = ref<DictTypeApi.DictTypeSaveReqVO>({
   id: undefined,
   name: '',
   type: '',
@@ -88,18 +88,19 @@ defineExpose({ open }) // 提供 open 方法，用于打开弹窗
 const emit = defineEmits(['success']) // 定义 success 事件，用于操作成功后的回调
 const submitForm = async () => {
   // 校验表单
-  if (!formRef) return
+  if (!formRef.value) return
   const valid = await formRef.value.validate()
   if (!valid) return
   // 提交请求
   formLoading.value = true
   try {
-    const data = formData.value as DictTypeApi.DictTypeVO
+    const data = formData.value
     if (formType.value === 'create') {
       await DictTypeApi.createDictType(data)
       message.success(t('common.createSuccess'))
     } else {
-      await DictTypeApi.updateDictType(data)
+      if (data.id === undefined) throw new Error('字典类型编号未加载')
+      await DictTypeApi.updateDictType({ ...data, id: data.id })
       message.success(t('common.updateSuccess'))
     }
     dialogVisible.value = false

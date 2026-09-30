@@ -8,6 +8,7 @@ export interface PurchaseInVO {
   inTime: Date // 入库时间
   totalCount: number // 合计数量
   totalPrice: number // 合计金额，单位：元
+  paymentPrice: number // 已付金额（后端响应字段）
   status: number // 状态
   remark: string // 备注
   outCount: number // 采购出库数量

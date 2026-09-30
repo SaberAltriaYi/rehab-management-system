@@ -8,6 +8,7 @@ export interface SaleOutVO {
   outTime: Date // 出库时间
   totalCount: number // 合计数量
   totalPrice: number // 合计金额，单位：元
+  receiptPrice: number // 已收金额（后端响应字段）
   status: number // 状态
   remark: string // 备注
 }

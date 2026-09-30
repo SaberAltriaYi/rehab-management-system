@@ -42,7 +42,7 @@
             <el-text v-else>{{ erpPriceInputFormatter(receivablePlan.price) }}</el-text>
           </el-descriptions-item>
           <el-descriptions-item label="实际回款日期">
-            {{ formatDate(receivablePlan.receivable?.returnTime, 'YYYY-MM-DD') }}
+            {{ receivablePlan.receivable?.returnTime ? formatDate(receivablePlan.receivable.returnTime, 'YYYY-MM-DD') : '' }}
           </el-descriptions-item>
         </el-descriptions>
       </el-collapse-item>

@@ -104,6 +104,14 @@ class MigrationGuardTests(unittest.TestCase):
         versions = re.findall(r"^\s*\('(\d{3})',", ledger, re.MULTILINE)
         self.assertEqual(versions, [f'{version:03d}' for version in range(1, 20)])
 
+    def test_deployment_guides_distinguish_bootstrap_from_additive_versions(self):
+        latest_version = self.fixture.rows[-1][0]
+        internal_guide = (ROOT / 'deploy/internal/README.md').read_text()
+        lan_guide = (ROOT / 'deploy/lan/README.md').read_text()
+        self.assertIn(f'001–{latest_version}', internal_guide)
+        self.assertIn('001–019', lan_guide)
+        self.assertIn(f'020–{latest_version}', lan_guide)
+
     def test_status_complete_is_read_only(self):
         result = self.fixture.run()
         self.assertEqual(result.returncode, 0, result.stderr)

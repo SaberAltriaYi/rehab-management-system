@@ -144,7 +144,7 @@
   <!-- 表单弹窗：添加/修改 -->
   <Demo03StudentForm ref="formRef" @success="getList" />
   <!-- 子表的列表 -->
-  <ContentWrap>
+  <ContentWrap v-if="currentRow">
     <el-tabs model-value="demo03Course">
       <el-tab-pane label="学生课程" name="demo03Course">
         <Demo03CourseList :student-id="currentRow.id" />
@@ -262,7 +262,7 @@ const handleExport = async () => {
 }
 
 /** 选中行操作 */
-const currentRow = ref({}) // 选中行
+const currentRow = ref<Demo03Student | null>(null) // 选中行
 const handleCurrentChange = (row) => {
   currentRow.value = row
 }

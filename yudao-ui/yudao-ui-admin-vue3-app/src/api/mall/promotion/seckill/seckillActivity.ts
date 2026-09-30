@@ -5,6 +5,7 @@ export interface SeckillActivityVO {
   id?: number
   spuId?: number
   name?: string
+  picUrl?: string // 活动商品主图（后台返回）
   status?: number
   remark?: string
   startTime?: Date

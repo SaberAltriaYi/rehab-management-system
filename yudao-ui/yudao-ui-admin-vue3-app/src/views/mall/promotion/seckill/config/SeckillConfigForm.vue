@@ -47,7 +47,7 @@
 </template>
 <script setup lang="ts">
 import { getIntDictOptions, DICT_TYPE } from '@/utils/dict'
-import { SeckillConfigApi, SeckillConfigVO } from '@/api/mall/promotion/seckill/seckillConfig.ts'
+import { SeckillConfigApi, SeckillConfigVO } from '@/api/mall/promotion/seckill/seckillConfig'
 import { CommonStatusEnum } from '@/utils/constants'
 
 /** 秒杀时段 表单 */
@@ -60,12 +60,12 @@ const dialogVisible = ref(false) // 弹窗的是否展示
 const dialogTitle = ref('') // 弹窗的标题
 const formLoading = ref(false) // 表单的加载中：1）修改时的数据加载；2）提交的按钮禁用
 const formType = ref('') // 表单的类型：create - 新增；update - 修改
-const formData = ref({
+const formData = ref<Partial<SeckillConfigVO> & { sliderPicUrls: string[] }>({
   id: undefined,
   name: undefined,
   startTime: undefined,
   endTime: undefined,
-  sliderPicUrls: undefined,
+  sliderPicUrls: [],
   status: undefined
 })
 const formRules = reactive({

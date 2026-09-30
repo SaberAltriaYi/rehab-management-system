@@ -119,7 +119,6 @@ provide('tasks', [])
 provide('processInstance', {})
 
 
-const message = useMessage() // 国际化
 const processNodeTree = ref<SimpleFlowNode | undefined>()
 provide('processNodeTree', processNodeTree)
 const errorDialogVisible = ref(false)

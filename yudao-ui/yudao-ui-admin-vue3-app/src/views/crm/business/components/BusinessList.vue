@@ -8,7 +8,7 @@
     <el-button
       @click="openBusinessModal"
       v-hasPermi="['crm:contact:create-business']"
-      v-if="queryParams.contactId"
+      v-if="queryParams.contactId && props.customerId != null"
     >
       <Icon class="mr-5px" icon="ep:circle-plus" />关联
     </el-button>
@@ -61,6 +61,7 @@
   <BusinessForm ref="formRef" @success="getList" />
   <!-- 关联商机选择弹框 -->
   <BusinessListModal
+    v-if="props.customerId != null"
     ref="businessModalRef"
     :customer-id="props.customerId"
     @success="createContactBusinessList"

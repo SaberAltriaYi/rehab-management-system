@@ -115,7 +115,7 @@ const columns = [
     title: '图标',
     dataKey: 'icon',
     width: 100,
-    align: 'center',
+    align: 'center' as const,
     cellRenderer: ({ cellData: icon }) => <Icon icon={icon} />
   },
   {
@@ -170,7 +170,7 @@ const columns = [
   {
     key: 'operations',
     title: '操作',
-    align: 'center',
+    align: 'center' as const,
     width: 160,
     fixed: TableV2FixedDir.RIGHT,
     cellRenderer: ({ rowData }) => {
@@ -226,7 +226,6 @@ const queryParams = reactive({
 })
 const queryFormRef = ref() // 搜索的表单
 const isExpandAll = ref(false) // 是否展开，默认全部折叠
-const refreshTable = ref(true) // 重新渲染表格状态
 
 // 添加展开行控制
 const expandedRowKeys = ref<number[]>([])

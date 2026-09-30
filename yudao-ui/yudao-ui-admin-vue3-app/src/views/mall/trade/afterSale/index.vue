@@ -211,7 +211,7 @@ const queryParams = reactive({
 const getList = async () => {
   loading.value = true
   try {
-    const data = cloneDeep(queryParams)
+    const data: Omit<typeof queryParams, 'status'> & { status?: string } = cloneDeep(queryParams)
     // 处理掉全部的状态，不传就是全部
     if (data.status === '0') {
       delete data.status
@@ -239,7 +239,7 @@ const resetQuery = () => {
 
 /** tab 切换 */
 const tabClick = async (tab: TabsPaneContext) => {
-  queryParams.status = tab.paneName
+  queryParams.status = String(tab.paneName ?? '0')
   await getList()
 }
 

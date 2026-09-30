@@ -107,13 +107,14 @@ const getSpuDetails = async (
   selectSkus?.forEach((sku) => {
     let config: SeckillActivityApi.SeckillProductVO = {
       skuId: sku.id!,
+      spuId: spu.id!,
       stock: 0,
       seckillPrice: 0
     }
     if (typeof products !== 'undefined') {
       const product = products.find((item) => item.skuId === sku.id)
       if (product) {
-        product.seckillPrice = formatToFraction(product.seckillPrice)
+        product.seckillPrice = Number(formatToFraction(product.seckillPrice))
       }
       config = product || config
     }

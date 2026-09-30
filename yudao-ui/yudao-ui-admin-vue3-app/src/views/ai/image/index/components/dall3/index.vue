@@ -195,16 +195,15 @@ const handleGenerateImage = async () => {
     emits('onDrawStart', AiPlatformEnum.OPENAI)
     const imageSize = Dall3SizeList.find((item) => item.key === selectSize.value) as ImageSizeVO
     const form = {
-      platform: AiPlatformEnum.OPENAI,
       prompt: prompt.value, // 提示词
       modelId: matchedModel.id, // 使用匹配到的模型
       style: style.value, // 图像生成的风格
-      width: imageSize.width, // size 不能为空
-      height: imageSize.height, // size 不能为空
+      width: Number(imageSize.width), // size 不能为空
+      height: Number(imageSize.height), // size 不能为空
       options: {
         style: style.value // 图像生成的风格
       }
-    } as ImageDrawReqVO
+    } satisfies ImageDrawReqVO
     // 发送请求
     await ImageApi.drawImage(form)
   } finally {

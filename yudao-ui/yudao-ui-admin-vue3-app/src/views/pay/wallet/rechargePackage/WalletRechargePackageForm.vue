@@ -45,13 +45,8 @@ const dialogVisible = ref(false) // 弹窗的是否展示
 const dialogTitle = ref('') // 弹窗的标题
 const formLoading = ref(false) // 表单的加载中：1）修改时的数据加载；2）提交的按钮禁用
 const formType = ref('') // 表单的类型：create - 新增；update - 修改
-const formData = ref({
-  id: undefined,
-  name: undefined,
-  payPrice: undefined,
-  bonusPrice: undefined,
-  status: undefined
-})
+type PackageFormData = Partial<WalletRechargePackageApi.WalletRechargePackageVO>
+const formData = ref<PackageFormData>({})
 const formRules = reactive({
   name: [{ required: true, message: '套餐名不能为空', trigger: 'blur' }],
   payPrice: [{ required: true, message: '支付金额不能为空', trigger: 'blur' }],
@@ -71,8 +66,8 @@ const open = async (type: string, id?: number) => {
     formLoading.value = true
     try {
       formData.value = await WalletRechargePackageApi.getWalletRechargePackage(id)
-      formData.value.payPrice = fenToYuan(formData.value.payPrice)
-      formData.value.bonusPrice = fenToYuan(formData.value.bonusPrice)
+      formData.value.payPrice = Number(fenToYuan(formData.value.payPrice ?? 0))
+      formData.value.bonusPrice = Number(fenToYuan(formData.value.bonusPrice ?? 0))
     } finally {
       formLoading.value = false
     }
@@ -90,15 +85,21 @@ const submitForm = async () => {
   // 提交请求
   formLoading.value = true
   try {
-    const data = { ...formData.value }
-    data.payPrice = yuanToFen(data.payPrice)
-    data.bonusPrice = yuanToFen(data.bonusPrice)
+    const { id, name, payPrice, bonusPrice, status } = formData.value
+    if (!name || payPrice == null || bonusPrice == null || status == null) {
+      message.error('请完善套餐信息')
+      return
+    }
+    const data = { name, payPrice: yuanToFen(payPrice), bonusPrice: yuanToFen(bonusPrice), status }
     if (formType.value === 'create') {
       await WalletRechargePackageApi.createWalletRechargePackage(data)
       message.success(t('common.createSuccess'))
-    } else {
-      await WalletRechargePackageApi.updateWalletRechargePackage(data)
+    } else if (id != null) {
+      await WalletRechargePackageApi.updateWalletRechargePackage({ ...data, id })
       message.success(t('common.updateSuccess'))
+    } else {
+      message.error('缺少套餐编号')
+      return
     }
     dialogVisible.value = false
     // 发送操作成功的事件
@@ -110,13 +111,7 @@ const submitForm = async () => {
 
 /** 重置表单 */
 const resetForm = () => {
-  formData.value = {
-    id: undefined,
-    name: undefined,
-    payPrice: undefined,
-    bonusPrice: undefined,
-    status: undefined
-  }
+  formData.value = {}
   formRef.value?.resetFields()
 }
 </script>

@@ -52,7 +52,8 @@ const dialogVisible = ref(false) // 弹窗的是否展示
 const dialogTitle = ref('') // 弹窗的标题
 const formLoading = ref(false) // 表单的加载中：1）修改时的数据加载；2）提交的按钮禁用
 const formType = ref('') // 表单的类型：create - 新增；update - 修改
-const formData = ref({
+type ExpressDraft = Omit<DeliveryExpressApi.DeliveryExpressVO, 'id'> & { id?: number }
+const formData = ref<ExpressDraft>({
   id: undefined,
   code: '',
   name: '',
@@ -97,12 +98,16 @@ const submitForm = async () => {
   // 提交请求
   formLoading.value = true
   try {
-    const data = formData.value as DeliveryExpressApi.DeliveryExpressVO
+    const data = formData.value
     if (formType.value === 'create') {
       await DeliveryExpressApi.createDeliveryExpress(data)
       message.success(t('common.createSuccess'))
     } else {
-      await DeliveryExpressApi.updateDeliveryExpress(data)
+      if (data.id == null) {
+        message.error('缺少快递公司编号')
+        return
+      }
+      await DeliveryExpressApi.updateDeliveryExpress({ ...data, id: data.id })
       message.success(t('common.updateSuccess'))
     }
     dialogVisible.value = false
@@ -117,8 +122,10 @@ const submitForm = async () => {
 const resetForm = () => {
   formData.value = {
     id: undefined,
+    code: '',
     name: '',
-    picUrl: '',
+    logo: '',
+    sort: 0,
     status: CommonStatusEnum.ENABLE
   }
   formRef.value?.resetFields()

@@ -228,7 +228,7 @@ const handleGenerateImage = async () => {
         clipGuidancePreset: clipGuidancePreset.value, // 文本提示相匹配的图像 CLIP
         stylePreset: stylePreset.value // 风格
       }
-    } as ImageDrawReqVO
+    } satisfies ImageDrawReqVO
     await ImageApi.drawImage(form)
   } finally {
     // 回调

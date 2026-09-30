@@ -50,7 +50,7 @@
           <div>
             <!-- 商品价格 -->
             <span
-              v-if="property.fields.price.show"
+              v-if="property.fields.price.show && spu.price != null"
               class="text-12px"
               :style="{ color: property.fields.price.color }"
             >

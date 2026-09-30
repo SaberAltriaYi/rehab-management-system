@@ -76,7 +76,7 @@ defineOptions({ name: 'MpStatistics' })
 const message = useMessage() // 消息弹窗
 
 // 默认开始时间是当前日期-7，结束时间是当前日期-1
-const dateRange = ref([
+const dateRange = ref<[Date, Date]>([
   beginOfDay(new Date(new Date().getTime() - 3600 * 1000 * 24 * 7)),
   endOfDay(new Date(new Date().getTime() - 3600 * 1000 * 24))
 ])

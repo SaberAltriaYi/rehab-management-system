@@ -43,4 +43,5 @@ const openForm = (type: string, id?: number) => {
   formRef.value.open(type, id)
 }
 const { product } = defineProps<{ product: ProductApi.ProductVO }>()
+const emit = defineEmits<{ (e: 'refresh'): void }>()
 </script>

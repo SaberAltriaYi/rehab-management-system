@@ -15,11 +15,11 @@ export const getWalletRechargePackagePage = async (params) => {
 
 // 查询套餐充值详情
 export const getWalletRechargePackage = async (id: number) => {
-  return await request.get({ url: '/pay/wallet-recharge-package/get?id=' + id })
+  return await request.get<WalletRechargePackageVO>({ url: '/pay/wallet-recharge-package/get?id=' + id })
 }
 
 // 新增套餐充值
-export const createWalletRechargePackage = async (data: WalletRechargePackageVO) => {
+export const createWalletRechargePackage = async (data: Omit<WalletRechargePackageVO, 'id'>) => {
   return await request.post({ url: '/pay/wallet-recharge-package/create', data })
 }
 

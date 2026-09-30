@@ -129,7 +129,7 @@ deploy/internal/check-database.sh
 deploy/internal/smoke-test.sh
 ```
 
-全新数据卷会初始化基础表、Quartz 表、34 张康复表、41 个核心外键和完整迁移账本，停用非本期
+全新数据卷会初始化基础表、Quartz 表、34 张康复表、41 个核心外键和完整迁移账本（001–019 初始化基线 + 实际执行的 020 起增量迁移），停用非本期
 菜单、演示账号、演示租户、非登录 OAuth2 演示客户端和 AI，轮换弱演示 secret，并清除康复演示
 数据。系统仅保留后台生成会话所需、且不具备外部授权类型的 `default` 内部客户端。首次登录后立即
 修改初始管理员密码，为每位成员创建独立账号，按最小权限分配角色；日常工作不得共用管理员账号。
@@ -184,6 +184,9 @@ deploy/internal/migrate.sh status
 `adopt` 不执行任何 SQL，只在同时满足以下条件时登记（`installed_by=adopt-verified`，`baseline=0`）：
 版本为 020+；更早版本均已登记；脚本只包含 `CREATE TABLE`；数据库中每张表的列名与顺序与脚本完全一致。
 任一条件不满足即失败且不写账本。包含 INSERT/ALTER 的迁移（如 024）不能 adopt，只能 `apply`。
+
+当前清单为 001–025（以 `migrations.manifest` 为准）。已有业务库执行任何增量迁移前，先在隔离副本核验数据库与附件备份、迁移和权限，再用 `migrate.sh apply`
+（或上文 `adopt`）；`migrate.sh status` 仍有 PENDING 或校验和不一致时，不得记为发布通过。
 
 不要对已有业务库手工执行 `clean-demo-rehab-data.sql` 或 `internal-hardening.sql`；这两个脚本只用于
 全新内部部署初始化。

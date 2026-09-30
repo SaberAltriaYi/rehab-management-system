@@ -1,4 +1,5 @@
 import dayjs from 'dayjs'
+import type { Dayjs } from 'dayjs'
 import type { TableColumnCtx } from 'element-plus'
 
 /**
@@ -63,9 +64,10 @@ export const defaultShortcuts = [
  * @description format 季度 + 星期 + 几周："YYYY-MM-DD HH:mm:ss WWW QQQQ ZZZ"
  * @returns 返回拼接后的时间字符串
  */
-export type DateValue = Date | string | number | number[]
+// 日期筛选器可返回 Dayjs 或未选中的空值；formatDate 已在运行时处理空值。
+export type DateValue = Date | string | number | number[] | Dayjs | null | undefined
 
-const normalizeDateValue = (date: DateValue): Date | string | number => {
+const normalizeDateValue = (date: DateValue): Date | string | number | Dayjs | null | undefined => {
   if (!Array.isArray(date)) {
     return date
   }

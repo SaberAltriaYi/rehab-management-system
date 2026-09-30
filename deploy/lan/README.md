@@ -38,7 +38,9 @@ Set-ExecutionPolicy -Scope Process Bypass
 2. 生成互不相同的 MySQL、Redis 和备份密钥；
 3. 生成包含局域网 IP、`rehab.local` 的内部 HTTPS 证书；
 4. 构建适配当前 CPU 的 Docker 镜像；
-5. 创建空业务数据库并执行 001–019 迁移；
+5. 创建空业务数据库并初始化历史基线 001–019（登记为基线）；随后按 `migrations.manifest` 实际执行并登记
+   增量迁移 020–025（含动作评估 024/025），任一失败即中止初始化。已有业务卷不得重跑安装器，
+   升级时先备份，再用 `deploy/internal/migrate.sh apply`（旧卷先按内部部署指南 `adopt`）；
 6. 清理演示数据并关闭 AI 和未交付模块；
 7. 生成符合登录接口限制的 16 位临时随机管理员密码，不使用 `admin123`；
 8. 完成数据库检查与 HTTPS 冒烟测试。

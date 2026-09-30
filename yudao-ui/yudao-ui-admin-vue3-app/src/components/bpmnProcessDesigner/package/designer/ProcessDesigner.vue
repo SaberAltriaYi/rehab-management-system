@@ -332,10 +332,10 @@ const additionalModules = computed(() => {
   const Modules: any[] = []
   // 仅保留用户自定义扩展模块
   if (props.onlyCustomizeAddi) {
-    if (Object.prototype.toString.call(props.additionalModel) == '[object Array]') {
-      return props.additionalModel || []
+    if (Array.isArray(props.additionalModel)) {
+      return props.additionalModel
     }
-    return [props.additionalModel]
+    return props.additionalModel ? [props.additionalModel] : []
   }
 
   // 插入用户自定义扩展模块
@@ -406,7 +406,8 @@ console.log(additionalModules, 'additionalModules()')
 console.log(moddleExtensions, 'moddleExtensions()')
 const initBpmnModeler = () => {
   if (bpmnModeler) return
-  let data = document.getElementById('bpmnCanvas')
+  const data = document.getElementById('bpmnCanvas')
+  if (!data) return
   console.log(data, 'data')
   console.log(props.keyboard, 'props.keyboard')
   console.log(additionalModules, 'additionalModules()')

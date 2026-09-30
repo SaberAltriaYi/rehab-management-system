@@ -77,6 +77,7 @@
   </Dialog>
 </template>
 <script setup lang="ts">
+import type { WarehouseStockFormData } from '@/views/erp/shared/WarehouseTransactionItem'
 import { StockInApi, StockInVO } from '@/api/erp/stock/in'
 import StockInItemForm from './components/StockInItemForm.vue'
 import { SupplierApi, SupplierVO } from '@/api/erp/purchase/supplier'
@@ -91,7 +92,7 @@ const dialogVisible = ref(false) // 弹窗的是否展示
 const dialogTitle = ref('') // 弹窗的标题
 const formLoading = ref(false) // 表单的加载中：1）修改时的数据加载；2）提交的按钮禁用
 const formType = ref('') // 表单的类型：create - 新增；update - 修改；detail - 详情
-const formData = ref({
+const formData = ref<WarehouseStockFormData>({
   id: undefined,
   supplierId: undefined,
   inTime: undefined,
@@ -120,7 +121,8 @@ const open = async (type: string, id?: number) => {
   if (id) {
     formLoading.value = true
     try {
-      formData.value = await StockInApi.getStockIn(id)
+      const saved = await StockInApi.getStockIn(id)
+      formData.value = { ...saved, fileUrl: saved.fileUrl ?? '' }
     } finally {
       formLoading.value = false
     }
@@ -162,7 +164,7 @@ const resetForm = () => {
     supplierId: undefined,
     inTime: undefined,
     remark: undefined,
-    fileUrl: undefined,
+    fileUrl: '',
     items: []
   }
   formRef.value?.resetFields()

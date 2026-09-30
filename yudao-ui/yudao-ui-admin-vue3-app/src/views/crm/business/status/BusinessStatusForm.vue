@@ -99,7 +99,11 @@ const dialogVisible = ref(false) // 弹窗的是否展示
 const dialogTitle = ref('') // 弹窗的标题
 const formLoading = ref(false) // 表单的加载中：1）修改时的数据加载；2）提交的按钮禁用
 const formType = ref('') // 表单的组：create - 新增；update - 修改
-const formData = ref({
+type BusinessStatusFormData = Pick<BusinessStatusApi.BusinessStatusTypeVO, 'name' | 'deptIds'> & {
+  id?: number
+  statuses: BusinessStatusApi.BusinessStatusStageVO[]
+}
+const formData = ref<BusinessStatusFormData>({
   id: undefined,
   name: '',
   deptIds: [],
@@ -123,7 +127,8 @@ const open = async (type: string, id?: number) => {
   if (id) {
     formLoading.value = true
     try {
-      formData.value = await BusinessStatusApi.getBusinessStatus(id)
+      const status = await BusinessStatusApi.getBusinessStatus(id)
+      formData.value = { ...status, statuses: status.statuses ?? [] }
       treeRef.value.setCheckedKeys(formData.value.deptIds)
       if (formData.value.statuses.length == 0) {
         addStatus()
@@ -147,13 +152,16 @@ const submitForm = async () => {
   // 提交请求
   formLoading.value = true
   try {
-    const data = formData.value as unknown as BusinessStatusApi.BusinessStatusTypeVO
-    data.deptIds = treeRef.value.getCheckedKeys(false)
+    const data = { ...formData.value, deptIds: treeRef.value.getCheckedKeys(false) as number[] }
     if (formType.value === 'create') {
       await BusinessStatusApi.createBusinessStatus(data)
       message.success(t('common.createSuccess'))
     } else {
-      await BusinessStatusApi.updateBusinessStatus(data)
+      if (data.id == null) {
+        message.error('缺少商机状态组编号')
+        return
+      }
+      await BusinessStatusApi.updateBusinessStatus({ ...data, id: data.id })
       message.success(t('common.updateSuccess'))
     }
     dialogVisible.value = false
@@ -178,12 +186,17 @@ const resetForm = () => {
 }
 
 /** 添加状态 */
-const addStatus = () => {
+const addStatus = (index?: number) => {
   const data = formData.value
-  data.statuses.push({
+  const status: BusinessStatusApi.BusinessStatusStageVO = {
     name: '',
     percent: undefined
-  })
+  }
+  if (index == null) {
+    data.statuses.push(status)
+  } else {
+    data.statuses.splice(index + 1, 0, status)
+  }
 }
 
 /** 删除状态 */

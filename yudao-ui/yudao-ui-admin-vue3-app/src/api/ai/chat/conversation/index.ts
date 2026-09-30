@@ -29,17 +29,17 @@ export const ChatConversationApi = {
   },
 
   // 新增【我的】聊天对话
-  createChatConversationMy: async (data?: ChatConversationVO) => {
+  createChatConversationMy: async (data?: Partial<ChatConversationVO>) => {
     return await request.post({ url: `/ai/chat/conversation/create-my`, data })
   },
 
   // 更新【我的】聊天对话
-  updateChatConversationMy: async (data: ChatConversationVO) => {
+  updateChatConversationMy: async (data: Partial<ChatConversationVO> & Pick<ChatConversationVO, 'id'>) => {
     return await request.put({ url: `/ai/chat/conversation/update-my`, data })
   },
 
   // 删除【我的】聊天对话
-  deleteChatConversationMy: async (id: string) => {
+  deleteChatConversationMy: async (id: number) => {
     return await request.delete({ url: `/ai/chat/conversation/delete-my?id=${id}` })
   },
 

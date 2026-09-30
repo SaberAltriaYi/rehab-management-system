@@ -39,14 +39,49 @@ export interface ProductPropertiesVO {
   valueName?: string // 属性值的名称
 }
 
+// 售后详情接口返回的嵌套订单、会员和日志与分页 VO 不同。
+export interface TradeAfterSaleDetailVO {
+  id: number
+  no: string
+  orderNo: string
+  status: number
+  type: number
+  way: number
+  auditTime?: string
+  refundPrice: number
+  applyReason: string
+  applyDescription?: string
+  applyPicUrls?: string[]
+  order: {
+    deliveryType?: number
+    type?: number
+    receiverName?: string
+    userRemark?: string
+    terminal?: number
+    receiverMobile?: string
+    remark?: string
+    payOrderId?: number
+    payChannelCode?: string
+  }
+  user?: { nickname?: string }
+  orderItem?: {
+    spuName: string
+    price: number
+    count: number
+    payPrice: number
+    properties?: ProductPropertiesVO[]
+  }
+  logs: Array<{ id: number; createTime: string; content: string; userType: number }>
+}
+
 // 获得交易售后分页
 export const getAfterSalePage = async (params) => {
   return await request.get({ url: `/trade/after-sale/page`, params })
 }
 
 // 获得交易售后详情
-export const getAfterSale = async (id: any) => {
-  return await request.get({ url: `/trade/after-sale/get-detail?id=${id}` })
+export const getAfterSale = async (id: number) => {
+  return await request.get<TradeAfterSaleDetailVO>({ url: `/trade/after-sale/get-detail?id=${id}` })
 }
 
 // 同意售后

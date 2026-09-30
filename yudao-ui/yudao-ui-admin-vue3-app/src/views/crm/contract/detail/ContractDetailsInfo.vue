@@ -50,10 +50,10 @@
           <el-descriptions-item label="">&nbsp;</el-descriptions-item>
           <el-descriptions-item label="创建人">{{ contract.creatorName }}</el-descriptions-item>
           <el-descriptions-item label="创建时间">
-            {{ formatDate(contract.createTime) }}
+            {{ contract.createTime ? formatDate(contract.createTime) : '' }}
           </el-descriptions-item>
           <el-descriptions-item label="更新时间">
-            {{ formatDate(contract.updateTime) }}
+            {{ contract.updateTime ? formatDate(contract.updateTime) : '' }}
           </el-descriptions-item>
         </el-descriptions>
       </el-collapse-item>

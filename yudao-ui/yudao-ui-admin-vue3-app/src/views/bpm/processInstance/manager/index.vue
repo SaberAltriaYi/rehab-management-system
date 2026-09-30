@@ -167,9 +167,8 @@ import { DICT_TYPE, getIntDictOptions } from '@/utils/dict'
 import { dateFormatter, formatPast2 } from '@/utils/formatTime'
 import { ElMessageBox } from 'element-plus'
 import * as ProcessInstanceApi from '@/api/bpm/processInstance'
-import { CategoryApi } from '@/api/bpm/category'
+import { CategoryApi, type CategoryVO } from '@/api/bpm/category'
 import * as UserApi from '@/api/system/user'
-import { cancelProcessInstanceByAdmin } from '@/api/bpm/processInstance'
 
 // 它和【我的流程】的差异是，该菜单可以看全部的流程实例
 defineOptions({ name: 'BpmProcessInstanceManager' })
@@ -192,7 +191,7 @@ const queryParams = reactive({
   createTime: []
 })
 const queryFormRef = ref() // 搜索的表单
-const categoryList = ref([]) // 流程分类列表
+const categoryList = ref<CategoryVO[]>([]) // 流程分类列表
 const userList = ref<any[]>([]) // 用户列表
 
 /** 查询列表 */

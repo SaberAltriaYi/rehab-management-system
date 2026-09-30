@@ -2,7 +2,7 @@
   <el-container class="absolute flex-1 top-0 left-0 h-full w-full">
     <!-- 左侧：对话列表 -->
     <ConversationList
-      :active-id="activeConversationId?.toString() || ''"
+      :active-id="activeConversationId"
       ref="conversationListRef"
       @on-conversation-create="handleConversationCreateSuccess"
       @on-conversation-click="handleConversationClick"

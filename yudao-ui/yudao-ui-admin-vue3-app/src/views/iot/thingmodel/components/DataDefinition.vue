@@ -8,14 +8,14 @@
           IoTDataSpecsDataTypeEnum.INT,
           IoTDataSpecsDataTypeEnum.DOUBLE,
           IoTDataSpecsDataTypeEnum.FLOAT
-        ].includes(data.property.dataType)
+        ].some((type) => type === data.property.dataType)
       "
     >
-      取值范围：{{ `${data.property.dataSpecs.min}~${data.property.dataSpecs.max}` }}
+      取值范围：{{ `${data.property.dataSpecs?.min ?? '-'}~${data.property.dataSpecs?.max ?? '-'}` }}
     </div>
     <!-- 非列表型：文本 -->
     <div v-if="IoTDataSpecsDataTypeEnum.TEXT === data.property.dataType">
-      数据长度：{{ data.property.dataSpecs.length }}
+      数据长度：{{ data.property.dataSpecs?.length ?? '-' }}
     </div>
     <!-- 列表型: 数组、结构、时间（特殊） -->
     <div
@@ -24,7 +24,7 @@
           IoTDataSpecsDataTypeEnum.ARRAY,
           IoTDataSpecsDataTypeEnum.STRUCT,
           IoTDataSpecsDataTypeEnum.DATE
-        ].includes(data.property.dataType)
+        ].some((type) => type === data.property.dataType)
       "
     >
       -
@@ -32,8 +32,8 @@
     <!-- 列表型: 布尔值、枚举 -->
     <div
       v-if="
-        [IoTDataSpecsDataTypeEnum.BOOL, IoTDataSpecsDataTypeEnum.ENUM].includes(
-          data.property.dataType
+        [IoTDataSpecsDataTypeEnum.BOOL, IoTDataSpecsDataTypeEnum.ENUM].some(
+          (type) => type === data.property.dataType
         )
       "
     >
