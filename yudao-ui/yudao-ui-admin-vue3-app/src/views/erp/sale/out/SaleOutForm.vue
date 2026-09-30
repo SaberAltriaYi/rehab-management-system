@@ -182,6 +182,7 @@ import SaleOutItemForm from './components/SaleOutItemForm.vue'
 import { CustomerApi, CustomerVO } from '@/api/erp/sale/customer'
 import { AccountApi, AccountVO } from '@/api/erp/finance/account'
 import { erpPriceInputFormatter, erpPriceMultiply } from '@/utils'
+import type { WarehouseOrderItem, WarehouseTransactionFormData } from '@/views/erp/shared/WarehouseTransactionItem'
 import SaleOrderOutEnableList from '@/views/erp/sale/order/components/SaleOrderOutEnableList.vue'
 import { SaleOrderVO } from '@/api/erp/sale/order'
 import * as UserApi from '@/api/system/user'
@@ -196,7 +197,7 @@ const dialogVisible = ref(false) // 弹窗的是否展示
 const dialogTitle = ref('') // 弹窗的标题
 const formLoading = ref(false) // 表单的加载中：1）修改时的数据加载；2）提交的按钮禁用
 const formType = ref('') // 表单的类型：create - 新增；update - 修改；detail - 详情
-const formData = ref({
+const formData = ref<WarehouseTransactionFormData>({
   id: undefined,
   customerId: undefined,
   accountId: undefined,
@@ -234,9 +235,8 @@ watch(
       return
     }
     // 计算
-    const totalPrice = val.items.reduce((prev, curr) => prev + curr.totalPrice, 0)
-    const discountPrice =
-      val.discountPercent != null ? erpPriceMultiply(totalPrice, val.discountPercent / 100.0) : 0
+    const totalPrice = val.items.reduce((prev, curr) => prev + (curr.totalPrice ?? 0), 0)
+    const discountPrice = erpPriceMultiply(totalPrice, val.discountPercent / 100) ?? 0
     formData.value.discountPrice = discountPrice
     formData.value.totalPrice = totalPrice - discountPrice + val.otherPrice
   },
@@ -253,7 +253,8 @@ const open = async (type: string, id?: number) => {
   if (id) {
     formLoading.value = true
     try {
-      formData.value = await SaleOutApi.getSaleOut(id)
+      const record = await SaleOutApi.getSaleOut(id)
+      formData.value = { ...record, fileUrl: record.fileUrl ?? '', items: record.items ?? [] }
     } finally {
       formLoading.value = false
     }
@@ -277,24 +278,33 @@ const openSaleOrderOutEnableList = () => {
   saleOrderOutEnableListRef.value.open()
 }
 
-const handleSaleOrderChange = (order: SaleOrderVO) => {
+type SelectableSaleOrder = SaleOrderVO & {
+  accountId?: number
+  saleUserId?: number
+  discountPercent?: number
+  fileUrl?: string
+  items: WarehouseOrderItem[]
+}
+const handleSaleOrderChange = (order: SelectableSaleOrder) => {
   // 将订单设置到出库单
   formData.value.orderId = order.id
   formData.value.orderNo = order.no
   formData.value.customerId = order.customerId
   formData.value.accountId = order.accountId
   formData.value.saleUserId = order.saleUserId
-  formData.value.discountPercent = order.discountPercent
+  formData.value.discountPercent = order.discountPercent ?? 0
   formData.value.remark = order.remark
-  formData.value.fileUrl = order.fileUrl
+  formData.value.fileUrl = order.fileUrl ?? ''
   // 将订单项设置到出库单项
-  order.items.forEach((item) => {
-    item.totalCount = item.count
-    item.count = item.totalCount - item.outCount
-    item.orderItemId = item.id
-    item.id = undefined
-  })
-  formData.value.items = order.items.filter((item) => item.count > 0)
+  formData.value.items = (order.items ?? [])
+    .map((item) => ({
+      ...item,
+      id: undefined,
+      orderItemId: item.id,
+      totalCount: item.count,
+      count: Math.max(0, (item.count ?? 0) - (item.outCount ?? 0))
+    }))
+    .filter((item) => item.count > 0)
 }
 
 /** 提交表单 */
@@ -331,7 +341,7 @@ const resetForm = () => {
     saleUserId: undefined,
     outTime: undefined,
     remark: undefined,
-    fileUrl: undefined,
+    fileUrl: '',
     discountPercent: 0,
     discountPrice: 0,
     totalPrice: 0,

@@ -49,14 +49,14 @@
         v-if="formData.productScope === PromotionProductScopeEnum.SPU.scope"
         prop="productSpuIds"
       >
-        <SpuShowcase v-model="formData.productSpuIds" />
+        <SpuShowcase v-model="productSpuIds" />
       </el-form-item>
       <el-form-item
         v-if="formData.productScope === PromotionProductScopeEnum.CATEGORY.scope"
         label="分类"
         prop="productCategoryIds"
       >
-        <ProductCategorySelect v-model="formData.productCategoryIds" :multiple="true" />
+        <ProductCategorySelect v-model="productCategoryIds" :multiple="true" />
       </el-form-item>
       <el-form-item label="备注" prop="remark">
         <el-input v-model="formData.remark" placeholder="请输入备注" />
@@ -92,6 +92,18 @@ const formData = ref<RewardActivityApi.RewardActivityVO>({
   productScope: PromotionProductScopeEnum.ALL.scope,
   rules: []
 } as RewardActivityApi.RewardActivityVO)
+const productSpuIds = computed({
+  get: () => formData.value.productSpuIds ?? [],
+  set: (value: number | number[]) => {
+    formData.value.productSpuIds = Array.isArray(value) ? value : [value]
+  }
+})
+const productCategoryIds = computed({
+  get: () => formData.value.productCategoryIds ?? [],
+  set: (value: number | number[]) => {
+    formData.value.productCategoryIds = value
+  }
+})
 const formRules = reactive({
   name: [{ required: true, message: '活动名称不能为空', trigger: 'blur' }],
   startAndEndTime: [{ required: true, message: '活动时间不能为空', trigger: 'blur' }],

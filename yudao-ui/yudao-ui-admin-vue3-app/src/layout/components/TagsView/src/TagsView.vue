@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import { computed, nextTick, onMounted, ref, unref, watch } from 'vue'
+import { computed, nextTick, ref, unref, watch } from 'vue'
 import type { RouteLocationNormalizedLoaded, RouterLinkProps } from 'vue-router'
 import { useRouter } from 'vue-router'
 import { usePermissionStore } from '@/store/modules/permission'
@@ -243,16 +243,6 @@ const move = (to: number) => {
     duration: 500
   })
   start()
-}
-
-const canShowIcon = (item: RouteLocationNormalizedLoaded) => {
-  if (
-    (item?.matched?.[1]?.meta?.icon && unref(tagsViewIcon)) ||
-    (item?.meta?.affix && unref(tagsViewIcon) && item?.meta?.icon)
-  ) {
-    return true
-  }
-  return false
 }
 
 const closeTabOnMouseMidClick = (e: MouseEvent, item) => {

@@ -140,6 +140,8 @@
   </el-row>
 </template>
 <script setup lang="ts">
+import type { FormInstance, SummaryMethod } from 'element-plus'
+import type { WarehouseTransactionItem } from '@/views/erp/shared/WarehouseTransactionItem'
 import { ProductApi, ProductVO } from '@/api/erp/product/product'
 import { StockApi } from '@/api/erp/stock/stock'
 import {
@@ -150,23 +152,23 @@ import {
 } from '@/utils'
 
 const props = defineProps<{
-  items: undefined
-  disabled: false
+  items: WarehouseTransactionItem[]
+  disabled: boolean
 }>()
 const formLoading = ref(false) // 表单的加载中
-const formData = ref([])
+const formData = ref<WarehouseTransactionItem[]>([])
 const formRules = reactive({
   productId: [{ required: true, message: '产品不能为空', trigger: 'blur' }],
   productPrice: [{ required: true, message: '产品单价不能为空', trigger: 'blur' }],
   count: [{ required: true, message: '产品数量不能为空', trigger: 'blur' }]
 })
-const formRef = ref([]) // 表单 Ref
+const formRef = ref<FormInstance>() // 表单 Ref
 const productList = ref<ProductVO[]>([]) // 产品列表
 
 /** 初始化设置入库项 */
 watch(
   () => props.items,
-  async (val) => {
+  (val) => {
     formData.value = val
   },
   { immediate: true }
@@ -181,19 +183,24 @@ watch(
     }
     // 循环处理
     val.forEach((item) => {
-      item.totalProductPrice = erpPriceMultiply(item.productPrice, item.count)
-      item.taxPrice = erpPriceMultiply(item.totalProductPrice, item.taxPercent / 100.0)
-      if (item.totalProductPrice != null) {
-        item.totalPrice = item.totalProductPrice + (item.taxPrice || 0)
-      } else {
+      if (item.productPrice == null || item.count == null) {
+        item.totalProductPrice = undefined
+        item.taxPrice = undefined
         item.totalPrice = undefined
+        return
       }
+      const subtotal = erpPriceMultiply(item.productPrice, item.count) ?? 0
+      const taxPrice = item.taxPercent == null ? 0 : (erpPriceMultiply(subtotal, item.taxPercent / 100) ?? 0)
+      item.totalProductPrice = subtotal
+      item.taxPrice = taxPrice
+      item.totalPrice = subtotal + taxPrice
     })
   },
   { deep: true }
 )
 
 /** 合计 */
+type SummaryMethodProps = Parameters<SummaryMethod<WarehouseTransactionItem>>[0]
 const getSummaries = (param: SummaryMethodProps) => {
   const { columns, data } = param
   const sums: string[] = []
@@ -203,9 +210,10 @@ const getSummaries = (param: SummaryMethodProps) => {
       return
     }
     if (['count', 'totalProductPrice', 'taxPrice', 'totalPrice'].includes(column.property)) {
-      const sum = getSumValue(data.map((item) => Number(item[column.property])))
+      const property = column.property as 'count' | 'totalProductPrice' | 'taxPrice' | 'totalPrice'
+      const sum = getSumValue(data.map((item) => Number(item[property])))
       sums[index] =
-        column.property === 'count' ? erpCountInputFormatter(sum) : erpPriceInputFormatter(sum)
+        property === 'count' ? erpCountInputFormatter(sum) : erpPriceInputFormatter(sum)
     } else {
       sums[index] = ''
     }
@@ -216,7 +224,7 @@ const getSummaries = (param: SummaryMethodProps) => {
 
 /** 新增按钮操作 */
 const handleAdd = () => {
-  const row = {
+  const row: WarehouseTransactionItem = {
     id: undefined,
     productId: undefined,
     productUnitName: undefined, // 产品单位
@@ -239,7 +247,7 @@ const handleDelete = (index: number) => {
 }
 
 /** 处理产品变更 */
-const onChangeProduct = (productId, row) => {
+const onChangeProduct = (productId: number | undefined, row: WarehouseTransactionItem) => {
   const product = productList.value.find((item) => item.id === productId)
   if (product) {
     row.productUnitName = product.unitName
@@ -247,21 +255,22 @@ const onChangeProduct = (productId, row) => {
     row.productPrice = product.purchasePrice
   }
   // 加载库存
-  setStockCount(row)
+  void setStockCount(row)
 }
 
 /** 加载库存 */
-const setStockCount = async (row: any) => {
+const setStockCount = async (row: WarehouseTransactionItem) => {
   if (!row.productId) {
+    row.stockCount = undefined
     return
   }
   const count = await StockApi.getStockCount(row.productId)
-  row.stockCount = count || 0
+  row.stockCount = count ?? 0
 }
 
 /** 表单校验 */
 const validate = () => {
-  return formRef.value.validate()
+  return formRef.value?.validate()
 }
 defineExpose({ validate })
 

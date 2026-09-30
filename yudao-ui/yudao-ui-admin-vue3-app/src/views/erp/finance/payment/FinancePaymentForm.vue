@@ -146,9 +146,10 @@
 </template>
 <script setup lang="ts">
 import { FinancePaymentApi, FinancePaymentVO } from '@/api/erp/finance/payment'
+import type { FinancePaymentDraft } from '@/views/erp/shared/FinanceSettlementItem'
 import FinancePaymentItemForm from './components/FinancePaymentItemForm.vue'
 import { SupplierApi, SupplierVO } from '@/api/erp/purchase/supplier'
-import { erpPriceInputFormatter, erpPriceMultiply } from '@/utils'
+import { erpPriceInputFormatter } from '@/utils'
 import * as UserApi from '@/api/system/user'
 import { AccountApi, AccountVO } from '@/api/erp/finance/account'
 
@@ -162,7 +163,7 @@ const dialogVisible = ref(false) // 弹窗的是否展示
 const dialogTitle = ref('') // 弹窗的标题
 const formLoading = ref(false) // 表单的加载中：1）修改时的数据加载；2）提交的按钮禁用
 const formType = ref('') // 表单的类型：create - 新增；update - 修改；detail - 详情
-const formData = ref({
+const formData = ref<FinancePaymentDraft>({
   id: undefined,
   supplierId: undefined,
   accountId: undefined,
@@ -214,7 +215,8 @@ const open = async (type: string, id?: number) => {
   if (id) {
     formLoading.value = true
     try {
-      formData.value = await FinancePaymentApi.getFinancePayment(id)
+      const saved = await FinancePaymentApi.getFinancePayment(id)
+      formData.value = { ...saved, fileUrl: saved.fileUrl ?? '' }
     } finally {
       formLoading.value = false
     }
@@ -266,7 +268,7 @@ const resetForm = () => {
     financeUserId: undefined,
     paymentTime: undefined,
     remark: undefined,
-    fileUrl: undefined,
+    fileUrl: '',
     totalPrice: 0,
     discountPrice: 0,
     paymentPrice: 0,

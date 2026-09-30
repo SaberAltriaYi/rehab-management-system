@@ -101,7 +101,7 @@ const maxRemindCount = ref(1)
 
 const elExtensionElements = ref()
 const otherExtensions = ref()
-const configExtensions = ref([])
+const configExtensions = ref<Array<{ value?: number }>>([])
 const eventDefinition = ref()
 
 const resetElement = () => {

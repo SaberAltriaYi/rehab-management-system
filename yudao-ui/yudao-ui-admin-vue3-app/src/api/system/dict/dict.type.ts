@@ -9,6 +9,8 @@ export interface DictTypeVO {
   createTime: Date
 }
 
+export type DictTypeSaveReqVO = Omit<DictTypeVO, 'id' | 'createTime'> & { id?: number }
+
 // 查询字典（精简)列表
 export const getSimpleDictTypeList = (): Promise<DictTypeVO[]> => {
   return request.get({ url: '/system/dict-type/simple-list' })
@@ -25,12 +27,12 @@ export const getDictType = (id: number) => {
 }
 
 // 新增字典
-export const createDictType = (data: DictTypeVO) => {
+export const createDictType = (data: DictTypeSaveReqVO) => {
   return request.post({ url: '/system/dict-type/create', data })
 }
 
 // 修改字典
-export const updateDictType = (data: DictTypeVO) => {
+export const updateDictType = (data: DictTypeSaveReqVO & { id: number }) => {
   return request.put({ url: '/system/dict-type/update', data })
 }
 

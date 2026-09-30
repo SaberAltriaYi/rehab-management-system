@@ -117,16 +117,16 @@
         :formatter="dateFormatter"
       />
       <el-table-column label="支付金额" align="center" prop="price" width="100">
-        <template #default="scope"> ￥{{ parseFloat(scope.row.price / 100).toFixed(2) }} </template>
+        <template #default="scope"> ￥{{ (scope.row.price / 100).toFixed(2) }} </template>
       </el-table-column>
       <el-table-column label="退款金额" align="center" prop="refundPrice" width="100">
         <template #default="scope">
-          ￥{{ parseFloat(scope.row.refundPrice / 100).toFixed(2) }}
+          ￥{{ (scope.row.refundPrice / 100).toFixed(2) }}
         </template>
       </el-table-column>
       <el-table-column label="手续金额" align="center" prop="channelFeePrice" width="100">
         <template #default="scope">
-          ￥{{ parseFloat(scope.row.channelFeePrice / 100).toFixed(2) }}
+          ￥{{ (scope.row.channelFeePrice / 100).toFixed(2) }}
         </template>
       </el-table-column>
       <el-table-column label="订单号" align="left" width="300">
@@ -192,7 +192,7 @@ import { dateFormatter } from '@/utils/formatTime'
 import * as OrderApi from '@/api/pay/order'
 import OrderDetail from './OrderDetail.vue'
 import download from '@/utils/download'
-import { getAppList } from '@/api/pay/app'
+import { getAppList, type AppVO } from '@/api/pay/app'
 
 defineOptions({ name: 'PayOrder' })
 
@@ -200,21 +200,21 @@ const message = useMessage() // 消息弹窗
 
 const loading = ref(false) // 列表的加载中
 const total = ref(0) // 列表的总页数
-const list = ref([]) // 列表的数据
-const queryParams = reactive({
+const list = ref<OrderApi.OrderDetailVO[]>([]) // 列表的数据
+const queryParams = reactive<Omit<OrderApi.OrderPageReqVO, 'createTime'> & { no?: string; createTime: string[] }>({
   pageNo: 1,
   pageSize: 10,
-  appId: null,
-  channelCode: null,
-  merchantOrderId: null,
-  channelOrderNo: null,
-  no: null,
-  status: null,
+  appId: undefined,
+  channelCode: undefined,
+  merchantOrderId: undefined,
+  channelOrderNo: undefined,
+  no: undefined,
+  status: undefined,
   createTime: []
 })
 const queryFormRef = ref() // 搜索的表单
 const exportLoading = ref(false) // 导出等待
-const appList = ref([]) // 支付应用列表集合
+const appList = ref<Pick<AppVO, 'id' | 'name'>[]>([]) // 支付应用精简列表
 
 /** 搜索按钮操作 */
 const handleQuery = () => {

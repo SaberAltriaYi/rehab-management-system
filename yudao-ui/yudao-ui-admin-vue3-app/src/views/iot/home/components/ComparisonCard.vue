@@ -25,7 +25,7 @@ import { propTypes } from '@/utils/propTypes'
 /** 【总数 + 新增数】统计卡片组件 */
 defineOptions({ name: 'IoTComparisonCard' })
 
-const props = defineProps({
+defineProps({
   title: propTypes.string.def('').isRequired,
   value: propTypes.number.def(0).isRequired,
   todayCount: propTypes.number.def(0).isRequired,

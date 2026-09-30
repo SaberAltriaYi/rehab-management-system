@@ -504,10 +504,11 @@ const build = (propertyValuesList: Property[][]) => {
     for (let i = 0; i < propertyValuesList[0].length; i++) {
       for (let j = 0; j < rest.length; j++) {
         // 第一次不是数组结构，后面的都是数组结构
-        if (Array.isArray(rest[j])) {
-          result.push([propertyValuesList[0][i], ...rest[j]])
+        const combination = rest[j]
+        if (Array.isArray(combination)) {
+          result.push([propertyValuesList[0][i], ...combination])
         } else {
-          result.push([propertyValuesList[0][i], rest[j]])
+          result.push([propertyValuesList[0][i], combination])
         }
       }
     }

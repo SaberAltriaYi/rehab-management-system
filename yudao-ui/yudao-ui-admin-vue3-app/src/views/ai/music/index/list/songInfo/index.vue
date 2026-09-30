@@ -17,6 +17,8 @@
 
 defineOptions({ name: 'Index' })
 
-const currentSong = inject('currentSong', {})
+const currentSong = inject<Ref<Partial<Record<'imageUrl' | 'title' | 'desc' | 'date' | 'lyric', string>>>>(
+  'currentSong', ref({})
+)
 
 </script>

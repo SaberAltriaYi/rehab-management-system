@@ -13,7 +13,7 @@
         v-for="(item, index) in property.list"
         :key="index"
         class="flex flex-col items-center"
-        @click="handleActive(index)"
+        @click="handleToggleFab"
       >
         <el-image :src="item.imgUrl" fit="contain" class="h-27px w-27px">
           <template #error>

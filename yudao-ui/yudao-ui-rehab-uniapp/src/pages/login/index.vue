@@ -11,7 +11,7 @@
     </view>
     <view class="login-card">
       <text class="card-heading">{{ role === 'staff' ? '团队账号登录' : '患者登录' }}</text>
-      <text class="card-description">{{ role === 'staff' ? '使用系统中的治疗师或管理员账号。' : '使用已绑定档案的手机号与患者编号。' }}</text>
+      <text class="card-description">{{ role === 'staff' ? '使用系统中的治疗师或管理员账号。' : '患者身份认证尚未开放，请联系机构。' }}</text>
       <view class="field-group">
         <text class="field-label">工作室 / 租户</text>
         <input v-model="tenantName" class="field-input" placeholder="工作室内部" maxlength="80" />
@@ -21,9 +21,7 @@
         <view class="field-group"><text class="field-label">密码</text><input v-model="password" class="field-input" password placeholder="请输入密码" maxlength="128" /></view>
       </template>
       <template v-else>
-        <view class="field-group"><text class="field-label">手机号</text><input v-model="phone" class="field-input" type="text" placeholder="请输入档案手机号" maxlength="32" /></view>
-        <view class="field-group"><text class="field-label">患者编号</text><input v-model="patientNo" class="field-input" placeholder="例如 PAT202603100001" maxlength="64" /></view>
-        <view class="notice-box patient-warning">患者登录依赖治疗师预先完成绑定。当前后端仅以“手机号 + 患者编号”校验身份，安全审查完成前默认关闭，不可用于公开患者服务。</view>
+        <view class="notice-box patient-warning">将由机构线下核验身份后发放短期单次使用邀请，并核验已登记手机号。验证、限频及安全存储完成前，患者端保持关闭。</view>
       </template>
       <text v-if="errorMessage" class="form-error">{{ errorMessage }}</text>
       <button v-if="role === 'staff'" class="primary-button submit-button" :loading="busy" :disabled="busy" @tap="submitStaff">{{ busy ? '正在登录…' : '登录' }}</button>
@@ -38,7 +36,7 @@
 import { ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import CaptchaSlider from '@/components/CaptchaSlider.vue'
-import { loginPatient, loginStaff } from '@/lib/auth'
+import { loginStaff } from '@/lib/auth'
 import { CAPTCHA_ENABLED, PATIENT_LOGIN_ENABLED } from '@/lib/config'
 import { getSession } from '@/lib/session'
 
@@ -46,8 +44,6 @@ const role = ref<'staff' | 'patient'>('staff')
 const tenantName = ref('工作室内部')
 const username = ref('')
 const password = ref('')
-const phone = ref('')
-const patientNo = ref('')
 const busy = ref(false)
 const captchaVisible = ref(false)
 const errorMessage = ref('')
@@ -81,20 +77,8 @@ function onCaptchaVerified(captchaVerification: string): void {
   void finishStaffLogin(captchaVerification)
 }
 
-async function submitPatient(): Promise<void> {
-  errorMessage.value = ''
-  if (!patientLoginEnabled) { errorMessage.value = '当前患者认证方式安全性不足，已默认关闭。'; return }
-  if (!tenantName.value.trim() || !phone.value.trim() || !patientNo.value.trim()) {
-    errorMessage.value = '请填写租户、手机号和患者编号。'
-    return
-  }
-  busy.value = true
-  try {
-    await loginPatient({ tenantName: tenantName.value, phone: phone.value.trim(), patientNo: patientNo.value.trim() })
-    uni.reLaunch({ url: '/pages/home/index' })
-  } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : '登录失败，请联系治疗师。'
-  } finally { busy.value = false }
+function submitPatient(): void {
+  errorMessage.value = '患者登录尚未开放，请联系机构完成线下身份核验。'
 }
 </script>
 

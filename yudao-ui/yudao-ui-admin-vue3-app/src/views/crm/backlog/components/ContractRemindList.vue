@@ -174,7 +174,6 @@
 <script setup lang="ts" name="EndContract">
 import { dateFormatter, dateFormatter2 } from '@/utils/formatTime'
 import * as ContractApi from '@/api/crm/contract'
-import { fenToYuanFormat } from '@/utils/formatter'
 import { DICT_TYPE } from '@/utils/dict'
 import { CONTRACT_EXPIRY_TYPE } from './common'
 import { erpPriceInputFormatter, erpPriceTableColumnFormatter } from '@/utils'

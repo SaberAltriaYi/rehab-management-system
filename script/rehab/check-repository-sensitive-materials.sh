@@ -45,12 +45,19 @@ if git grep -n -I -E \
   ':(exclude)yudao-ui/yudao-ui-admin-vue3-app/pnpm-lock.yaml' > "$RESULT_FILE"; then
   sed 's/^/  /' "$RESULT_FILE" >&2
   fail "发现高置信度私钥或访问令牌"
+else
+  grep_status=$?
+  [ "$grep_status" -eq 1 ] || fail "Git 工作树凭据扫描失败（git grep 退出 ${grep_status}）"
 fi
 
-if git grep -n -I -E 'access(Key|Secret)' -- 'sql/*.sql' \
-  | grep -v 'REDACTED' > "$RESULT_FILE"; then
-  sed 's/^/  /' "$RESULT_FILE" >&2
-  fail "数据库初始化脚本仍包含未脱敏的对象存储访问凭据"
+if git grep -n -I -E 'access(Key|Secret)' -- 'sql/*.sql' > "$RESULT_FILE"; then
+  if grep -v 'REDACTED' "$RESULT_FILE" >/dev/null; then
+    grep -v 'REDACTED' "$RESULT_FILE" | sed 's/^/  /' >&2
+    fail "数据库初始化脚本仍包含未脱敏的对象存储访问凭据"
+  fi
+else
+  grep_status=$?
+  [ "$grep_status" -eq 1 ] || fail "数据库脚本凭据扫描失败（git grep 退出 ${grep_status}）"
 fi
 
 git ls-files 'yudao-ui/yudao-ui-admin-vue3-app/.env*' | while IFS= read -r env_file; do
@@ -79,6 +86,9 @@ if git grep -n -I -E \
   'yudao-server/src/main/resources/**' > "$RESULT_FILE"; then
   sed 's/^/  /' "$RESULT_FILE" >&2
   fail "交付配置仍包含弱演示密码"
+else
+  grep_status=$?
+  [ "$grep_status" -eq 1 ] || fail "交付配置凭据扫描失败（git grep 退出 ${grep_status}）"
 fi
 
 git ls-files | grep -E '(^|/)(backups?|release-output|playwright-report|test-results)(/|$)' \

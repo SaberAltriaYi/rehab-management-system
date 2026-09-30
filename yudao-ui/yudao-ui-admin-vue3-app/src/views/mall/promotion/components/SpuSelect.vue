@@ -48,7 +48,7 @@
         ref="spuListRef"
         v-loading="loading"
         :data="list"
-        :expand-row-keys="expandRowKeys"
+        :expand-row-keys="expandRowKeys?.map(String)"
         row-key="id"
         @expand-change="expandChange"
         @selection-change="selectSpu"

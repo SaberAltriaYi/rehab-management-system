@@ -98,13 +98,6 @@
         </template>
       </el-table-column>
     </el-table>
-    <!-- 分页 -->
-    <Pagination
-      :total="total"
-      v-model:page="queryParams.pageNo"
-      v-model:limit="queryParams.pageSize"
-      @pagination="getList"
-    />
   </ContentWrap>
 
   <!-- 表单弹窗：添加/修改 -->
@@ -124,11 +117,11 @@ const message = useMessage() // 消息弹窗
 const { t } = useI18n() // 国际化
 
 const loading = ref(true) // 列表的加载中
-const list = ref([]) // 列表的数据
+const list = ref<Demo02CategoryApi.Demo02CategoryVO[]>([]) // 树形列表不分页
 const queryParams = reactive({
   name: null,
   parentId: null,
-  createTime: []
+  createTime: [] as string[]
 })
 const queryFormRef = ref() // 搜索的表单
 const exportLoading = ref(false) // 导出的加载中
@@ -146,7 +139,6 @@ const getList = async () => {
 
 /** 搜索按钮操作 */
 const handleQuery = () => {
-  queryParams.pageNo = 1
   getList()
 }
 

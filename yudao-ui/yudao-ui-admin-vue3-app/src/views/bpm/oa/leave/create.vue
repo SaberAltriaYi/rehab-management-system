@@ -82,7 +82,7 @@ const { push, currentRoute } = useRouter() // 路由
 const { query } = useRoute() // 查询参数
 
 const formLoading = ref(false) // 表单的加载中：1）修改时的数据加载；2）提交的按钮禁用
-const formData = ref({
+const formData = ref<{ type?: number; reason?: string; startTime?: string; endTime?: string }>({
   type: undefined,
   reason: undefined,
   startTime: undefined,
@@ -98,16 +98,16 @@ const formRef = ref() // 表单 Ref
 
 // 审批相关：变量
 const processDefineKey = 'oa_leave' // 流程定义 Key
-const startUserSelectTasks = ref([]) // 发起人需要选择审批人的用户任务列表
-const startUserSelectAssignees = ref({}) // 发起人选择审批人的数据
-const tempStartUserSelectAssignees = ref({}) // 历史发起人选择审批人的数据，用于每次表单变更时，临时保存
+const startUserSelectTasks = ref<ApprovalNodeInfo[]>([]) // 发起人需要选择审批人的用户任务列表
+const startUserSelectAssignees = ref<Record<string, number[]>>({}) // 发起人选择审批人的数据
+const tempStartUserSelectAssignees = ref<Record<string, number[]>>({}) // 历史选择，用于表单变更时恢复
 const activityNodes = ref<ProcessInstanceApi.ApprovalNodeInfo[]>([]) // 审批节点信息
 const processDefinitionId = ref('')
 
 /** 提交表单 */
 const submitForm = async () => {
   // 1.1 校验表单
-  if (!formRef) return
+  if (!formRef.value) return
   const valid = await formRef.value.validate()
   if (!valid) return
   // 1.2 审批相关：校验指定审批人
@@ -123,9 +123,14 @@ const submitForm = async () => {
   }
 
   // 2. 提交请求
+  const { type, reason, startTime, endTime } = formData.value
+  if (type === undefined || !reason || !startTime || !endTime) {
+    message.error('请填写完整的请假信息')
+    return
+  }
   formLoading.value = true
   try {
-    const data = { ...formData.value } as unknown as LeaveApi.LeaveVO
+    const data: LeaveApi.LeaveCreateReqVO = { type, reason, startTime, endTime }
     // 审批相关：设置指定审批人
     if (startUserSelectTasks.value?.length > 0) {
       data.startUserSelectAssignees = startUserSelectAssignees.value

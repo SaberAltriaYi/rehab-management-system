@@ -18,6 +18,18 @@ command -v jar >/dev/null 2>&1 || {
   exit 1
 }
 
+# Mockito/Byte Buddy in the current test reactor does not support the host's JDK 23.
+# Match the release workflow (JDK 17) instead of producing a misleading package.
+MAVEN_JAVA_MAJOR="$(mvn -version 2>&1 | sed -nE 's/^Java version: ([0-9]+).*/\1/p' | head -n 1)"
+if [[ "${MAVEN_JAVA_MAJOR}" != "17" ]]; then
+  echo "ERROR: the isolated desktop backend build requires JDK 17; set JAVA_HOME to a JDK 17 installation (Maven is using ${MAVEN_JAVA_MAJOR:-unknown})." >&2
+  exit 1
+fi
+
+# Never allow a failed isolated build to leave a previously produced JAR in
+# the packaging input path. This path is generated output, not source data.
+rm -f -- "${OUTPUT_JAR}"
+
 BUILD_PARENT="${TMPDIR:-/tmp}"
 BUILD_PARENT="${BUILD_PARENT%/}"
 BUILD_ROOT="$(mktemp -d "${BUILD_PARENT}/rehab-server-build.XXXXXX")"
@@ -27,21 +39,29 @@ cleanup() {
 trap cleanup EXIT
 
 echo "Staging backend source in ${BUILD_ROOT}"
+# An allowlist avoids copying unrelated desktop assets and cloud-backed media
+# (which may stall reads or introduce private data into the staging tree).
+# Exclude generated outputs before the module includes: rsync applies the
+# first matching filter rule.
 rsync -a \
   --exclude='.git/' \
   --exclude='.idea/' \
+  --exclude='.env' \
+  --exclude='.env.*' \
   --exclude='.flattened-pom*' \
   --exclude='target/' \
   --exclude='node_modules/' \
   --exclude='dist/' \
   --exclude='dist-internal/' \
-  --exclude='/yudao-ui/' \
-  --exclude='/data/' \
-  --exclude='/backups/' \
-  --exclude='/deploy/internal/.env' \
-  --exclude='/deploy/internal/certs/' \
-  --exclude='/deploy/internal/secrets/' \
   --exclude='* 2.*' \
+  --include='/pom.xml' \
+  --include='/lombok.config' \
+  --include='/.mvn/***' \
+  --include='/yudao-dependencies/***' \
+  --include='/yudao-framework/***' \
+  --include='/yudao-module-*/***' \
+  --include='/yudao-server/***' \
+  --exclude='*' \
   "${PROJECT_ROOT}/" "${BUILD_ROOT}/"
 
 (

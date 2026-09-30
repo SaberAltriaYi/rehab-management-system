@@ -94,12 +94,17 @@ jobs:
         working-directory: ${{ env.FRONTEND_DIR }}
         run: pnpm build:internal
 
+      # The build creates ignored auto-import declarations required by vue-tsc.
+      - name: Check frontend types before desktop packaging
+        working-directory: ${{ env.FRONTEND_DIR }}
+        run: pnpm ts:check
+
       - name: Audit production frontend dependencies
         working-directory: ${{ env.FRONTEND_DIR }}
         run: pnpm audit --prod --audit-level high --registry=https://registry.npmjs.org
 
       - name: Test runtime tooling
-        run: node --test desktop/scripts/runtime-tools.test.mjs
+        run: node --test desktop/scripts/*.test.mjs
 
       - name: Generate sanitized database bootstrap
         run: node desktop/scripts/build-sanitized-bootstrap.mjs

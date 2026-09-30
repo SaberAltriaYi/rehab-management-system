@@ -111,7 +111,7 @@
         icon-bg-color="text-purple-500"
         prefix="￥"
         :decimals="2"
-        :value="fenToYuan(summary?.orderPayPrice || 0)"
+        :value="Number(fenToYuan(summary?.orderPayPrice || 0))"
       />
     </el-col>
     <el-col :sm="6" :xs="12" v-loading="loading">
@@ -131,7 +131,7 @@
         icon-bg-color="text-green-500"
         prefix="￥"
         :decimals="2"
-        :value="fenToYuan(summary?.afterSalePrice || 0)"
+        :value="Number(fenToYuan(summary?.afterSalePrice || 0))"
       />
     </el-col>
   </el-row>
@@ -231,9 +231,19 @@ import { ref, onMounted } from 'vue'
 import { useUserStore } from '@/store/modules/user'
 const message = useMessage() // 消息弹窗
 
-const port = ref('')
-const ports = ref([])
-const reader = ref('')
+// Web Serial 尚未包含在当前 TypeScript DOM 库中，声明扫码枪实际使用的最小接口。
+interface ScannerPort {
+  open(options: { baudRate: number; dataBits: number; stopBits: number }): Promise<void>
+  close(): Promise<void>
+  readable: ReadableStream<Uint8Array> | null
+}
+interface ScannerSerial {
+  requestPort(): Promise<ScannerPort>
+  getPorts(): Promise<ScannerPort[]>
+}
+const port = ref<ScannerPort | null>(null)
+const ports = ref<ScannerPort[]>([])
+const reader = ref<ReadableStreamDefaultReader<Uint8Array> | null>(null)
 
 defineOptions({ name: 'PickUpOrder' })
 
@@ -335,21 +345,16 @@ const handlePickup = () => {
 const connectToSerialPort = async () => {
   try {
     // 判断浏览器支持串口通信
-    if (
-      'serial' in navigator &&
-      navigator.serial != null &&
-      typeof navigator.serial === 'object' &&
-      'requestPort' in navigator.serial
-    ) {
-      // 提示用户选择一个串口
-      port.value = await navigator.serial.requestPort()
-    } else {
+    const serial = (navigator as Navigator & { serial?: ScannerSerial }).serial
+    if (!serial || typeof serial.requestPort !== 'function' || typeof serial.getPorts !== 'function') {
       message.error('浏览器不支持扫码枪连接，请更换浏览器重试')
       return
     }
+    // 提示用户选择一个串口
+    port.value = await serial.requestPort()
 
     // 获取用户之前授予该网站访问权限的所有串口。
-    ports.value = await navigator.serial.getPorts()
+    ports.value = await serial.getPorts()
 
     // console.log(port.value, ports.value);
     // console.log(port.value)
@@ -369,14 +374,18 @@ const connectToSerialPort = async () => {
 
 /** 监听扫码枪输入 */
 const readData = async () => {
-  reader.value = port.value.readable.getReader()
+  const readable = port.value?.readable
+  if (!readable) return
+  const streamReader = readable.getReader()
+  reader.value = streamReader
   let data = '' //扫码数据
   // 监听来自串口的数据
   while (true) {
-    const { value, done } = await reader.value.read()
+    const { value, done } = await streamReader.read()
     if (done) {
       // 允许稍后关闭串口
-      reader.value.releaseLock()
+      streamReader.releaseLock()
+      reader.value = null
       break
     }
     // 获取发送的数据
@@ -395,10 +404,10 @@ const readData = async () => {
 
 /** 断开扫码枪 */
 const cutPort = async () => {
-  if (port.value !== '') {
-    await reader.value.cancel()
+  if (port.value) {
+    await reader.value?.cancel()
     await port.value.close()
-    port.value = ''
+    port.value = null
     console.log('断开扫码枪连接')
     message.success('已成功断开扫码枪连接')
     serialPort.value = false

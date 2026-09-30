@@ -19,7 +19,7 @@
     >
       <el-select placeholder="请选择运费模板" v-model="formData.deliveryTemplateId" class="w-80">
         <el-option
-          v-for="item in deliveryTemplateList"
+          v-for="item in deliveryTemplateListWithId"
           :key="item.id"
           :label="item.name"
           :value="item.id"
@@ -89,7 +89,13 @@ const validate = async () => {
 defineExpose({ validate })
 
 /** 初始化 */
-const deliveryTemplateList = ref([]) // 运费模版
+const deliveryTemplateList = ref<Pick<ExpressTemplateApi.DeliveryExpressTemplateVO, 'id' | 'name'>[]>([]) // 运费模版
+const deliveryTemplateListWithId = computed(() =>
+  deliveryTemplateList.value.filter(
+    (item): item is ExpressTemplateApi.DeliveryExpressTemplateVO & { id: number } =>
+      item.id != null
+  )
+)
 onMounted(async () => {
   deliveryTemplateList.value = await ExpressTemplateApi.getSimpleTemplateList()
 })

@@ -28,7 +28,7 @@ defineProps({
 
 const emits = defineEmits(['play'])
 
-const currentSong = inject('currentSong', {})
+const currentSong = inject<{ id?: number | string }>('currentSong', {})
 
 function playSong () {
   emits('play')

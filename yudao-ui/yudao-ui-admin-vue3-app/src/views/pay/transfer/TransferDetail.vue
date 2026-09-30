@@ -9,16 +9,16 @@
       </el-descriptions-item>
       <el-descriptions-item label="应用编号">{{ detailData.appId }}</el-descriptions-item>
       <el-descriptions-item label="转账状态">
-        <dict-tag :type="DICT_TYPE.PAY_TRANSFER_STATUS" :value="detailData.status" size="small" />
+        <dict-tag :type="DICT_TYPE.PAY_TRANSFER_STATUS" :value="detailData.status ?? ''" size="small" />
       </el-descriptions-item>
       <el-descriptions-item label="转账金额">
-        <el-tag type="success" size="small">￥{{ (detailData.price / 100.0).toFixed(2) }}</el-tag>
+        <el-tag type="success" size="small">￥{{ ((detailData.price ?? 0) / 100.0).toFixed(2) }}</el-tag>
       </el-descriptions-item>
       <el-descriptions-item label="转账时间">
-        {{ formatDate(detailData.successTime) }}
+        {{ formatDate(detailData.successTime ?? '') }}
       </el-descriptions-item>
       <el-descriptions-item label="创建时间">
-        {{ formatDate(detailData.createTime) }}
+        {{ formatDate(detailData.createTime ?? '') }}
       </el-descriptions-item>
     </el-descriptions>
     <!-- 分割线 -->
@@ -27,11 +27,11 @@
       <el-descriptions-item label="收款人姓名">{{ detailData.userName }}</el-descriptions-item>
       <el-descriptions-item label="收款人账号">{{ detailData.userAccount }}</el-descriptions-item>
       <el-descriptions-item label="支付渠道">
-        <dict-tag :type="DICT_TYPE.PAY_CHANNEL_CODE" :value="detailData.channelCode" />
+        <dict-tag :type="DICT_TYPE.PAY_CHANNEL_CODE" :value="detailData.channelCode ?? ''" />
       </el-descriptions-item>
       <el-descriptions-item label="支付 IP">{{ detailData.userIp }}</el-descriptions-item>
       <el-descriptions-item label="渠道单号">
-        <el-tag size="mini" type="success" v-if="detailData.channelTransferNo">
+        <el-tag size="small" type="success" v-if="detailData.channelTransferNo">
           {{ detailData.channelTransferNo }}
         </el-tag>
       </el-descriptions-item>
@@ -61,7 +61,7 @@ defineOptions({ name: 'PayTransferDetail' })
 
 const dialogVisible = ref(false) // 弹窗的是否展示
 const detailLoading = ref(false) // 表单的加载中
-const detailData = ref({})
+const detailData = ref<Partial<TransferApi.TransferDetailVO>>({})
 
 /** 打开弹窗 */
 const open = async (id: number) => {

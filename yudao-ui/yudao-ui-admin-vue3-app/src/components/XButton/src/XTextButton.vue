@@ -25,7 +25,10 @@ const getBindValue = computed(() => {
       delete obj[key]
     }
   }
-  return obj
+  const type: '' | 'primary' | 'success' | 'warning' | 'danger' | 'info' = (['primary', 'success', 'warning', 'danger', 'info'] as const).find(
+    (candidate) => candidate === props.type
+  ) ?? ''
+  return { ...obj, type }
 })
 </script>
 

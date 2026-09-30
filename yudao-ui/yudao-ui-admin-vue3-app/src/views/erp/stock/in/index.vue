@@ -273,6 +273,7 @@ const queryParams = reactive({
   productId: undefined,
   supplierId: undefined,
   inTime: [],
+  warehouseId: undefined,
   status: undefined,
   remark: undefined,
   creator: undefined

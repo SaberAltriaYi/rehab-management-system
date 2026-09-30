@@ -140,6 +140,8 @@
 import '../theme/index.scss'
 import BpmnViewer from 'bpmn-js/lib/Viewer'
 import MoveCanvasModule from 'diagram-js/lib/navigation/movecanvas'
+import type Canvas from 'diagram-js/lib/core/Canvas'
+import type ElementRegistry from 'diagram-js/lib/core/ElementRegistry'
 import { ZoomOut, ZoomIn, ScaleToOriginal } from '@element-plus/icons-vue'
 import { DICT_TYPE } from '@/utils/dict'
 import { dateFormatter, formatPast2 } from '@/utils/formatTime'
@@ -173,7 +175,7 @@ const selectTasks = ref<any[]>([]) // 选中的任务数组
 /** Zoom：恢复 */
 const processReZoom = () => {
   defaultZoom.value = 1
-  bpmnViewer.value?.get('canvas').zoom('fit-viewport', 'auto')
+  bpmnViewer.value?.get<Canvas>('canvas').zoom('fit-viewport')
 }
 
 /** Zoom：放大 */
@@ -183,7 +185,7 @@ const processZoomIn = (zoomStep = 0.1) => {
     throw new Error('[Process Designer Warn ]: The zoom ratio cannot be greater than 4')
   }
   defaultZoom.value = newZoom
-  bpmnViewer.value?.get('canvas').zoom(defaultZoom.value)
+  bpmnViewer.value?.get<Canvas>('canvas').zoom(defaultZoom.value)
 }
 
 /** Zoom：缩小 */
@@ -193,7 +195,7 @@ const processZoomOut = (zoomStep = 0.1) => {
     throw new Error('[Process Designer Warn ]: The zoom ratio cannot be less than 0.2')
   }
   defaultZoom.value = newZoom
-  bpmnViewer.value?.get('canvas').zoom(defaultZoom.value)
+  bpmnViewer.value?.get<Canvas>('canvas').zoom(defaultZoom.value)
 }
 
 /** 流程图预览清空 */
@@ -213,9 +215,9 @@ const addCustomDefs = () => {
   if (!bpmnViewer.value) {
     return
   }
-  const canvas = bpmnViewer.value?.get('canvas')
-  const svg = canvas?._svg
-  svg.appendChild(customDefs.value)
+  const canvas = bpmnViewer.value.get<Canvas>('canvas')
+  const svg = canvas.getDefaultLayer().ownerSVGElement
+  if (svg && customDefs.value) svg.appendChild(customDefs.value)
 }
 
 /** 节点选中 */
@@ -298,8 +300,8 @@ const setProcessStatus = (view: any) => {
     finishedSequenceFlowActivityIds,
     rejectedTaskActivityIds
   } = view
-  const canvas = bpmnViewer.value.get('canvas')
-  const elementRegistry = bpmnViewer.value.get('elementRegistry')
+  const canvas = bpmnViewer.value.get<Canvas>('canvas')
+  const elementRegistry = bpmnViewer.value.get<ElementRegistry>('elementRegistry')
 
   // 已完成节点
   if (Array.isArray(finishedSequenceFlowActivityIds)) {
@@ -307,7 +309,7 @@ const setProcessStatus = (view: any) => {
       if (item != null) {
         canvas.addMarker(item, 'success')
         const element = elementRegistry.get(item)
-        const conditionExpression = element.businessObject.conditionExpression
+        const conditionExpression = element?.businessObject?.conditionExpression
         if (conditionExpression) {
           canvas.addMarker(item, 'condition-expression')
         }

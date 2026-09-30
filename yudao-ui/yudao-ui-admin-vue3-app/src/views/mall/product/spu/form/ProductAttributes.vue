@@ -79,7 +79,7 @@ const setInputRef = (el: any) => {
   }
 }
 const attributeList = ref<PropertyAndValues[]>([]) // 商品属性列表
-const attributeOptions = ref([] as PropertyApi.PropertyValueVO[]) // 商品属性名称下拉框
+const attributeOptions = ref<(PropertyApi.PropertyValueVO & { id: number })[]>([]) // 已保存的属性值有编号
 const props = defineProps({
   propertyList: {
     type: Array,
@@ -114,17 +114,20 @@ const handleCloseProperty = (index: number) => {
 /** 显示输入框并获取焦点 */
 const showInput = async (index: number) => {
   attributeIndex.value = index
-  inputRef.value[index].focus()
+  inputRef.value[index]?.focus()
   // 获取属性下拉选项
-  await getAttributeOptions(attributeList.value[index].id)
+  const attribute = attributeList.value[index]
+  if (attribute) await getAttributeOptions(attribute.id)
 }
 
 /** 输入框失去焦点或点击回车时触发 */
 const emit = defineEmits(['success']) // 定义 success 事件，用于操作成功后的回调
 const handleInputConfirm = async (index: number, propertyId: number) => {
-  if (inputValue.value) {
+  const attribute = attributeList.value[index]
+  if (inputValue.value && attribute) {
+    const values = (attribute.values ??= [])
     // 1. 重复添加校验
-    if (attributeList.value[index].values.find((item) => item.name === inputValue.value)) {
+    if (values.find((item) => item.name === inputValue.value)) {
       message.warning('已存在相同属性值，请重试')
       attributeIndex.value = null
       inputValue.value = ''
@@ -136,7 +139,7 @@ const handleInputConfirm = async (index: number, propertyId: number) => {
     if (existValue) {
       attributeIndex.value = null
       inputValue.value = ''
-      attributeList.value[index].values.push({ id: existValue.id, name: existValue.name })
+      values.push({ id: existValue.id, name: existValue.name })
       emit('success', attributeList.value)
       return
     }
@@ -144,7 +147,7 @@ const handleInputConfirm = async (index: number, propertyId: number) => {
     // 2.2 情况二：新属性值，则进行保存
     try {
       const id = await PropertyApi.createPropertyValue({ propertyId, name: inputValue.value })
-      attributeList.value[index].values.push({ id, name: inputValue.value })
+      values.push({ id, name: inputValue.value })
       message.success(t('common.createSuccess'))
       emit('success', attributeList.value)
     } catch {
@@ -157,6 +160,8 @@ const handleInputConfirm = async (index: number, propertyId: number) => {
 
 /** 获取商品属性下拉选项 */
 const getAttributeOptions = async (propertyId: number) => {
-  attributeOptions.value = await PropertyApi.getPropertyValueSimpleList(propertyId)
+  attributeOptions.value = (await PropertyApi.getPropertyValueSimpleList(propertyId)).filter(
+    (item): item is PropertyApi.PropertyValueVO & { id: number } => item.id !== undefined
+  )
 }
 </script>

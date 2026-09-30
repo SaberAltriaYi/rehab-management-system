@@ -6,7 +6,7 @@
         <el-descriptions-item label="任务编号">{{ task.id }}</el-descriptions-item>
         <el-descriptions-item label="任务名称">{{ task.name }}</el-descriptions-item>
         <el-descriptions-item label="升级范围">
-          <dict-tag :type="DICT_TYPE.IOT_OTA_TASK_DEVICE_SCOPE" :value="task.deviceScope" />
+          <dict-tag v-if="task.deviceScope != null" :type="DICT_TYPE.IOT_OTA_TASK_DEVICE_SCOPE" :value="task.deviceScope" />
         </el-descriptions-item>
         <el-descriptions-item label="任务状态">
           <dict-tag :type="DICT_TYPE.IOT_OTA_TASK_STATUS" :value="task.status" />

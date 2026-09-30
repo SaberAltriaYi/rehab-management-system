@@ -63,7 +63,14 @@ import { ProductVO } from '@/api/iot/product/product'
 import ThingModelProperty from './ThingModelProperty.vue'
 import ThingModelService from './ThingModelService.vue'
 import ThingModelEvent from './ThingModelEvent.vue'
-import { ThingModelApi, ThingModelData, ThingModelFormRules } from '@/api/iot/thingmodel'
+import {
+  ThingModelApi,
+  ThingModelData,
+  ThingModelEvent as ThingModelEventDTO,
+  ThingModelFormRules,
+  ThingModelProperty as ThingModelPropertyDTO,
+  ThingModelService as ThingModelServiceDTO
+} from '@/api/iot/thingmodel'
 import {
   IOT_PROVIDE_KEY,
   IoTDataSpecsDataTypeEnum,
@@ -85,7 +92,17 @@ const dialogVisible = ref(false) // 弹窗的是否展示
 const dialogTitle = ref('') // 弹窗的标题
 const formLoading = ref(false) // 表单的加载中：1）修改时的数据加载；2）提交的按钮禁用
 const formType = ref('') // 表单的类型：create - 新增；update - 修改
-const formData = ref<ThingModelData>({
+// 编辑态允许尚未输入的字段；提交前经表单校验和 fillExtraAttributes 补全。
+// dataSpecs 是数据规范，而不是包含 identifier/name/accessMode 的物模型属性。
+type ThingModelDraft = Omit<ThingModelData, 'property' | 'service' | 'event'> & {
+  property: Omit<Partial<ThingModelPropertyDTO>, 'dataSpecs'> & {
+    dataType: string
+    dataSpecs?: { dataType: string }
+  }
+  service: Partial<ThingModelServiceDTO>
+  event: Partial<ThingModelEventDTO>
+}
+const formData = ref<ThingModelDraft>({
   type: IoTThingModelTypeEnum.PROPERTY,
   dataType: IoTDataSpecsDataTypeEnum.INT,
   property: {

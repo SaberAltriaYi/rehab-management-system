@@ -1,6 +1,6 @@
 <template>
   <div class="waterfall" v-loading="props.loading">
-    <template v-for="(item, index) in props.list" :key="index">
+    <template v-for="item in props.list" :key="item.mediaId">
       <div class="waterfall-item" v-if="item.content && item.content.newsItem">
         <WxNews :articles="item.content.newsItem" />
         <!-- 操作按钮 -->

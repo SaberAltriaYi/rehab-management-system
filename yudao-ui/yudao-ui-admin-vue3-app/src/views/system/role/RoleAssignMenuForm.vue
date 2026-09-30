@@ -57,7 +57,7 @@ const message = useMessage() // 消息弹窗
 
 const dialogVisible = ref(false) // 弹窗的是否展示
 const formLoading = ref(false) // 表单的加载中：1）修改时的数据加载；2）提交的按钮禁用
-const formData = reactive({
+const formData = reactive<{ id?: number; name: string; code: string; menuIds: number[] }>({
   id: undefined,
   name: '',
   code: '',
@@ -81,10 +81,11 @@ const open = async (row: RoleApi.RoleVO) => {
   formData.code = row.code
   formLoading.value = true
   try {
-    formData.value.menuIds = await PermissionApi.getRoleMenuList(row.id)
+    formData.menuIds = await PermissionApi.getRoleMenuList(row.id)
     // 设置选中
-    formData.value.menuIds.forEach((menuId: number) => {
-      treeRef.value.setChecked(menuId, true, false)
+    await nextTick()
+    formData.menuIds.forEach((menuId: number) => {
+      treeRef.value?.setChecked(menuId, true, false)
     })
   } finally {
     formLoading.value = false
@@ -96,13 +97,17 @@ defineExpose({ open }) // 提供 open 方法，用于打开弹窗
 const emit = defineEmits(['success']) // 定义 success 事件，用于操作成功后的回调
 const submitForm = async () => {
   // 校验表单
-  if (!formRef) return
+  if (!formRef.value) return
   const valid = await formRef.value.validate()
   if (!valid) return
+  if (formData.id === undefined) {
+    message.error('角色未加载，请重新选择')
+    return
+  }
   // 提交请求
   formLoading.value = true
   try {
-    const data = {
+    const data: PermissionApi.PermissionAssignRoleMenuReqVO = {
       roleId: formData.id,
       menuIds: [
         ...(treeRef.value.getCheckedKeys(false) as unknown as Array<number>), // 获得当前选中节点
@@ -125,12 +130,12 @@ const resetForm = () => {
   treeNodeAll.value = false
   menuExpand.value = false
   // 重置表单
-  formData.value = {
+  Object.assign(formData, {
     id: undefined,
     name: '',
     code: '',
     menuIds: []
-  }
+  })
   treeRef.value?.setCheckedNodes([])
   formRef.value?.resetFields()
 }

@@ -35,7 +35,7 @@
           title="昨日支付金额"
           prefix="￥"
           :decimals="2"
-          :value="fenToYuan(summary?.value?.yesterdayPayPrice || 0)"
+          :value="Number(fenToYuan(summary?.value?.yesterdayPayPrice || 0))"
           :percent="
             calculateRelativeRate(
               summary?.value?.yesterdayPayPrice,
@@ -50,7 +50,7 @@
           title="本月支付金额"
           prefix="￥"
           ::decimals="2"
-          :value="fenToYuan(summary?.value?.monthPayPrice || 0)"
+          :value="Number(fenToYuan(summary?.value?.monthPayPrice || 0))"
           :percent="
             calculateRelativeRate(summary?.value?.monthPayPrice, summary?.reference?.monthPayPrice)
           "
@@ -86,7 +86,7 @@
             icon-bg-color="text-blue-500"
             prefix="￥"
             :decimals="2"
-            :value="fenToYuan(trendSummary?.value?.turnoverPrice || 0)"
+            :value="Number(fenToYuan(trendSummary?.value?.turnoverPrice || 0))"
             :percent="
               calculateRelativeRate(
                 trendSummary?.value?.turnoverPrice,
@@ -104,7 +104,7 @@
             icon-bg-color="text-purple-500"
             prefix="￥"
             :decimals="2"
-            :value="fenToYuan(trendSummary?.value?.orderPayPrice || 0)"
+            :value="Number(fenToYuan(trendSummary?.value?.orderPayPrice || 0))"
             :percent="
               calculateRelativeRate(
                 trendSummary?.value?.orderPayPrice,
@@ -122,7 +122,7 @@
             icon-bg-color="text-yellow-500"
             prefix="￥"
             :decimals="2"
-            :value="fenToYuan(trendSummary?.value?.rechargePrice || 0)"
+            :value="Number(fenToYuan(trendSummary?.value?.rechargePrice || 0))"
             :percent="
               calculateRelativeRate(
                 trendSummary?.value?.rechargePrice,
@@ -140,7 +140,7 @@
             icon-bg-color="text-green-500"
             prefix="￥"
             :decimals="2"
-            :value="fenToYuan(trendSummary?.value?.expensePrice || 0)"
+            :value="Number(fenToYuan(trendSummary?.value?.expensePrice || 0))"
             :percent="
               calculateRelativeRate(
                 trendSummary?.value?.expensePrice,
@@ -158,7 +158,7 @@
             icon-bg-color="text-cyan-500"
             prefix="￥"
             :decimals="2"
-            :value="fenToYuan(trendSummary?.value?.walletPayPrice || 0)"
+            :value="Number(fenToYuan(trendSummary?.value?.walletPayPrice || 0))"
             :percent="
               calculateRelativeRate(
                 trendSummary?.value?.walletPayPrice,
@@ -176,7 +176,7 @@
             icon-bg-color="text-yellow-500"
             prefix="￥"
             :decimals="2"
-            :value="fenToYuan(trendSummary?.value?.brokerageSettlementPrice || 0)"
+            :value="Number(fenToYuan(trendSummary?.value?.brokerageSettlementPrice || 0))"
             :percent="
               calculateRelativeRate(
                 trendSummary?.value?.brokerageSettlementPrice,
@@ -194,7 +194,7 @@
             icon-bg-color="text-blue-500"
             prefix="￥"
             :decimals="2"
-            :value="fenToYuan(trendSummary?.value?.afterSaleRefundPrice || 0)"
+            :value="Number(fenToYuan(trendSummary?.value?.afterSaleRefundPrice || 0))"
             :percent="
               calculateRelativeRate(
                 trendSummary?.value?.afterSaleRefundPrice,
@@ -322,10 +322,10 @@ const getTradeStatisticsList = async () => {
   const list = await TradeStatisticsApi.getTradeStatisticsList({ times })
   // 处理数据
   for (let item of list) {
-    item.turnoverPrice = fenToYuan(item.turnoverPrice)
-    item.orderPayPrice = fenToYuan(item.orderPayPrice)
-    item.rechargePrice = fenToYuan(item.rechargePrice)
-    item.expensePrice = fenToYuan(item.expensePrice)
+    item.turnoverPrice = Number(fenToYuan(item.turnoverPrice))
+    item.orderPayPrice = Number(fenToYuan(item.orderPayPrice))
+    item.rechargePrice = Number(fenToYuan(item.rechargePrice))
+    item.expensePrice = Number(fenToYuan(item.expensePrice))
   }
   // 更新 Echarts 数据
   if (lineChartOptions.dataset && lineChartOptions.dataset['source']) {

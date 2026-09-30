@@ -35,6 +35,7 @@
   </Dialog>
 </template>
 <script lang="ts" setup>
+import type { PropType } from 'vue'
 import * as PropertyApi from '@/api/mall/product/property'
 
 defineOptions({ name: 'ProductPropertyForm' })
@@ -51,12 +52,12 @@ const formRules = reactive({
   name: [{ required: true, message: '名称不能为空', trigger: 'blur' }]
 })
 const formRef = ref() // 表单 Ref
-const attributeList = ref([]) // 商品属性列表
+const attributeList = ref<Array<PropertyApi.PropertyVO & { values?: PropertyApi.PropertyValueVO[] }>>([]) // 商品属性列表
 const attributeOptions = ref([] as PropertyApi.PropertyVO[]) // 商品属性名称下拉框
 const props = defineProps({
   propertyList: {
-    type: Array,
-    default: () => {}
+    type: Array as PropType<Array<PropertyApi.PropertyVO & { values?: PropertyApi.PropertyValueVO[] }>>,
+    default: () => []
   }
 })
 

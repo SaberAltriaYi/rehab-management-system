@@ -76,7 +76,7 @@ const message = useMessage() // 消息弹窗
 
 const dialogVisible = ref(false) // 弹窗的是否展示
 const formLoading = ref(false) // 表单的加载中：修改时的数据加载
-const formData = ref<OtaTask>({
+const formData = ref<Omit<OtaTask, 'status'>>({
   name: '',
   deviceScope: IoTOtaTaskDeviceScopeEnum.ALL.value,
   firmwareId: props.firmwareId,

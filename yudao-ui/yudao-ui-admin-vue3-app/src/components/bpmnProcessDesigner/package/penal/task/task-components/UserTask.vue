@@ -176,7 +176,7 @@
     >
       <el-input
         type="textarea"
-        v-model="userTaskForm.candidateParam[0]"
+        v-model="expressionParam"
         clearable
         style="width: 100%"
         @change="updateElementTask"
@@ -228,7 +228,12 @@ const props = defineProps({
   type: String
 })
 const prefix = inject('prefix')
-const userTaskForm = ref({
+interface UserTaskForm {
+  candidateStrategy: CandidateStrategy | undefined
+  candidateParam: (string | number)[] | string | number
+  skipExpression: string
+}
+const userTaskForm = ref<UserTaskForm>({
   candidateStrategy: undefined, // 分配规则
   candidateParam: [], // 分配选项
   skipExpression: '' // 跳过表达式
@@ -238,7 +243,7 @@ const bpmnInstances = () => (window as any)?.bpmnInstances
 
 const roleOptions = ref<RoleApi.RoleVO[]>([]) // 角色列表
 const deptTreeOptions = ref() // 部门树
-const postOptions = ref<PostApi.PostVO[]>([]) // 岗位列表
+const postOptions = ref<(PostApi.PostVO & { id: number })[]>([]) // 岗位列表
 const userOptions = ref<UserApi.UserVO[]>([]) // 用户列表
 const userGroupOptions = ref<UserGroupApi.UserGroupVO[]>([]) // 用户组列表
 
@@ -253,6 +258,11 @@ const deptFieldOnFormOptions = computed(() => {
 })
 
 const deptLevel = ref(1)
+const expressionParam = computed({
+  get: () => Array.isArray(userTaskForm.value.candidateParam)
+    ? String(userTaskForm.value.candidateParam[0] ?? '') : '',
+  set: (value: string) => { userTaskForm.value.candidateParam = [value] }
+})
 const deptLevelLabel = computed(() => {
   let label = '部门负责人来源'
   if (userTaskForm.value.candidateStrategy == CandidateStrategy.MULTI_LEVEL_DEPT_LEADER) {
@@ -329,25 +339,6 @@ const resetTaskForm = () => {
     userTaskForm.value.skipExpression = ''
   }
 
-  // 改用通过extensionElements来存储数据
-  return
-  if (businessObject.candidateStrategy != undefined) {
-    userTaskForm.value.candidateStrategy = parseInt(businessObject.candidateStrategy) as any
-  } else {
-    userTaskForm.value.candidateStrategy = undefined
-  }
-  if (businessObject.candidateParam && businessObject.candidateParam.length > 0) {
-    if (userTaskForm.value.candidateStrategy === 60) {
-      // 特殊：流程表达式，只有一个 input 输入框
-      userTaskForm.value.candidateParam = [businessObject.candidateParam]
-    } else {
-      userTaskForm.value.candidateParam = businessObject.candidateParam
-        .split(',')
-        .map((item) => item)
-    }
-  } else {
-    userTaskForm.value.candidateParam = []
-  }
 }
 
 /** 更新 candidateStrategy 字段时，需要清空 candidateParam，并触发 bpmn 图更新 */
@@ -401,12 +392,6 @@ const updateElementTask = () => {
     extensionElements: extensions
   })
 
-  // 改用通过extensionElements来存储数据
-  return
-  bpmnInstances().modeling.updateProperties(toRaw(bpmnElement.value), {
-    candidateStrategy: userTaskForm.value.candidateStrategy,
-    candidateParam: userTaskForm.value.candidateParam.join(',')
-  })
 }
 
 const updateSkipExpression = () => {
@@ -457,7 +442,9 @@ onMounted(async () => {
   const deptOptions = await DeptApi.getSimpleDeptList()
   deptTreeOptions.value = handleTree(deptOptions, 'id')
   // 获得岗位列表
-  postOptions.value = await PostApi.getSimplePostList()
+  postOptions.value = (await PostApi.getSimplePostList()).filter(
+    (post): post is PostApi.PostVO & { id: number } => post.id !== undefined
+  )
   // 获得用户列表
   userOptions.value = await UserApi.getSimpleUserList()
   // 获得用户组列表

@@ -15,7 +15,7 @@
           class="!w-240px"
           type="year"
           value-format="YYYY"
-          :default-time="[new Date().getFullYear()]"
+          :default-time="new Date()"
         />
       </el-form-item>
       <el-form-item label="归属部门" prop="deptId">

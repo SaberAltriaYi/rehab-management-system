@@ -171,6 +171,7 @@ import PurchaseReturnItemForm from './components/PurchaseReturnItemForm.vue'
 import { SupplierApi, SupplierVO } from '@/api/erp/purchase/supplier'
 import { AccountApi, AccountVO } from '@/api/erp/finance/account'
 import { erpPriceInputFormatter, erpPriceMultiply } from '@/utils'
+import type { WarehouseOrderItem, WarehouseTransactionFormData } from '@/views/erp/shared/WarehouseTransactionItem'
 import PurchaseOrderReturnEnableList from '@/views/erp/purchase/order/components/PurchaseOrderReturnEnableList.vue'
 import { PurchaseOrderVO } from '@/api/erp/purchase/order'
 import * as UserApi from '@/api/system/user'
@@ -185,7 +186,7 @@ const dialogVisible = ref(false) // 弹窗的是否展示
 const dialogTitle = ref('') // 弹窗的标题
 const formLoading = ref(false) // 表单的加载中：1）修改时的数据加载；2）提交的按钮禁用
 const formType = ref('') // 表单的类型：create - 新增；update - 修改；detail - 详情
-const formData = ref({
+const formData = ref<WarehouseTransactionFormData>({
   id: undefined,
   supplierId: undefined,
   accountId: undefined,
@@ -222,9 +223,8 @@ watch(
       return
     }
     // 计算
-    const totalPrice = val.items.reduce((prev, curr) => prev + curr.totalPrice, 0)
-    const discountPrice =
-      val.discountPercent != null ? erpPriceMultiply(totalPrice, val.discountPercent / 100.0) : 0
+    const totalPrice = val.items.reduce((prev, curr) => prev + (curr.totalPrice ?? 0), 0)
+    const discountPrice = erpPriceMultiply(totalPrice, val.discountPercent / 100) ?? 0
     formData.value.discountPrice = discountPrice
     formData.value.totalPrice = totalPrice - discountPrice + val.otherPrice
   },
@@ -241,7 +241,8 @@ const open = async (type: string, id?: number) => {
   if (id) {
     formLoading.value = true
     try {
-      formData.value = await PurchaseReturnApi.getPurchaseReturn(id)
+      const record = await PurchaseReturnApi.getPurchaseReturn(id)
+      formData.value = { ...record, fileUrl: record.fileUrl ?? '', items: record.items ?? [] }
     } finally {
       formLoading.value = false
     }
@@ -265,22 +266,31 @@ const openPurchaseOrderReturnEnableList = () => {
   purchaseOrderReturnEnableListRef.value.open()
 }
 
-const handlePurchaseOrderChange = (order: PurchaseOrderVO) => {
+type SelectablePurchaseOrder = PurchaseOrderVO & {
+  supplierId?: number
+  accountId?: number
+  discountPercent?: number
+  fileUrl?: string
+  items: WarehouseOrderItem[]
+}
+const handlePurchaseOrderChange = (order: SelectablePurchaseOrder) => {
   // 将订单设置到退货单
   formData.value.orderId = order.id
   formData.value.orderNo = order.no
   formData.value.supplierId = order.supplierId
   formData.value.accountId = order.accountId
-  formData.value.discountPercent = order.discountPercent
+  formData.value.discountPercent = order.discountPercent ?? 0
   formData.value.remark = order.remark
-  formData.value.fileUrl = order.fileUrl
+  formData.value.fileUrl = order.fileUrl ?? ''
   // 将订单项设置到退货单项
-  order.items.forEach((item) => {
-    item.count = item.inCount - item.returnCount
-    item.orderItemId = item.id
-    item.id = undefined
-  })
-  formData.value.items = order.items.filter((item) => item.count > 0)
+  formData.value.items = (order.items ?? [])
+    .map((item) => ({
+      ...item,
+      id: undefined,
+      orderItemId: item.id,
+      count: Math.max(0, (item.inCount ?? 0) - (item.returnCount ?? 0))
+    }))
+    .filter((item) => item.count > 0)
 }
 
 /** 提交表单 */
@@ -316,7 +326,7 @@ const resetForm = () => {
     accountId: undefined,
     returnTime: undefined,
     remark: undefined,
-    fileUrl: undefined,
+    fileUrl: '',
     discountPercent: 0,
     discountPrice: 0,
     totalPrice: 0,

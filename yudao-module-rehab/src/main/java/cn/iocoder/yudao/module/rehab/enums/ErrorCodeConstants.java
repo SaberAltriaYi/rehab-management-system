@@ -84,6 +84,7 @@ public interface ErrorCodeConstants {
     ErrorCode APP_PATIENT_BIND_PHONE_MISMATCH = new ErrorCode(1_011_012_003, "绑定手机号与患者档案不一致");
     ErrorCode APP_PATIENT_DAILY_CHECKIN_EXISTS = new ErrorCode(1_011_012_004, "今日已提交打卡，请勿重复提交");
     ErrorCode APP_NOTIFICATION_NOT_EXISTS = new ErrorCode(1_011_012_005, "通知不存在或已失效");
+    ErrorCode APP_PATIENT_AUTH_DISABLED = new ErrorCode(1_011_012_006, "患者端身份验证尚未启用");
 
     ErrorCode NOTIFICATION_NOT_EXISTS = new ErrorCode(1_011_013_000, "通知不存在");
     ErrorCode NOTIFICATION_NO_PERMISSION = new ErrorCode(1_011_013_001, "无权限操作该通知");

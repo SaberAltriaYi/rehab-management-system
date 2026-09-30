@@ -89,7 +89,7 @@
             <el-radio-group v-model="formData.master">
               <el-radio
                 v-for="dict in getBoolDictOptions(DICT_TYPE.INFRA_BOOLEAN_STRING)"
-                :key="dict.value"
+                :key="String(dict.value)"
                 :value="dict.value"
               >
                 {{ dict.label }}
@@ -187,7 +187,13 @@ const dialogTitle = ref('') // 弹窗的标题
 const formLoading = ref(false) // 表单的加载中：1）修改时的数据加载；2）提交的按钮禁用
 const formType = ref('') // 表单的类型：create - 新增；update - 修改
 const areaList = ref([]) // 地区列表
-const formData = ref({
+type ContactFormData = Partial<ContactApi.ContactVO> & {
+  ownerUserId: number
+  master: boolean
+  businessId?: number
+  customerDefault: boolean
+}
+const formData = ref<ContactFormData>({
   id: undefined,
   name: undefined,
   customerId: undefined,
@@ -228,7 +234,8 @@ const open = async (type: string, id?: number, customerId?: number, businessId?:
   if (id) {
     formLoading.value = true
     try {
-      formData.value = await ContactApi.getContact(id)
+      const contact: ContactApi.ContactVO = await ContactApi.getContact(id)
+      formData.value = { ...contact, businessId: undefined, customerDefault: false }
     } finally {
       formLoading.value = false
     }
