@@ -3,7 +3,9 @@
     <template #header>
       <div class="flex items-center justify-between">
         <span class="font-bold">静态评估表单</span>
-        <el-tag size="small" type="success">完整录入</el-tag>
+        <el-tag size="small" :type="completionStatus.complete ? 'success' : 'warning'">
+          {{ completionStatus.complete ? '录入完整' : `待录入 ${completionStatus.missingCount} 项` }}
+        </el-tag>
       </div>
     </template>
 
@@ -14,7 +16,22 @@
       title="依据静态体态评估量表录入：基础信息、后面观、侧面观、正面观。"
     />
 
-    <el-card shadow="never" class="mb-12px">
+    <el-radio-group v-model="activeSection" class="mb-12px">
+      <el-radio-button label="basic">基础信息</el-radio-button>
+      <el-radio-button label="posterior">后面观</el-radio-button>
+      <el-radio-button label="lateral">侧面观</el-radio-button>
+      <el-radio-button label="anterior">正面观</el-radio-button>
+      <el-radio-button label="notes">备注</el-radio-button>
+    </el-radio-group>
+
+    <el-alert
+      :closable="false"
+      :type="completionStatus.complete ? 'success' : 'warning'"
+      class="mb-12px"
+      :title="completionStatus.message"
+    />
+
+    <el-card v-if="activeSection === 'basic'" shadow="never" class="mb-12px">
       <template #header>基础信息区</template>
       <el-form :model="localData.basic_info" label-width="95px">
         <el-row :gutter="12">
@@ -75,7 +92,7 @@
       </el-form>
     </el-card>
 
-    <el-card shadow="never" class="mb-12px">
+    <el-card v-if="activeSection === 'posterior'" shadow="never" class="mb-12px">
       <template #header>后面观（Posterior View）</template>
       <div class="matrix-header">
         <div>检查项目</div>
@@ -155,7 +172,7 @@
       </div>
     </el-card>
 
-    <el-card shadow="never" class="mb-12px">
+    <el-card v-if="activeSection === 'lateral'" shadow="never" class="mb-12px">
       <template #header>侧面观（Lateral View）</template>
       <div class="matrix-header">
         <div>检查项目</div>
@@ -199,7 +216,7 @@
       </div>
     </el-card>
 
-    <el-card shadow="never" class="mb-12px">
+    <el-card v-if="activeSection === 'anterior'" shadow="never" class="mb-12px">
       <template #header>正面观（Anterior View）</template>
       <el-row :gutter="12">
         <el-col
@@ -270,7 +287,7 @@
       </div>
     </el-card>
 
-    <el-card shadow="never">
+    <el-card v-if="activeSection === 'notes'" shadow="never">
       <template #header>备注</template>
       <el-input
         v-model="localData.notes.general_note"
@@ -284,7 +301,7 @@
 
 <script lang="ts" setup>
 import { ElMessage } from 'element-plus'
-import { reactive, watch } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import {
   ANTERIOR_BILATERAL_FIELDS,
   ANTERIOR_MIDLINE_FIELDS,
@@ -320,6 +337,8 @@ const emit = defineEmits<{
 const deepClone = (value: any) => JSON.parse(JSON.stringify(value))
 
 const localData = reactive<StaticAssessmentFormData>(buildDefaultStaticAssessmentFormData())
+const activeSection = ref<'basic' | 'posterior' | 'lateral' | 'anterior' | 'notes'>('basic')
+let syncingFromProps = false
 
 const setReactiveObject = (target: Record<string, any>, value: Record<string, any>) => {
   Object.keys(target).forEach((key) => delete target[key])
@@ -368,7 +387,12 @@ const getFormData = () => {
 watch(
   () => props.modelValue,
   (value) => {
-    resetLocalData(value || {})
+    syncingFromProps = true
+    try {
+      resetLocalData(value || {})
+    } finally {
+      syncingFromProps = false
+    }
   },
   { immediate: true, deep: true }
 )
@@ -384,18 +408,63 @@ watch(
 watch(
   localData,
   () => {
+    if (syncingFromProps) {
+      return
+    }
     const payload = getFormData()
     emit('update:modelValue', payload)
     emit('change', payload)
   },
-  { deep: true }
+  { deep: true, flush: 'sync' }
 )
 
-const validate = async () => {
-  if (!localData.basic_info.assessment_date) {
-    ElMessage.warning('建议填写静态评估日期，以便后续汇总与报告追溯')
+const isFilled = (value: unknown) => value !== null && value !== undefined && value !== ''
+
+const getCompletionStatus = () => {
+  const values: unknown[] = [
+    localData.basic_info.name,
+    localData.basic_info.assessment_date,
+    localData.basic_info.assessor,
+    localData.basic_info.height_cm,
+    localData.basic_info.weight_kg,
+    localData.basic_info.age,
+    localData.basic_info.gender
+  ]
+  POSTERIOR_BILATERAL_FIELDS.forEach((field) => {
+    values.push(localData.posterior_view.left[field.key], localData.posterior_view.right[field.key])
+  })
+  POSTERIOR_MIDLINE_FIELDS.forEach((field) => {
+    values.push(localData.posterior_view.midline[field.key])
+  })
+  LATERAL_BILATERAL_FIELDS.forEach((field) => {
+    values.push(localData.lateral_view.left[field.key], localData.lateral_view.right[field.key])
+  })
+  ANTERIOR_MIDLINE_FIELDS.forEach((field) => {
+    values.push(localData.anterior_view.midline[field.key])
+  })
+  ANTERIOR_BILATERAL_FIELDS.forEach((field) => {
+    values.push(localData.anterior_view.left[field.key], localData.anterior_view.right[field.key])
+  })
+  const missingCount = values.filter((value) => !isFilled(value)).length
+  return {
+    complete: missingCount === 0,
+    missingCount,
+    totalCount: values.length,
+    message:
+      missingCount === 0
+        ? `静态评估已完整录入，共 ${values.length} 项`
+        : `静态评估尚缺 ${missingCount}/${values.length} 项；可保存草稿，完整保存前请补齐`
   }
-  return true
+}
+
+const completionStatus = computed(getCompletionStatus)
+
+const validate = async () => {
+  const completion = getCompletionStatus()
+  if (!completion.complete) {
+    ElMessage.warning(completion.message)
+  }
+  return completion.complete
 }
 
 const reset = () => {
@@ -404,7 +473,7 @@ const reset = () => {
   emit('change', getFormData())
 }
 
-defineExpose({ validate, getFormData, reset })
+defineExpose({ validate, getFormData, getCompletionStatus, reset })
 </script>
 
 <style scoped>

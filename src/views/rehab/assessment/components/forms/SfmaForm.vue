@@ -2750,7 +2750,46 @@ const handleBreakoutChange = (itemOrBreakoutKey: SfmaBreakoutRecommendation | st
   }
 }
 
-const validate = async () => true
+const getCompletionStatus = () => {
+  const topTierRows = SFMA_TOP_TIER_DEFINITIONS.map((definition) => ({
+    definition,
+    row: localData.top_tier[definition.test_code]
+  }))
+  const missingTopTier = topTierRows.filter(({ row }) => !row?.classification)
+  const painRows = topTierRows.filter(({ row }) => ['FP', 'DP'].includes(row?.classification))
+  const missingPainVas = painRows.filter(({ row }) => {
+    const painVas = Number(row?.pain_vas)
+    return !Number.isFinite(painVas) || painVas <= 0
+  })
+  const abnormalTopTierCount = topTierRows.filter(
+    ({ row }) => row?.classification && row.classification !== 'FN'
+  ).length
+  const workflows = Object.values(localData.book_protocol?.workflows || {})
+  const activeWorkflows = workflows.filter((workflow: any) =>
+    Array.isArray(workflow?.trigger_classifications) && workflow.trigger_classifications.length > 0
+  )
+  const missingProtocol = abnormalTopTierCount > 0 && workflows.length === 0 ? 1 : 0
+  const incompleteWorkflows = activeWorkflows.filter(
+    (workflow: any) => !['completed', 'skipped', 'stopped_due_to_pain'].includes(workflow?.status)
+  )
+  const missingCount =
+    missingTopTier.length + missingPainVas.length + missingProtocol + incompleteWorkflows.length
+  const totalCount = 15 + painRows.length + Math.max(activeWorkflows.length, missingProtocol)
+  const details = [
+    missingTopTier.length ? `${missingTopTier.length} 项 Top Tier 未分类` : '',
+    missingPainVas.length ? `${missingPainVas.length} 项疼痛动作未填写 VAS` : '',
+    missingProtocol ? '原书版协议尚未加载' : '',
+    incompleteWorkflows.length ? `${incompleteWorkflows.length} 条原书版分解流程未结束` : ''
+  ].filter(Boolean)
+  return {
+    complete: missingCount === 0,
+    missingCount,
+    totalCount,
+    message: missingCount === 0 ? 'SFMA 评估已完整' : `SFMA 尚未完成：${details.join('；')}`
+  }
+}
+
+const validate = async () => getCompletionStatus().complete
 const getFormData = () => {
   const sfmaPayload = deepClone(localData)
   return {
@@ -2762,7 +2801,7 @@ const reset = () => {
   resetLocalData(buildDefaultSfmaFormData())
 }
 
-defineExpose({ validate, getFormData, reset })
+defineExpose({ validate, getFormData, getCompletionStatus, reset })
 </script>
 
 <style scoped>

@@ -24,6 +24,12 @@ import {
 export interface AssessmentFormExpose {
   validate?: () => Promise<boolean> | boolean
   getFormData?: () => Record<string, any>
+  getCompletionStatus?: () => {
+    complete: boolean
+    missingCount: number
+    totalCount: number
+    message: string
+  }
   reset?: () => void
 }
 

@@ -46,7 +46,7 @@
               :min="0"
               :max="10"
               :step="0.5"
-              :disabled="!model.pain_present"
+              :disabled="!model.pain_present && !['FP', 'DP'].includes(model.classification)"
               class="!w-full"
               @change="emitChange"
             />

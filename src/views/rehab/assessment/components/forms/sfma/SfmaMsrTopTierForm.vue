@@ -37,7 +37,7 @@
                 :min="0"
                 :max="10"
                 :step="0.5"
-                :disabled="!model.left.pain_present"
+                :disabled="!model.left.pain_present && !['FP', 'DP'].includes(model.left.classification)"
                 class="!w-full"
                 @change="emitModel"
               />
@@ -75,7 +75,7 @@
                 :min="0"
                 :max="10"
                 :step="0.5"
-                :disabled="!model.right.pain_present"
+                :disabled="!model.right.pain_present && !['FP', 'DP'].includes(model.right.classification)"
                 class="!w-full"
                 @change="emitModel"
               />

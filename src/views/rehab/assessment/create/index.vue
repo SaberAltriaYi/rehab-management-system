@@ -431,7 +431,7 @@ const resetCreateState = async () => {
   markSavedState()
 }
 
-const buildModuleDataList = async (): Promise<RehabAssessmentModuleDataItemVO[]> => {
+const buildModuleDataList = async (action: SaveAction): Promise<RehabAssessmentModuleDataItemVO[]> => {
   const assessmentType = formData.assessmentType
   if (!assessmentType) {
     return []
@@ -441,9 +441,15 @@ const buildModuleDataList = async (): Promise<RehabAssessmentModuleDataItemVO[]>
     return []
   }
 
-  const valid = await dynamicFormRef.value?.validate?.()
-  if (valid === false) {
-    throw new Error('当前评估表单校验未通过，请检查输入后重试')
+  const completion = dynamicFormRef.value?.getCompletionStatus?.()
+  if (action !== 'draft') {
+    const valid = await dynamicFormRef.value?.validate?.()
+    if (valid === false) {
+      throw new Error(completion?.message || '当前评估表单校验未通过，请检查输入后重试')
+    }
+    if (completion && !completion.complete) {
+      throw new Error(completion.message)
+    }
   }
 
   const rawData = dynamicFormRef.value?.getFormData?.() || currentFormData.value || {}
@@ -451,7 +457,7 @@ const buildModuleDataList = async (): Promise<RehabAssessmentModuleDataItemVO[]>
   return [
     {
       moduleType: registryItem.moduleType,
-      moduleStatus: 'completed',
+      moduleStatus: action === 'draft' ? 'partial' : 'completed',
       dataJson,
       sourceType: 'manual',
       version: 'v1'
@@ -463,7 +469,7 @@ const submitForm = async (action: SaveAction) => {
   await formRef.value.validate()
   submitLoading.value = true
   try {
-    const moduleDataList = await buildModuleDataList()
+    const moduleDataList = await buildModuleDataList(action)
     const payload: RehabAssessmentCreateReqVO = {
       ...formData,
       status: action === 'draft' ? 'draft' : undefined,
