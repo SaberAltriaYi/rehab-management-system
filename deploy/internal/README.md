@@ -151,8 +151,38 @@ deploy/internal/smoke-test.sh
 ```
 
 只有在已逐项确认某个旧库已经执行相应 SQL、但尚未创建账本时，才可使用
-`deploy/internal/migrate.sh baseline 015`。不得猜测基线版本。当前发布清单共 19 个版本，
-数据库必须显示全部登记且校验和一致。
+`deploy/internal/migrate.sh baseline 015`（仅限 001-019）。不得猜测基线版本。当前发布清单以
+`migrations.manifest` 为准（001-019 为初始化基线，020 起为增量迁移），数据库必须显示全部登记且校验和一致。
+
+全新数据卷的账本路径：
+
+1. `100-110` initdb 脚本执行 001-019 初始化 SQL，`110-schema-history` 将其登记为基线（`baseline=1`）；
+2. `111-incremental-migrations.sh` 先校验清单中 020+ 全部文件的 SHA-256，再逐个实际执行，
+   每个版本执行成功后才登记（`baseline=0`，`installed_by=docker-init`）；任何失败都会中止 MySQL 初始化；
+3. 首次启动后 `deploy/internal/migrate.sh status` 应显示全部版本已登记、无 PENDING。
+
+增量迁移禁止再直接挂载到 `/docker-entrypoint-initdb.d`（`preflight.sh` 会拦截），否则会出现
+“表已存在但账本未登记”，导致后续 `apply` 重复建表失败。桌面端快照
+（`desktop/scripts/build-sanitized-bootstrap.mjs`）采用同样的“执行后登记”规则，`installed_by=desktop-bootstrap`。
+
+### 旧数据卷修复（由旧版 Compose 直接挂载 020-023 初始化）
+
+旧版 Compose 曾把 020-023 直接挂载到 initdb，这类数据库的 `status` 会显示 020-023 为 PENDING，但表已经存在，
+直接 `apply` 会因重复建表失败。先备份，再按顺序逐个执行：
+
+```bash
+deploy/internal/backup.sh
+CONFIRM_ADOPT=ADOPT-REHAB-INITDB deploy/internal/migrate.sh adopt 020
+CONFIRM_ADOPT=ADOPT-REHAB-INITDB deploy/internal/migrate.sh adopt 021
+CONFIRM_ADOPT=ADOPT-REHAB-INITDB deploy/internal/migrate.sh adopt 022
+CONFIRM_ADOPT=ADOPT-REHAB-INITDB deploy/internal/migrate.sh adopt 023
+deploy/internal/migrate.sh apply     # 执行其余真正未执行的迁移（例如 024 动作评估）
+deploy/internal/migrate.sh status
+```
+
+`adopt` 不执行任何 SQL，只在同时满足以下条件时登记（`installed_by=adopt-verified`，`baseline=0`）：
+版本为 020+；更早版本均已登记；脚本只包含 `CREATE TABLE`；数据库中每张表的列名与顺序与脚本完全一致。
+任一条件不满足即失败且不写账本。包含 INSERT/ALTER 的迁移（如 024）不能 adopt，只能 `apply`。
 
 不要对已有业务库手工执行 `clean-demo-rehab-data.sql` 或 `internal-hardening.sql`；这两个脚本只用于
 全新内部部署初始化。
@@ -181,6 +211,36 @@ docker compose --env-file deploy/internal/.env \
 - 文件名会去除路径和控制字符并限制长度，失败上传会清理残留文件
 
 数据库与附件必须作为同一恢复点成对备份。
+
+### 智能动作评估（可选组件）
+
+完整说明（官方对齐、安全、测试、临床验证计划）见 `docs/motion-assessment/`。
+
+动作评估模块（菜单“康复管理 → 动作评估”，迁移 024）默认随 server 部署，但**分析引擎是可选服务**：
+未启用时可以建档、上传、人工录入，但“开始处理”会以“引擎未配置”失败，不会伪造结果。
+
+1. 在引擎仓库 `rehab-biomechanics-engine` 构建镜像：`docker build -t rehab-motion-engine:1.0.0 .`
+2. `.env` 增加（令牌 ≥32 位随机串，不得复用其他密码，preflight 会校验）：
+   ```
+   MOTION_ENGINE_URL=http://motion-engine:8790
+   MOTION_ENGINE_TOKEN=<openssl rand -hex 32>
+   # 可选：由引擎直接拉取 OpenCap 会话（凭据只在引擎容器内）
+   OPENCAP_API_TOKEN=
+   ```
+3. 启动：`docker compose --env-file deploy/internal/.env -f deploy/internal/docker-compose.yml --profile motion up -d`
+4. 引擎容器：只读根文件系统、`/tmp` tmpfs 512 MB、`cap_drop: ALL`、`no-new-privileges`、不映射宿主端口；
+   除 `/internal/v1/health` 外所有接口需 Bearer 令牌。镜像 ENTRYPOINT 是研究 CLI，Compose 已覆盖为
+   `python -m rehab_biomechanics.motion.service`。
+
+上传限制（与附件一致，不单独放宽）：`.mot/.trc/视频` 单文件 16 MB、`.osim` 8 MB、`sessionMetadata.yaml`
+256 KB，Nginx 请求 32 MB。前端“选择 OpenCap 文件夹”会按服务端策略自动筛选（跳过 pkl/vtp/OutputMedia/
+图片/日志；未取得视频授权时跳过全部视频），并**逐个串行上传**，网络错误/5xx/429 自动重试 3 次。
+如确需提高上限，必须同时修改三处并重新构建：Spring `spring.servlet.multipart.max-file-size/max-request-size`、
+Nginx `client_max_body_size`、`MotionFileRules` 的对应单文件上限（`MAX_VIDEO_BYTES` 等），并同步
+`yudao-module-rehab/src/test/resources/motion/upload-policy.json`（前后端一致性测试会检查）。
+
+AI 解释默认关闭（`yudao.rehab.motion.ai-enabled=false`，Compose 同时强制 `OPENAI_ENABLE_AI_ANALYSIS=false`）。
+关闭或失败时系统生成不含 AI 内容的模板草稿，评分、审核、签署、PDF 均不受影响；AI 永远不能修改分数。
 
 ## 八、备份、恢复和演练
 

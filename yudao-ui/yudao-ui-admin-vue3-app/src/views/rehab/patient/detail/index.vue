@@ -4,6 +4,9 @@
       <div class="text-16px font-bold">患者详情</div>
       <div>
         <el-button @click="goBack">返回列表</el-button>
+        <el-button type="primary" plain v-hasPermi="['rehab:motion:query']" @click="push(`/rehab/motion?patientId=${id}`)">
+          动作评估
+        </el-button>
         <el-button type="primary" v-hasPermi="['rehab:patient:assign']" @click="openAssign">分配</el-button>
         <el-button type="primary" v-hasPermi="['rehab:patient:transfer']" @click="openTransfer">转交</el-button>
         <el-button type="primary" v-hasPermi="['rehab:patient:bind-crm']" @click="openBindCrm">CRM 绑定</el-button>

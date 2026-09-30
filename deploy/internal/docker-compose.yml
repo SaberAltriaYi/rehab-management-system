@@ -37,11 +37,11 @@ services:
       - ../../sql/mysql/rehab-step11-auth-hardening-v1.sql:/docker-entrypoint-initdb.d/100-auth-hardening.sql:ro
       - ../../sql/mysql/rehab-step12-internal-login-client-v1.sql:/docker-entrypoint-initdb.d/105-internal-login-client.sql:ro
       - ../../sql/mysql/rehab-step13-disable-undelivered-menus-v1.sql:/docker-entrypoint-initdb.d/108-disable-undelivered-menus.sql:ro
-      - ../../sql/mysql/rehab-bpm-core-v1.sql:/docker-entrypoint-initdb.d/109-bpm-core.sql:ro
-      - ../../sql/mysql/rehab-erp-core-v1.sql:/docker-entrypoint-initdb.d/109-erp-core.sql:ro
-      - ../../sql/mysql/rehab-member-remaining-v1.sql:/docker-entrypoint-initdb.d/109-member-remaining.sql:ro
-      - ../../sql/mysql/rehab-report-go-view-project-v1.sql:/docker-entrypoint-initdb.d/109-report-go-view-project.sql:ro
       - ./init-schema-history.sql:/docker-entrypoint-initdb.d/110-schema-history.sql:ro
+      # 020+ 增量迁移：按清单实际执行并登记账本（与 migrate.sh apply 语义一致）
+      - ./init-incremental-migrations.sh:/docker-entrypoint-initdb.d/111-incremental-migrations.sh:ro
+      - ./migrations.manifest:/opt/rehab-migrations/migrations.manifest:ro
+      - ../../sql/mysql:/opt/rehab-migrations/sql/mysql:ro
     healthcheck:
       test:
         - CMD-SHELL
@@ -93,6 +93,10 @@ services:
       REDIS_PASSWORD: ${REDIS_PASSWORD:?请在 .env 中设置 REDIS_PASSWORD}
       REHAB_STORAGE_PATH: /app/data/rehab
       OPENAI_ENABLE_AI_ANALYSIS: "false"
+      # 智能动作评估引擎（可选）：启用时在 .env 设置 MOTION_ENGINE_URL=http://motion-engine:8790
+      # 与 MOTION_ENGINE_TOKEN（>=32 位随机串），并以 --profile motion 启动 motion-engine
+      MOTION_ENGINE_URL: ${MOTION_ENGINE_URL:-}
+      MOTION_ENGINE_TOKEN: ${MOTION_ENGINE_TOKEN:-}
       SERVER_SERVLET_SESSION_PERSISTENT: "false"
       JAVA_OPTS: ${JAVA_OPTS:--Xms256m -Xmx768m -Djava.security.egd=file:/dev/./urandom -Dsun.io.useCanonCaches=false}
     volumes:
@@ -114,6 +118,38 @@ services:
       timeout: 5s
       retries: 20
       start_period: 60s
+
+  motion-engine:
+    # 由 rehab-biomechanics-engine 仓库构建：docker build -t rehab-motion-engine:1.0.0 .
+    image: rehab-motion-engine:1.0.0
+    profiles: ["motion"]
+    restart: unless-stopped
+    # 镜像 ENTRYPOINT 为研究 CLI（python -m rehab_biomechanics），此处必须覆盖 entrypoint 而非仅 command
+    entrypoint: ["python", "-m", "rehab_biomechanics.motion.service"]
+    command: ["--host", "0.0.0.0", "--port", "8790"]
+    environment:
+      TZ: ${TZ:-Asia/Shanghai}
+      MOTION_ENGINE_TOKEN: ${MOTION_ENGINE_TOKEN:-}
+      # 可选：OpenCap 接口拉取（仅引擎持有，前端/Java 不接触）
+      OPENCAP_API_TOKEN: ${OPENCAP_API_TOKEN:-}
+    read_only: true
+    tmpfs:
+      - /tmp:size=512m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    # 不映射端口：只在 Compose 内部网络供 server 调用
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8790/internal/v1/health', timeout=3).status == 200 else 1)"
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
 
   admin:
     build:

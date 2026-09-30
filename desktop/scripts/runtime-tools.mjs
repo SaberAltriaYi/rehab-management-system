@@ -26,6 +26,16 @@ export const REQUIRED_FILES = [
   'LICENSE'
 ]
 
+// 桌面快照登记的迁移范围：001-019 基线 + 实际执行的 020+ 增量迁移，以发布清单为准。
+export function migrationLedgerRange(projectRoot) {
+  const versions = readFileSync(resolve(projectRoot, 'deploy/internal/migrations.manifest'), 'utf8')
+    .split('\n')
+    .filter((line) => line && !line.startsWith('#'))
+    .map((line) => line.split('|')[0])
+  if (versions.length === 0) throw new Error('迁移清单为空')
+  return `${versions[0]}-${versions[versions.length - 1]}`
+}
+
 const forbiddenNames = new Set([
   '.git',
   '.env',
@@ -148,7 +158,7 @@ export function buildRuntime({ projectRoot, outputRoot, commitSha }) {
         version: VERSION,
         bundleIdentifier: 'com.saberaltriayi.rehab',
         commitSha,
-        migrationLedger: '001-019',
+        migrationLedger: migrationLedgerRange(projectRoot),
         dataFormat: 1
       },
       null,

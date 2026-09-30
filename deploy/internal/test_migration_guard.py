@@ -224,6 +224,232 @@ class MigrationGuardTests(unittest.TestCase):
         self.assertFalse(self.fixture.log.exists())
 
 
+MYSQL_STUB = r'''#!/usr/bin/env python3
+import json, os, sys
+sql = sys.stdin.read()
+with open(os.environ['INIT_LOG'], 'a') as out:
+    out.write(json.dumps({'args': sys.argv[1:], 'sql': sql[:400], 'len': len(sql.encode())}) + '\n')
+fail = os.environ.get('INIT_FAIL_MARKER')
+if fail and fail in sql:
+    sys.exit(1)
+'''
+
+
+class FreshInitIncrementalMigrationTests(unittest.TestCase):
+    """全新数据卷：020+ 由 111-incremental-migrations.sh 实际执行后登记，不预登记、不直接挂载。"""
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory(prefix='rehab-init-')
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name) / 'opt'
+        (self.root / 'sql/mysql').mkdir(parents=True)
+        shutil.copyfile(ROOT / 'deploy/internal/migrations.manifest', self.root / 'migrations.manifest')
+        self.rows = []
+        for line in (self.root / 'migrations.manifest').read_text().splitlines():
+            if not line or line.startswith('#'):
+                continue
+            version, checksum, path, description = line.split('|')
+            self.rows.append((version, checksum, path, description))
+            if int(version) > 19:
+                shutil.copyfile(ROOT / path, self.root / path)
+        self.bin = Path(self.temp.name) / 'bin'
+        self.bin.mkdir()
+        self.log = Path(self.temp.name) / 'calls.jsonl'
+        stub = self.bin / 'mysql'
+        stub.write_text(MYSQL_STUB)
+        stub.chmod(0o700)
+
+    def run_init(self, **env):
+        full = dict(os.environ)
+        full.update(REHAB_MIGRATION_ROOT=str(self.root), REHAB_MYSQL_BIN=str(self.bin / 'mysql'),
+                    INIT_LOG=str(self.log), MYSQL_DATABASE='synthetic', MYSQL_ROOT_PASSWORD='synthetic-not-secret')
+        full.update(env)
+        return subprocess.run(['bash', str(ROOT / 'deploy/internal/init-incremental-migrations.sh')],
+                              env=full, text=True, capture_output=True, timeout=60)
+
+    def calls(self):
+        if not self.log.exists():
+            return []
+        return [json.loads(line) for line in self.log.read_text().splitlines()]
+
+    def incremental(self):
+        return [row for row in self.rows if int(row[0]) > 19]
+
+    def test_compose_runs_ledgered_init_after_baseline_and_never_mounts_incremental_sql(self):
+        compose = (ROOT / 'deploy/internal/docker-compose.yml').read_text()
+        self.assertIn('./init-schema-history.sql:/docker-entrypoint-initdb.d/110-schema-history.sql:ro', compose)
+        self.assertIn('./init-incremental-migrations.sh:/docker-entrypoint-initdb.d/111-incremental-migrations.sh:ro',
+                      compose)
+        self.assertIn('./migrations.manifest:/opt/rehab-migrations/migrations.manifest:ro', compose)
+        self.assertIn('../../sql/mysql:/opt/rehab-migrations/sql/mysql:ro', compose)
+        mounted = re.findall(r'(\S+\.sql):/docker-entrypoint-initdb.d/', compose)
+        for _, _, path, _ in self.incremental():
+            self.assertNotIn('../../' + path, mounted, path)
+
+    def test_applies_every_incremental_migration_in_order_then_registers_it(self):
+        result = self.run_init()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        calls = self.calls()
+        expected = self.incremental()
+        self.assertTrue(expected)
+        self.assertEqual(len(calls), 2 * len(expected))
+        for index, (version, checksum, path, description) in enumerate(expected):
+            body, ledger = calls[2 * index], calls[2 * index + 1]
+            self.assertEqual(body['len'], (ROOT / path).stat().st_size, path)
+            self.assertIn("'%s','%s','%s','%s','docker-init',b'0'," % (version, checksum, path, description),
+                          ledger['sql'])
+            self.assertIn('--protocol=socket', body['args'])
+        self.assertIn('PASS', result.stdout)
+
+    def test_checksum_drift_fails_before_executing_anything(self):
+        _, _, path, _ = self.incremental()[-1]
+        with open(self.root / path, 'a') as handle:
+            handle.write('\n-- drift\n')
+        result = self.run_init()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('校验和漂移', result.stderr)
+        self.assertEqual(self.calls(), [])
+
+    def test_failed_migration_is_not_registered_and_stops_later_ones(self):
+        first = self.incremental()[0]
+        marker = (ROOT / first[2]).read_text().strip().splitlines()[0]
+        result = self.run_init(INIT_FAIL_MARKER=marker)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual([c for c in self.calls() if 'internal_schema_history' in c['sql']], [])
+        self.assertEqual(len(self.calls()), 1)
+
+    def test_fresh_ledger_after_init_equals_manifest(self):
+        baseline = re.findall(r"^\s*\('(\d{3})',", (ROOT / 'deploy/internal/init-schema-history.sql').read_text(),
+                              re.MULTILINE)
+        result = self.run_init()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        registered = re.findall(r"VALUES \('(\d{3})'", ''.join(c['sql'] for c in self.calls()))
+        self.assertEqual(baseline + registered, [row[0] for row in self.rows])
+
+    def test_new_motion_migration_is_pending_when_not_installed(self):
+        fixture = GuardFixture()
+        self.addCleanup(fixture.close)
+        latest = self.incremental()[-1][0]
+        fixture.set_state(missing=(latest,))
+        result = fixture.run('status')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('PENDING: ' + latest, result.stdout)
+        fixture.assert_read_only(self)
+
+
+ADOPT_ADAPTER = r'''import json, os, re, sys
+sql = sys.stdin.read()
+with open(os.environ['GUARD_LOG'], 'a') as out:
+    out.write(sql + '\n')
+state = json.load(open(os.environ['GUARD_STATE']))
+if 'information_schema.tables' in sql:
+    print(1)
+elif sql.strip() == 'SELECT version, checksum FROM internal_schema_history ORDER BY version;':
+    for version, checksum in state['rows']:
+        print(version + '\t' + checksum)
+elif 'information_schema.columns' in sql:
+    table = re.search(r"table_name = '([A-Za-z0-9_]+)'", sql).group(1)
+    print(state['columns'].get(table, ''))
+elif sql.startswith('INSERT INTO internal_schema_history'):
+    pass
+else:
+    print('Unexpected SQL in adopt fixture', file=sys.stderr)
+    sys.exit(99)
+'''
+
+
+def parse_create_tables(path):
+    tables, current = {}, None
+    for line in path.read_text().splitlines():
+        match = re.match(r'^CREATE TABLE `([A-Za-z0-9_]+)` \($', line)
+        if match:
+            current = match.group(1)
+            tables[current] = []
+        elif current and line.startswith(')'):
+            current = None
+        elif current:
+            column = re.match(r'^  `([A-Za-z0-9_]+)`', line)
+            if column:
+                tables[current].append(column.group(1))
+    return {name: ','.join(columns) for name, columns in tables.items()}
+
+
+class AdoptLegacyInitdbTests(unittest.TestCase):
+    """旧版 Compose 已直接建表但未登记：adopt 只在列结构完全一致时登记，绝不执行建表 SQL。"""
+
+    def setUp(self):
+        self.fixture = GuardFixture()
+        self.addCleanup(self.fixture.close)
+        self.fixture.install_adapter(ADOPT_ADAPTER)
+        self.incremental = [row for row in self.fixture.rows if int(row[0]) > 19]
+        self.first = self.incremental[0]
+
+    def state(self, missing, columns):
+        rows = [[v, c] for v, c, _, _ in self.fixture.rows if v not in missing]
+        self.fixture.state.write_text(json.dumps({'ledger': True, 'rows': rows, 'columns': columns}))
+
+    def statements(self):
+        return self.fixture.log.read_text() if self.fixture.log.exists() else ''
+
+    def test_adopt_registers_matching_legacy_tables_without_executing_sql(self):
+        version, checksum, path, description = self.first
+        missing = tuple(row[0] for row in self.incremental)
+        self.state(missing, parse_create_tables(ROOT / path))
+        result = self.fixture.run('adopt', version, CONFIRM_ADOPT='ADOPT-REHAB-INITDB')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        log = self.statements()
+        self.assertNotIn('CREATE TABLE', log)
+        self.assertIn("VALUES ('%s','%s','%s','%s','adopt-verified',b'0',0);" % (version, checksum, path, description),
+                      log)
+
+    def test_adopt_refuses_when_columns_differ(self):
+        version, _, path, _ = self.first
+        columns = parse_create_tables(ROOT / path)
+        table = sorted(columns)[0]
+        columns[table] = columns[table].rsplit(',', 1)[0]
+        self.state(tuple(row[0] for row in self.incremental), columns)
+        result = self.fixture.run('adopt', version, CONFIRM_ADOPT='ADOPT-REHAB-INITDB')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('列结构', result.stderr)
+        self.assertNotIn('INSERT', self.statements())
+
+    def test_adopt_refuses_when_table_missing(self):
+        version = self.first[0]
+        self.state(tuple(row[0] for row in self.incremental), {})
+        result = self.fixture.run('adopt', version, CONFIRM_ADOPT='ADOPT-REHAB-INITDB')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertNotIn('INSERT', self.statements())
+
+    def test_adopt_requires_confirmation_and_incremental_version(self):
+        result = self.fixture.run('adopt', self.first[0])
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('CONFIRM_ADOPT', result.stderr)
+        result = self.fixture.run('adopt', '015', CONFIRM_ADOPT='ADOPT-REHAB-INITDB')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertFalse(self.fixture.log.exists())
+
+    def test_adopt_must_follow_manifest_order(self):
+        second = self.incremental[1]
+        self.state(tuple(row[0] for row in self.incremental), parse_create_tables(ROOT / second[2]))
+        result = self.fixture.run('adopt', second[0], CONFIRM_ADOPT='ADOPT-REHAB-INITDB')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('按顺序', result.stderr)
+        self.assertNotIn('INSERT', self.statements())
+
+    def test_adopt_rejects_scripts_that_are_not_create_only(self):
+        non_create = [row for row in self.incremental
+                      if any(line.startswith('INSERT') for line in (ROOT / row[2]).read_text().splitlines())]
+        if not non_create:
+            self.skipTest('no non-create-only incremental migration in manifest')
+        version = non_create[0][0]
+        earlier = tuple(row[0] for row in self.incremental if row[0] >= version)
+        self.state(earlier, {})
+        result = self.fixture.run('adopt', version, CONFIRM_ADOPT='ADOPT-REHAB-INITDB')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('不是纯建表脚本', result.stderr)
+        self.assertNotIn('INSERT', self.statements())
+
+
 @unittest.skipUnless(os.environ.get('REHAB_TEST_MYSQL_CONTAINER'), 'real MySQL explicitly opt-in')
 class MigrationGuardMySQLTests(unittest.TestCase):
     def setUp(self):
@@ -295,6 +521,17 @@ sys.exit(subprocess.run(command, input=sql, text=True).returncode)
             result = self.fixture.run(mode)
             self.assertEqual(result.returncode, 0, result.stderr)
         self.assert_sentinel()
+
+
+class ShellPortabilityTests(unittest.TestCase):
+    """macOS 自带 bash 3.2 会把紧跟变量名的非 ASCII 字节当作变量名一部分（如 $version（ → version\xef），
+    在 set -u 下直接报 unbound variable，因此变量后紧跟中文/全角字符时必须写成 ${var}。"""
+
+    def test_no_bare_variable_followed_by_non_ascii(self):
+        pattern = re.compile(r'\$[A-Za-z_][A-Za-z0-9_]*[^\x00-\x7f]')
+        for script in sorted((ROOT / 'deploy/internal').glob('*.sh')):
+            for number, line in enumerate(script.read_text(encoding='utf-8').splitlines(), 1):
+                self.assertIsNone(pattern.search(line), '%s:%d 需改为 ${var}' % (script.name, number))
 
 
 if __name__ == '__main__':

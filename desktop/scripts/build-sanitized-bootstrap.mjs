@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Copyright (c) 2026 杨玺龙
 
-import { randomBytes } from 'node:crypto'
+import { createHash, randomBytes } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { basename, dirname, resolve } from 'node:path'
 import { spawnSync } from 'node:child_process'
@@ -18,9 +18,46 @@ const image = 'mysql:8.4.10'
 const container = `rehab-desktop-bootstrap-${process.pid}`
 const rootPassword = randomBytes(32).toString('base64url')
 const database = 'ruoyi-vue-pro'
-// A fresh install baselines only immutable migrations 001-019. Later
-// additive migrations must not be marked as applied until actually executed.
-const expectedSchemaHistoryCount = 19
+// A fresh install baselines only immutable migrations 001-019 (baseline=1).
+// Later additive migrations (020+) are actually executed below and only then
+// registered with baseline=0, exactly like deploy/internal/migrate.sh apply.
+const baselineVersionCount = 19
+const manifestPath = 'deploy/internal/migrations.manifest'
+
+function readManifest() {
+  const rows = []
+  let previous = 0
+  for (const line of readFileSync(resolve(projectRoot, manifestPath), 'utf8').split('\n')) {
+    if (!line || line.startsWith('#')) continue
+    const [version, checksum, relativePath, description] = line.split('|')
+    if (!/^\d{3}$/.test(version) || Number(version) <= previous) {
+      throw new Error(`迁移清单版本非法或乱序：${version}`)
+    }
+    previous = Number(version)
+    if (!/^[0-9a-f]{64}$/.test(checksum || '')) throw new Error(`迁移清单校验和非法：${version}`)
+    if (!description || /['\\]/.test(description) || /['\\]|\.\./.test(relativePath || '')) {
+      throw new Error(`迁移清单路径或说明非法：${version}`)
+    }
+    rows.push({ version, checksum, relativePath, description })
+  }
+  return rows
+}
+
+const manifestRows = readManifest()
+const incrementalMigrations = manifestRows.filter((row) => Number(row.version) > baselineVersionCount)
+if (manifestRows.length - incrementalMigrations.length !== baselineVersionCount) {
+  throw new Error('迁移清单中的初始化基线必须恰好为 001-019')
+}
+for (const row of incrementalMigrations) {
+  if (!row.relativePath.startsWith('sql/mysql/') || !row.relativePath.endsWith('.sql')) {
+    throw new Error(`增量迁移只允许 sql/mysql/*.sql：${row.relativePath}`)
+  }
+  const path = resolve(projectRoot, row.relativePath)
+  if (!existsSync(path)) throw new Error(`增量迁移文件不存在：${row.relativePath}`)
+  const actual = createHash('sha256').update(readFileSync(path)).digest('hex')
+  if (actual !== row.checksum) throw new Error(`增量迁移校验和漂移：${row.relativePath}`)
+}
+const expectedSchemaHistoryCount = manifestRows.length
 
 const initializationScripts = [
   'sql/mysql/ruoyi-vue-pro.sql',
@@ -44,9 +81,9 @@ const initializationScripts = [
   'sql/mysql/rehab-step11-auth-hardening-v1.sql',
   'sql/mysql/rehab-step12-internal-login-client-v1.sql',
   'sql/mysql/rehab-step13-disable-undelivered-menus-v1.sql',
-  'deploy/internal/init-schema-history.sql',
-  'desktop/sql/sanitize-bootstrap.sql'
+  'deploy/internal/init-schema-history.sql'
 ]
+const sanitizeScript = 'desktop/sql/sanitize-bootstrap.sql'
 
 function run(args, options = {}) {
   const result = spawnSync(docker, args, {
@@ -122,6 +159,33 @@ function applySql(relativePath) {
   )
 }
 
+function applyIncrementalMigration(row) {
+  const started = Date.now()
+  applySql(row.relativePath)
+  const elapsed = Date.now() - started
+  runSqlText(
+    `INSERT INTO internal_schema_history(version, checksum, script_path, description, installed_by, baseline, execution_ms) VALUES ('${row.version}','${row.checksum}','${row.relativePath}','${row.description}','desktop-bootstrap',b'0',${elapsed});`
+  )
+}
+
+function runSqlText(sql) {
+  run(
+    [
+      'exec',
+      '--interactive',
+      '--env',
+      `MYSQL_PWD=${rootPassword}`,
+      container,
+      'mysql',
+      '--user=root',
+      '--database',
+      database,
+      '--default-character-set=utf8mb4'
+    ],
+    { input: sql }
+  )
+}
+
 function assertSanitized(sql) {
   const forbidden = [
     /3TvrJ70gl2Gt6IBe7_IZT1F6i_k0iMuRtyEv4EyS/,
@@ -189,16 +253,16 @@ function verifyFreshImport(dump) {
     '--batch',
     '--skip-column-names',
     '--execute',
-    "SELECT CONCAT((SELECT COUNT(*) FROM system_users),'|',(SELECT COUNT(*) FROM rehab_patient),'|',(SELECT COUNT(*) FROM internal_schema_history),'|',(SELECT COUNT(*) FROM system_users WHERE username='admin' AND password='!desktop-runtime-sets-password!'));"
+    "SELECT CONCAT((SELECT COUNT(*) FROM system_users),'|',(SELECT COUNT(*) FROM rehab_patient),'|',(SELECT COUNT(*) FROM internal_schema_history),'|',(SELECT COUNT(*) FROM system_users WHERE username='admin' AND password='!desktop-runtime-sets-password!'),'|',(SELECT COUNT(*) FROM internal_schema_history WHERE baseline=b'1'));"
   ]).stdout.trim()
-  const expected = `1|0|${expectedSchemaHistoryCount}|1`
+  const expected = `1|0|${expectedSchemaHistoryCount}|1|${baselineVersionCount}`
   if (result !== expected) {
     throw new Error(`脱敏快照恢复后验收失败，预期 ${expected}，实际 ${result}`)
   }
 }
 
 try {
-  for (const relativePath of initializationScripts) {
+  for (const relativePath of [...initializationScripts, sanitizeScript]) {
     if (!existsSync(resolve(projectRoot, relativePath))) {
       throw new Error(`构建输入缺失：${relativePath}`)
     }
@@ -221,6 +285,8 @@ try {
   ])
   waitForMySql()
   for (const relativePath of initializationScripts) applySql(relativePath)
+  for (const row of incrementalMigrations) applyIncrementalMigration(row)
+  applySql(sanitizeScript)
 
   const dump = run([
     'exec',
@@ -246,7 +312,7 @@ try {
   rmSync(output, { force: true })
   writeFileSync(
     output,
-    `-- 康复管理系统 V1.0 桌面端脱敏初始化快照\n-- 构建输入：固定迁移账本 001-019；不包含患者、演示账号或云端密钥\n${dump}`,
+    `-- 康复管理系统 V1.0 桌面端脱敏初始化快照\n-- 构建输入：初始化基线 001-019 + 已实际执行并登记的增量迁移 020-${manifestRows[manifestRows.length - 1].version}；不包含患者、演示账号或云端密钥\n${dump}`,
     { mode: 0o644 }
   )
   process.stdout.write(`已生成脱敏数据库快照：${basename(output)}\n`)

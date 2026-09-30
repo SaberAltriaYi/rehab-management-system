@@ -71,6 +71,17 @@ case "$bind_address" in
   0.0.0.0|::|'[::]') fail "生产环境不得绑定所有网络接口，请使用明确局域网 IP 或 127.0.0.1" ;;
 esac
 [ "${tls_port:-8443}" = "8443" ] || fail "当前 Nginx HTTPS 跳转固定使用 TLS_PORT=8443"
+motion_engine_url=$(env_value MOTION_ENGINE_URL)
+motion_engine_token=$(env_value MOTION_ENGINE_TOKEN)
+if [ -n "$motion_engine_url" ]; then
+  case "$motion_engine_url" in
+    http://motion-engine:8790) ;;
+    *) fail "MOTION_ENGINE_URL 只允许 Compose 内部地址 http://motion-engine:8790" ;;
+  esac
+  [ "${#motion_engine_token}" -ge 32 ] || fail "启用动作评估引擎时 MOTION_ENGINE_TOKEN 长度必须至少为 32"
+  [ "$motion_engine_token" != "$db_password" ] && [ "$motion_engine_token" != "$redis_password" ] \
+    && [ "$motion_engine_token" != "$mysql_root_password" ] || fail "MOTION_ENGINE_TOKEN 不得复用其他密码"
+fi
 pass "部署环境文件已配置"
 
 [ -f "$CA_CERT" ] || fail "缺少内部 CA，请执行 deploy/internal/generate-tls.sh"
@@ -125,6 +136,14 @@ grep -q "rehab-step13-disable-undelivered-menus-v1.sql" "$SCRIPT_DIR/docker-comp
   || fail "Compose 未挂载未交付菜单关闭迁移脚本"
 grep -q "init-schema-history.sql" "$SCRIPT_DIR/docker-compose.yml" \
   || fail "Compose 未挂载全新数据库迁移账本初始化脚本"
+grep -q "init-incremental-migrations.sh:/docker-entrypoint-initdb.d/111-incremental-migrations.sh:ro" \
+  "$SCRIPT_DIR/docker-compose.yml" || fail "Compose 未挂载全新数据库增量迁移执行脚本"
+grep -q "migrations.manifest:/opt/rehab-migrations/migrations.manifest:ro" "$SCRIPT_DIR/docker-compose.yml" \
+  || fail "Compose 未挂载增量迁移清单"
+if grep -Eq "docker-entrypoint-initdb.d/[0-9]+-[^:]*\.sql" "$SCRIPT_DIR/docker-compose.yml" \
+  && grep -E "docker-entrypoint-initdb.d" "$SCRIPT_DIR/docker-compose.yml" | grep -Eq "rehab-(bpm|erp|member-remaining|report-go-view|motion)"; then
+  fail "增量迁移不得直接挂载到 initdb（会绕过迁移账本）"
+fi
 "$SCRIPT_DIR/migrate.sh" verify-files
 pass "康复业务表迁移与固定校验和清单已就绪"
 
