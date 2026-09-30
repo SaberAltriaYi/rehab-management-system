@@ -1,11 +1,9 @@
 package cn.iocoder.yudao.module.rehab.service.app;
 
-import cn.iocoder.yudao.framework.common.biz.system.oauth2.OAuth2TokenCommonApi;
-import cn.iocoder.yudao.framework.common.biz.system.oauth2.dto.OAuth2AccessTokenRespDTO;
 import cn.iocoder.yudao.framework.common.exception.ServiceException;
 import cn.iocoder.yudao.module.rehab.controller.app.patient.vo.AppPatientCheckinCreateReqVO;
 import cn.iocoder.yudao.module.rehab.controller.app.patient.vo.AppPatientLoginReqVO;
-import cn.iocoder.yudao.module.rehab.controller.app.patient.vo.AppPatientLoginRespVO;
+import cn.iocoder.yudao.module.rehab.controller.app.patient.vo.AppPatientAuthBindReqVO;
 import cn.iocoder.yudao.module.rehab.controller.app.patient.vo.AppPatientTaskExecutionItemVO;
 import cn.iocoder.yudao.module.rehab.dal.dataobject.binding.RehabPatientUserBindingDO;
 import cn.iocoder.yudao.module.rehab.dal.dataobject.checkin.RehabDailyCheckinDO;
@@ -25,8 +23,6 @@ import org.springframework.test.util.ReflectionTestUtils;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
-import java.time.LocalDateTime;
-import java.util.Collections;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -34,14 +30,13 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 import static cn.iocoder.yudao.module.rehab.enums.ErrorCodeConstants.APP_PATIENT_DAILY_CHECKIN_EXISTS;
+import static cn.iocoder.yudao.module.rehab.enums.ErrorCodeConstants.APP_PATIENT_AUTH_DISABLED;
 
 @ExtendWith(MockitoExtension.class)
 class RehabAppPatientServiceImplTest {
 
     private RehabAppPatientServiceImpl appPatientService;
 
-    @Mock
-    private OAuth2TokenCommonApi oauth2TokenApi;
     @Mock
     private RehabPatientUserBindingMapper patientUserBindingMapper;
     @Mock
@@ -56,7 +51,6 @@ class RehabAppPatientServiceImplTest {
     @BeforeEach
     void setUp() {
         appPatientService = new RehabAppPatientServiceImpl();
-        ReflectionTestUtils.setField(appPatientService, "oauth2TokenApi", oauth2TokenApi);
         ReflectionTestUtils.setField(appPatientService, "patientUserBindingMapper", patientUserBindingMapper);
         ReflectionTestUtils.setField(appPatientService, "patientMapper", patientMapper);
         ReflectionTestUtils.setField(appPatientService, "planMapper", planMapper);
@@ -65,35 +59,23 @@ class RehabAppPatientServiceImplTest {
     }
 
     @Test
-    void login_shouldReturnAccessTokenWhenBindingMatched() {
+    void legacyLoginIsDeniedBeforeLookupOrTokenCreation() {
         AppPatientLoginReqVO reqVO = new AppPatientLoginReqVO();
         reqVO.setPhone("13800138000");
         reqVO.setBindCode("PT202603100001");
+        ServiceException ex = assertThrows(ServiceException.class, () -> appPatientService.login(reqVO));
+        assertEquals(APP_PATIENT_AUTH_DISABLED.getCode(), ex.getCode());
+        verifyNoInteractions(patientUserBindingMapper, patientMapper);
+    }
 
-        RehabPatientUserBindingDO binding = RehabPatientUserBindingDO.builder()
-                .id(1L)
-                .patientId(10001L)
-                .appUserId(90001L)
-                .bindStatus("active")
-                .phone("13800138000")
-                .build();
-        when(patientUserBindingMapper.selectActiveListByPhone("13800138000")).thenReturn(Collections.singletonList(binding));
-        when(patientMapper.selectById(10001L)).thenReturn(RehabPatientDO.builder()
-                .id(10001L)
-                .patientNo("PT202603100001")
-                .build());
-
-        OAuth2AccessTokenRespDTO tokenDTO = new OAuth2AccessTokenRespDTO();
-        tokenDTO.setUserId(90001L);
-        tokenDTO.setAccessToken("patient-token");
-        tokenDTO.setRefreshToken("refresh-token");
-        tokenDTO.setExpiresTime(LocalDateTime.now().plusHours(12));
-        when(oauth2TokenApi.createAccessToken(any())).thenReturn(tokenDTO);
-
-        AppPatientLoginRespVO respVO = appPatientService.login(reqVO);
-
-        assertEquals("patient-token", respVO.getAccessToken());
-        verify(patientUserBindingMapper).updateById(any(RehabPatientUserBindingDO.class));
+    @Test
+    void legacyBindIsDeniedBeforePatientLookupOrMutation() {
+        AppPatientAuthBindReqVO reqVO = new AppPatientAuthBindReqVO();
+        reqVO.setPatientId(10001L);
+        reqVO.setPhone("13800138000");
+        ServiceException ex = assertThrows(ServiceException.class, () -> appPatientService.bindPatient(reqVO, null));
+        assertEquals(APP_PATIENT_AUTH_DISABLED.getCode(), ex.getCode());
+        verifyNoInteractions(patientUserBindingMapper, patientMapper);
     }
 
     @Test

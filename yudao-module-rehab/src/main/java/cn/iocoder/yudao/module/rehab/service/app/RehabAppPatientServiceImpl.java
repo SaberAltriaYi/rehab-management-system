@@ -3,10 +3,6 @@ package cn.iocoder.yudao.module.rehab.service.app;
 import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.util.ObjUtil;
 import cn.hutool.core.util.StrUtil;
-import cn.iocoder.yudao.framework.common.biz.system.oauth2.OAuth2TokenCommonApi;
-import cn.iocoder.yudao.framework.common.biz.system.oauth2.dto.OAuth2AccessTokenCreateReqDTO;
-import cn.iocoder.yudao.framework.common.biz.system.oauth2.dto.OAuth2AccessTokenRespDTO;
-import cn.iocoder.yudao.framework.common.enums.UserTypeEnum;
 import cn.iocoder.yudao.framework.common.pojo.PageParam;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.mybatis.core.query.LambdaQueryWrapperX;
@@ -38,20 +34,17 @@ import cn.iocoder.yudao.module.rehab.dal.mysql.progress.RehabProgressRecordMappe
 import cn.iocoder.yudao.module.rehab.dal.mysql.report.RehabReportMapper;
 import cn.iocoder.yudao.module.rehab.dal.mysql.task.RehabExerciseTaskMapper;
 import cn.iocoder.yudao.module.rehab.dal.mysql.trigger.RehabReassessmentTriggerMapper;
-import cn.iocoder.yudao.module.rehab.enums.RehabAppConstants;
 import cn.iocoder.yudao.module.rehab.enums.RehabPlanConstants;
 import cn.iocoder.yudao.module.rehab.service.notification.RehabNotificationService;
 import cn.iocoder.yudao.module.rehab.service.checkin.RehabDailyCheckinService;
 import cn.iocoder.yudao.module.rehab.service.ai.RehabAiService;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import cn.iocoder.yudao.module.system.api.user.dto.AdminUserRespDTO;
-import cn.iocoder.yudao.module.system.enums.oauth2.OAuth2ClientConstants;
 import org.springframework.stereotype.Service;
 import org.springframework.validation.annotation.Validated;
 
 import javax.annotation.Resource;
 import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -62,8 +55,6 @@ import static cn.iocoder.yudao.module.rehab.enums.ErrorCodeConstants.*;
 @Validated
 public class RehabAppPatientServiceImpl implements RehabAppPatientService {
 
-    @Resource
-    private OAuth2TokenCommonApi oauth2TokenApi;
     @Resource
     private RehabPatientUserBindingMapper patientUserBindingMapper;
     @Resource
@@ -97,67 +88,16 @@ public class RehabAppPatientServiceImpl implements RehabAppPatientService {
 
     @Override
     public AppPatientLoginRespVO login(AppPatientLoginReqVO reqVO) {
-        RehabPatientUserBindingDO binding = resolveBindingByLogin(reqVO);
-        binding.setLastLoginTime(LocalDateTime.now());
-        binding.clean();
-        patientUserBindingMapper.updateById(binding);
-
-        OAuth2AccessTokenCreateReqDTO tokenCreateReqDTO = new OAuth2AccessTokenCreateReqDTO();
-        tokenCreateReqDTO.setUserId(binding.getAppUserId());
-        tokenCreateReqDTO.setUserType(UserTypeEnum.MEMBER.getValue());
-        tokenCreateReqDTO.setClientId(OAuth2ClientConstants.CLIENT_ID_DEFAULT);
-        OAuth2AccessTokenRespDTO token = oauth2TokenApi.createAccessToken(tokenCreateReqDTO);
-
-        AppPatientLoginRespVO respVO = new AppPatientLoginRespVO();
-        respVO.setUserId(token.getUserId());
-        respVO.setAccessToken(token.getAccessToken());
-        respVO.setRefreshToken(token.getRefreshToken());
-        respVO.setExpiresTime(token.getExpiresTime());
-        return respVO;
+        // A phone and a patient number are not credentials. Even an internal caller
+        // bypassing the controller must never issue a token through this legacy path.
+        throw exception(APP_PATIENT_AUTH_DISABLED);
     }
 
     @Override
     public Long bindPatient(AppPatientAuthBindReqVO reqVO, Long appUserId) {
-        RehabPatientDO patient = resolvePatient(reqVO);
-        if (patient == null) {
-            throw exception(PATIENT_NOT_EXISTS);
-        }
-        if (StrUtil.isNotBlank(patient.getPhone()) && !ObjUtil.equals(patient.getPhone(), reqVO.getPhone())) {
-            throw exception(APP_PATIENT_BIND_PHONE_MISMATCH);
-        }
-
-        Long finalAppUserId = appUserId != null ? appUserId : generateAppUserId(patient.getId());
-
-        RehabPatientUserBindingDO currentBinding = patientUserBindingMapper.selectActiveByAppUserId(finalAppUserId);
-        if (currentBinding != null && !ObjUtil.equals(currentBinding.getPatientId(), patient.getId())) {
-            throw exception(APP_PATIENT_BINDING_CONFLICT);
-        }
-        RehabPatientUserBindingDO patientBinding = patientUserBindingMapper.selectActiveByPatientId(patient.getId());
-        if (patientBinding != null && !ObjUtil.equals(patientBinding.getAppUserId(), finalAppUserId)) {
-            throw exception(APP_PATIENT_BINDING_CONFLICT);
-        }
-
-        RehabPatientUserBindingDO binding = currentBinding;
-        if (binding == null) {
-            binding = patientUserBindingMapper.selectActiveByPatientIdAndAppUserId(patient.getId(), finalAppUserId);
-        }
-        if (binding == null) {
-            binding = RehabPatientUserBindingDO.builder().build();
-        }
-        binding.setPatientId(patient.getId());
-        binding.setAppUserId(finalAppUserId);
-        binding.setBindType(StrUtil.blankToDefault(reqVO.getBindType(), RehabAppConstants.BIND_TYPE_SELF));
-        binding.setBindStatus(RehabAppConstants.BIND_STATUS_ACTIVE);
-        binding.setPhone(reqVO.getPhone());
-        binding.setNickname(reqVO.getNickname());
-        binding.setLastLoginTime(LocalDateTime.now());
-        if (binding.getId() == null) {
-            patientUserBindingMapper.insert(binding);
-        } else {
-            binding.clean();
-            patientUserBindingMapper.updateById(binding);
-        }
-        return binding.getId();
+        // The new clinic-verified, single-use invitation + verified-phone proof
+        // has not been implemented. Do not create a binding from public identifiers.
+        throw exception(APP_PATIENT_AUTH_DISABLED);
     }
 
     @Override
@@ -453,38 +393,6 @@ public class RehabAppPatientServiceImpl implements RehabAppPatientService {
         return binding;
     }
 
-    private RehabPatientDO resolvePatient(AppPatientAuthBindReqVO reqVO) {
-        if (reqVO.getPatientId() != null) {
-            return patientMapper.selectById(reqVO.getPatientId());
-        }
-        if (StrUtil.isNotBlank(reqVO.getPatientNo())) {
-            return patientMapper.selectByPatientNo(reqVO.getPatientNo());
-        }
-        return null;
-    }
-
-    private RehabPatientUserBindingDO resolveBindingByLogin(AppPatientLoginReqVO reqVO) {
-        List<RehabPatientUserBindingDO> bindings = patientUserBindingMapper.selectActiveListByPhone(reqVO.getPhone());
-        if (CollUtil.isEmpty(bindings)) {
-            throw exception(APP_PATIENT_BINDING_REQUIRED);
-        }
-        RehabPatientUserBindingDO matched = null;
-        for (RehabPatientUserBindingDO binding : bindings) {
-            RehabPatientDO patient = patientMapper.selectById(binding.getPatientId());
-            if (patient == null) {
-                continue;
-            }
-            if (ObjUtil.equals(patient.getPatientNo(), reqVO.getBindCode())) {
-                matched = binding;
-                break;
-            }
-        }
-        if (matched == null) {
-            throw exception(APP_PATIENT_BINDING_REQUIRED);
-        }
-        return matched;
-    }
-
     private String maskPhone(String phone) {
         if (StrUtil.isBlank(phone) || phone.length() < 7) {
             return phone;
@@ -492,7 +400,4 @@ public class RehabAppPatientServiceImpl implements RehabAppPatientService {
         return phone.substring(0, 3) + "****" + phone.substring(phone.length() - 4);
     }
 
-    private Long generateAppUserId(Long patientId) {
-        return 90_000_000L + patientId;
-    }
 }
