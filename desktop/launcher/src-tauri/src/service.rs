@@ -7,6 +7,10 @@ use crate::docker::{
     wait_for_healthy_default, DockerContext,
 };
 use crate::error::{LauncherError, LauncherResult};
+use crate::migrations::{
+    container_script_path, ledger_insert_sql, parse_history, parse_manifest, pending_migrations,
+    verified_script, HISTORY_QUERY, LEDGER_EXISTS_QUERY, MANIFEST_RELATIVE,
+};
 use crate::model::{
     default_service_states, LauncherOverview, LauncherSettings, DELETE_CONFIRMATION, VOLUME_NAMES,
 };
@@ -26,6 +30,7 @@ use std::fs::{self, OpenOptions};
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::time::Instant;
 
 pub struct LauncherService {
     paths: AppPaths,
@@ -140,6 +145,8 @@ impl LauncherService {
             &["up", "--detach", "--build"],
         )?;
         wait_for_healthy_default(self.runner.as_ref(), &context)?;
+        // 已有数据卷（旧版本安装或旧版本迁移包）在这里补齐 020+ 增量迁移；全新安装为空操作。
+        self.upgrade_database(&context)?;
         Ok(self.overview())
     }
 
@@ -282,6 +289,8 @@ impl LauncherService {
                 // 覆盖前强制生成目标设备本机加密备份；后续任何失败都不删除该备份。
                 self.create_backup_inner(&context)?;
                 self.restore_transfer_sources(&context, &database, &attachments)?;
+                // 来自旧版本门店的迁移包：导入后按本版本清单补齐增量迁移（会再次自动备份）。
+                self.upgrade_database(&context)?;
                 Ok(self.overview())
             })();
             let _ = remove_fixed_path(&staging, &self.paths.data_dir);
@@ -337,6 +346,124 @@ impl LauncherService {
         let result = self.finish(result);
         self.operation = None;
         result
+    }
+
+    fn mysql_query(&self, context: &DockerContext, sql: &str) -> LauncherResult<String> {
+        self.run_compose_os(
+            context,
+            vec![
+                OsString::from("exec"),
+                OsString::from("--no-TTY"),
+                OsString::from("mysql"),
+                OsString::from("mysql"),
+                OsString::from("--defaults-extra-file=/run/rehab-secrets/mysql-client.cnf"),
+                OsString::from("--default-character-set=utf8mb4"),
+                OsString::from("--batch"),
+                OsString::from("--skip-column-names"),
+                OsString::from("ruoyi-vue-pro"),
+                OsString::from("--execute"),
+                OsString::from(sql),
+            ],
+        )
+        .map(|output| output.stdout)
+    }
+
+    /// 按运行资源中的迁移清单补齐 020+ 增量迁移，语义与 `migrate.sh apply` 一致。
+    /// 返回实际执行的迁移数量。任何校验失败都在写入之前停止；执行前强制创建本机加密备份。
+    fn upgrade_database(&self, context: &DockerContext) -> LauncherResult<usize> {
+        let manifest_path = self.paths.runtime_dir.join(MANIFEST_RELATIVE);
+        let manifest_text = fs::read_to_string(&manifest_path)
+            .map_err(|_| LauncherError::RuntimeInvalid(format!("缺少 {MANIFEST_RELATIVE}")))?;
+        let manifest = parse_manifest(&manifest_text)?;
+        if self.mysql_query(context, LEDGER_EXISTS_QUERY)?.trim() != "1" {
+            return Err(LauncherError::CommandFailed(
+                "数据库迁移账本缺失，已停止且未修改数据库；请先人工核验数据库与备份".to_owned(),
+            ));
+        }
+        let history = parse_history(&self.mysql_query(context, HISTORY_QUERY)?)?;
+        let pending = pending_migrations(&manifest, &history)?;
+        if pending.is_empty() {
+            return Ok(0);
+        }
+        let scripts = pending
+            .iter()
+            .map(|migration| verified_script(&self.paths.runtime_dir, migration))
+            .collect::<LauncherResult<Vec<_>>>()?;
+        let versions = pending
+            .iter()
+            .map(|migration| migration.version.as_str())
+            .collect::<Vec<_>>()
+            .join(",");
+        let backup = self.create_backup_inner(context)?;
+        let _ = append_launcher_log(
+            &self.paths.logs_dir,
+            &format!(
+                "数据库升级：待执行增量迁移 {versions}；升级前加密备份 {}",
+                backup.display()
+            ),
+        );
+        for (migration, script) in pending.iter().zip(scripts.iter()) {
+            let container_path = container_script_path(migration);
+            self.run_compose_os(
+                context,
+                vec![
+                    OsString::from("cp"),
+                    script.as_os_str().to_owned(),
+                    OsString::from(format!("mysql:{container_path}")),
+                ],
+            )?;
+            let started = Instant::now();
+            let executed = self.run_compose_os(
+                context,
+                vec![
+                    OsString::from("exec"),
+                    OsString::from("--no-TTY"),
+                    OsString::from("mysql"),
+                    OsString::from("sh"),
+                    OsString::from("-c"),
+                    OsString::from(format!(
+                        "exec mysql --defaults-extra-file=/run/rehab-secrets/mysql-client.cnf \
+                         --default-character-set=utf8mb4 ruoyi-vue-pro < {container_path}"
+                    )),
+                ],
+            );
+            if let Err(error) = executed {
+                let message = format!(
+                    "增量迁移 {} 执行失败，账本未登记，已停止后续迁移；升级前备份保留在 {}：{error}",
+                    migration.version,
+                    backup.display()
+                );
+                let _ = append_launcher_log(&self.paths.logs_dir, &message);
+                return Err(LauncherError::CommandFailed(message));
+            }
+            self.mysql_query(
+                context,
+                &ledger_insert_sql(migration, started.elapsed().as_millis()),
+            )?;
+            let _ = self.run_compose_os(
+                context,
+                vec![
+                    OsString::from("exec"),
+                    OsString::from("--no-TTY"),
+                    OsString::from("mysql"),
+                    OsString::from("rm"),
+                    OsString::from("-f"),
+                    OsString::from(container_path),
+                ],
+            );
+            let _ = append_launcher_log(
+                &self.paths.logs_dir,
+                &format!(
+                    "数据库升级：已执行并登记 {} {}",
+                    migration.version, migration.description
+                ),
+            );
+        }
+        // 增量迁移可能新增菜单与权限：清理缓存并重启后端，使其按新结构加载。
+        self.flush_redis(context)?;
+        run_compose(self.runner.as_ref(), context, &["restart", "server"])?;
+        wait_for_healthy_default(self.runner.as_ref(), context)?;
+        Ok(pending.len())
     }
 
     fn require_all_healthy(&self, context: &DockerContext, message: &str) -> LauncherResult<()> {
@@ -975,6 +1102,237 @@ mod tests {
         assert!(!safe_archive_entry("../secrets/config.env"));
         assert!(!safe_archive_entry("/etc/passwd"));
         assert!(!safe_archive_entry("reports/../../tls/server.key"));
+    }
+
+    mod upgrade {
+        use super::super::*;
+        use crate::docker::context_for;
+        use crate::migrations::tests::{baseline_history, checksum_of, manifest_text};
+        use crate::runner::test_support::MockRunner;
+        use crate::runner::CommandOutput;
+        use tempfile::{tempdir, TempDir};
+
+        const HEALTHY: &str =
+            "{\"Service\":\"mysql\",\"State\":\"running\",\"Health\":\"healthy\"}\n\
+{\"Service\":\"redis\",\"State\":\"running\",\"Health\":\"healthy\"}\n\
+{\"Service\":\"server\",\"State\":\"running\",\"Health\":\"healthy\"}\n\
+{\"Service\":\"admin\",\"State\":\"running\",\"Health\":\"healthy\"}\n";
+
+        fn ok(stdout: &str) -> CommandOutput {
+            CommandOutput {
+                success: true,
+                stdout: stdout.to_owned(),
+                stderr: String::new(),
+            }
+        }
+
+        fn failed(stderr: &str) -> CommandOutput {
+            CommandOutput {
+                success: false,
+                stdout: String::new(),
+                stderr: stderr.to_owned(),
+            }
+        }
+
+        fn history_text(rows: &[(String, String)]) -> String {
+            rows.iter()
+                .map(|(version, checksum)| format!("{version}\t{checksum}\n"))
+                .collect()
+        }
+
+        struct Fixture {
+            _dir: TempDir,
+            service: LauncherService,
+            runner: Arc<MockRunner>,
+        }
+
+        impl Fixture {
+            fn new(scripts: &[(&str, &str)], outputs: Vec<CommandOutput>) -> Self {
+                let dir = tempdir().unwrap();
+                let paths = AppPaths::from_data_dir(dir.path().join("data"));
+                let runner = Arc::new(MockRunner::with_outputs(true, outputs));
+                let service = LauncherService::with_runner(
+                    paths.clone(),
+                    dir.path().join("resources"),
+                    runner.clone(),
+                )
+                .unwrap();
+                let migrations = paths.runtime_dir.join(crate::migrations::MIGRATIONS_DIR);
+                fs::create_dir_all(&migrations).unwrap();
+                fs::write(
+                    paths.runtime_dir.join(MANIFEST_RELATIVE),
+                    manifest_text(scripts),
+                )
+                .unwrap();
+                for (version, content) in scripts {
+                    fs::write(migrations.join(format!("{version}.sql")), content).unwrap();
+                }
+                Self {
+                    _dir: dir,
+                    service,
+                    runner,
+                }
+            }
+
+            fn run(&self) -> LauncherResult<usize> {
+                let paths = &self.service.paths;
+                let context = context_for(
+                    PathBuf::from("docker"),
+                    &paths.runtime_dir,
+                    paths.env_path(),
+                );
+                self.service.upgrade_database(&context)
+            }
+
+            fn calls(&self) -> Vec<String> {
+                self.runner
+                    .calls
+                    .lock()
+                    .unwrap()
+                    .iter()
+                    .map(|call| {
+                        call.iter()
+                            .map(|part| part.to_string_lossy().into_owned())
+                            .collect::<Vec<_>>()
+                            .join(" ")
+                    })
+                    .collect()
+            }
+        }
+
+        #[test]
+        fn fresh_install_ledger_is_a_read_only_noop() {
+            let mut history = baseline_history();
+            history.push(("020".to_owned(), checksum_of("CREATE TABLE a(id INT);")));
+            let fixture = Fixture::new(
+                &[("020", "CREATE TABLE a(id INT);")],
+                vec![ok("1\n"), ok(&history_text(&history))],
+            );
+            assert_eq!(fixture.run().unwrap(), 0);
+            let calls = fixture.calls();
+            assert_eq!(calls.len(), 2);
+            assert!(calls
+                .iter()
+                .all(|call| !call.contains("INSERT") && !call.contains(" cp ")));
+        }
+
+        #[test]
+        fn database_from_newer_release_fails_before_backup_or_write() {
+            let mut history = baseline_history();
+            history.push(("020".to_owned(), checksum_of("CREATE TABLE a(id INT);")));
+            history.push(("099".to_owned(), "b".repeat(64)));
+            let fixture = Fixture::new(
+                &[("020", "CREATE TABLE a(id INT);")],
+                vec![ok("1\n"), ok(&history_text(&history))],
+            );
+            assert!(fixture.run().unwrap_err().to_string().contains("099"));
+            assert_eq!(fixture.calls().len(), 2);
+        }
+
+        #[test]
+        fn missing_ledger_fails_closed() {
+            let fixture = Fixture::new(&[("020", "x")], vec![ok("0\n")]);
+            assert!(fixture.run().unwrap_err().to_string().contains("账本缺失"));
+            assert_eq!(fixture.calls().len(), 1);
+        }
+
+        #[test]
+        fn old_desktop_ledger_is_backed_up_then_executed_and_registered_in_order() {
+            let mut outputs = vec![
+                ok("1\n"),
+                ok(&history_text(&baseline_history())),
+                ok(HEALTHY),
+                ok("-- mysqldump"),
+                ok("attachments"),
+            ];
+            for _ in 0..2 {
+                outputs.extend([ok(""), ok(""), ok(""), ok("")]);
+            }
+            outputs.extend([ok("OK"), ok(""), ok(HEALTHY)]);
+            let fixture = Fixture::new(
+                &[
+                    ("020", "CREATE TABLE a(id INT);"),
+                    ("021", "CREATE TABLE b(id INT);"),
+                ],
+                outputs,
+            );
+            assert_eq!(fixture.run().unwrap(), 2);
+            let calls = fixture.calls();
+            let position = |needle: &str| {
+                calls
+                    .iter()
+                    .position(|call| call.contains(needle))
+                    .unwrap_or_else(|| panic!("缺少调用：{needle}\n{calls:#?}"))
+            };
+            let dump = position("mysqldump");
+            let copy_020 = position("mysql:/tmp/rehab-migration-020.sql");
+            let exec_020 = position("< /tmp/rehab-migration-020.sql");
+            let ledger_020 = position("VALUES ('020'");
+            let exec_021 = position("< /tmp/rehab-migration-021.sql");
+            let ledger_021 = position("VALUES ('021'");
+            assert!(dump < copy_020 && copy_020 < exec_020 && exec_020 < ledger_020);
+            assert!(ledger_020 < exec_021 && exec_021 < ledger_021);
+            assert!(calls[ledger_021].contains("'desktop-upgrade',b'0'"));
+            assert!(position("restart server") > ledger_021);
+            assert!(!calls
+                .iter()
+                .any(|call| call.contains("--force") || call.contains("--volumes")));
+            let backups: Vec<_> = fs::read_dir(&fixture.service.paths.backups_dir)
+                .unwrap()
+                .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+                .collect();
+            assert!(
+                backups.iter().any(|name| name.ends_with(".sql.age")),
+                "{backups:?}"
+            );
+        }
+
+        #[test]
+        fn failed_migration_is_not_registered_and_stops_the_sequence() {
+            let outputs = vec![
+                ok("1\n"),
+                ok(&history_text(&baseline_history())),
+                ok(HEALTHY),
+                ok("-- mysqldump"),
+                ok("attachments"),
+                ok(""),
+                failed("ERROR 1050 (42S01): Table 'a' already exists"),
+            ];
+            let fixture = Fixture::new(
+                &[
+                    ("020", "CREATE TABLE a(id INT);"),
+                    ("021", "CREATE TABLE b(id INT);"),
+                ],
+                outputs,
+            );
+            let error = fixture.run().unwrap_err().to_string();
+            assert!(
+                error.contains("020") && error.contains("账本未登记"),
+                "{error}"
+            );
+            let calls = fixture.calls();
+            assert!(!calls
+                .iter()
+                .any(|call| call.contains("INSERT INTO internal_schema_history")));
+            assert!(!calls.iter().any(|call| call.contains("021")));
+        }
+
+        #[test]
+        fn tampered_runtime_script_is_rejected_before_backup() {
+            let fixture = Fixture::new(
+                &[("020", "CREATE TABLE a(id INT);")],
+                vec![ok("1\n"), ok(&history_text(&baseline_history()))],
+            );
+            let script = fixture
+                .service
+                .paths
+                .runtime_dir
+                .join(crate::migrations::MIGRATIONS_DIR)
+                .join("020.sql");
+            fs::write(script, "DROP TABLE rehab_patient;").unwrap();
+            assert!(fixture.run().unwrap_err().to_string().contains("校验失败"));
+            assert_eq!(fixture.calls().len(), 2);
+        }
     }
 
     #[test]
