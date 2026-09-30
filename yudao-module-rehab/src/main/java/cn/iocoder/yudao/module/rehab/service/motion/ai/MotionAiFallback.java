@@ -65,7 +65,9 @@ public final class MotionAiFallback {
                 + "解释、训练建议与最终结论由治疗师填写。");
         out.put("findings", findings);
         out.put("training_suggestions", new ArrayList<Object>());
-        out.put("patient_summary", "本次共完成 " + tests + " 项动作测试。结果将在治疗师审核确认后为您解读。");
+        // 草稿被接受后会原样进入已签署的患者版报告：措辞在签署前后都须成立，且按评分条目计数（YBT 左右各一条）。
+        out.put("patient_summary", "本次评估共包含 " + tests + " 个评分条目。各项结果以治疗师签署确认的最终分为准，"
+                + "具体含义请与您的治疗师沟通。");
         List<String> limitations = new ArrayList<String>();
         Object lim = payload.get("limitations");
         if (lim instanceof List) {

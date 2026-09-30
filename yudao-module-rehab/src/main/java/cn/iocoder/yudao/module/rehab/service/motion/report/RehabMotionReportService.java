@@ -55,7 +55,7 @@ public class RehabMotionReportService {
     @Resource
     private RehabMotionAiDraftMapper aiDraftMapper;
     @Resource
-    private RehabMotionFileMapper fileMapper;
+    private RehabMotionFileMapper motionFileMapper;
     @Resource
     private RehabPatientMapper patientMapper;
     @Resource
@@ -162,7 +162,7 @@ public class RehabMotionReportService {
                     .contentType("application/pdf")
                     .source("system")
                     .build();
-            fileMapper.insert(file);
+            motionFileMapper.insert(file);
             RehabMotionReportDO upd = new RehabMotionReportDO();
             upd.setId(r.getId());
             upd.setPdfFileId(file.getId());

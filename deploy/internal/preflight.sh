@@ -136,7 +136,7 @@ grep -q "rehab-step13-disable-undelivered-menus-v1.sql" "$SCRIPT_DIR/docker-comp
   || fail "Compose 未挂载未交付菜单关闭迁移脚本"
 grep -q "init-schema-history.sql" "$SCRIPT_DIR/docker-compose.yml" \
   || fail "Compose 未挂载全新数据库迁移账本初始化脚本"
-grep -q "init-incremental-migrations.sh:/docker-entrypoint-initdb.d/111-incremental-migrations.sh:ro" \
+grep -q "init-incremental-migrations.sh:/docker-entrypoint-initdb.d/zz-incremental-migrations.sh:ro" \
   "$SCRIPT_DIR/docker-compose.yml" || fail "Compose 未挂载全新数据库增量迁移执行脚本"
 grep -q "migrations.manifest:/opt/rehab-migrations/migrations.manifest:ro" "$SCRIPT_DIR/docker-compose.yml" \
   || fail "Compose 未挂载增量迁移清单"

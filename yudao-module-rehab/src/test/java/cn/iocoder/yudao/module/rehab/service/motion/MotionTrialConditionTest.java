@@ -58,4 +58,25 @@ class MotionTrialConditionTest {
         assertTrue(bad.get(1).startsWith("rsl1: 条件须为 unilateral/diagonal"));
         assertTrue(bad.get(2).startsWith("ds1: 条件须为 standard/heels_elevated"));
     }
+    @Test
+    void sidesMatchEngineRegistry() {
+        // 与引擎 tests_registry.sides 对齐：保存时即拦截，避免异步任务在规则计算阶段才返回 INVALID_SIDE。
+        for (String test : RehabMotionConstants.FMS_TESTS) {
+            assertFalse(RehabMotionConstants.allowedSides(test).isEmpty(), test);
+        }
+        assertEquals(Collections.singletonList("bilateral"), RehabMotionConstants.allowedSides("LESS"));
+        assertEquals(Collections.singletonList("bilateral"), RehabMotionConstants.allowedSides("FMS_DEEP_SQUAT"));
+        assertEquals(Arrays.asList("left", "right"), RehabMotionConstants.allowedSides("YBT_LQ"));
+        assertEquals(Arrays.asList("left", "right"), RehabMotionConstants.allowedSides("NASM_SLS"));
+        assertEquals(Arrays.asList("left", "right"), RehabMotionConstants.allowedSides("FMS_HURDLE_STEP"));
+        assertEquals(Collections.emptyList(), RehabMotionConstants.allowedSides("UNKNOWN"));
+
+        List<String> bad = MotionEngineRequestBuilder.validateTrials(Arrays.asList(
+                trial("ybt1", "YBT_LQ", "bilateral", null),
+                trial("less1", "LESS", "left", null),
+                trial("sls1", "NASM_SLS", "left", null)), null);
+        assertEquals(2, bad.size(), bad.toString());
+        assertTrue(bad.get(0).startsWith("ybt1: 侧别须为 左/右"), bad.get(0));
+        assertTrue(bad.get(1).startsWith("less1: 侧别须为 双侧"), bad.get(1));
+    }
 }

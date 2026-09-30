@@ -45,6 +45,11 @@ class MotionEngineComposeTest(unittest.TestCase):
         self.assertIn('MOTION_ENGINE_TOKEN: ${MOTION_ENGINE_TOKEN:-}', server)
         self.assertNotIn('OPENCAP_API_TOKEN', server, 'OpenCap 凭据只由引擎持有')
 
+    def test_opencap_media_hosts_are_explicit(self):
+        # 结果文件是 S3 预签名 URL；引擎按精确主机白名单下载，未配置时所有下载都会被拒绝
+        self.assertIn('OPENCAP_MEDIA_HOSTS: ${OPENCAP_MEDIA_HOSTS:-mc-mocap-video-storage.s3.amazonaws.com}', self.block)
+        self.assertNotIn('*', self.block.split('OPENCAP_MEDIA_HOSTS', 1)[1].splitlines()[0])
+
     def test_ai_analysis_stays_disabled_by_default(self):
         self.assertIn('OPENAI_ENABLE_AI_ANALYSIS: "false"', self.compose)
 

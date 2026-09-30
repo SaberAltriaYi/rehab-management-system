@@ -92,6 +92,11 @@ public final class MotionEngineRequestBuilder {
             }
             if (!RehabMotionConstants.SIDES.contains(t.getSide())) {
                 errors.add(key + ": 侧别不合法");
+            } else {
+                List<String> sides = RehabMotionConstants.allowedSides(t.getTestCode());
+                if (!sides.isEmpty() && !sides.contains(t.getSide())) {
+                    errors.add(key + ": 侧别须为 " + (sides.size() == 1 ? "双侧" : "左/右（YBT 为支撑腿）"));
+                }
             }
             if (t.getAttemptNo() == null || t.getAttemptNo() < 1 || t.getAttemptNo() > 20) {
                 errors.add(key + ": 尝试序号须为 1-20");

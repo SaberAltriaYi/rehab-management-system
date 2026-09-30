@@ -29,6 +29,26 @@ export const SIDE_OPTIONS = [
   { value: 'left', label: '左' },
   { value: 'right', label: '右' }
 ]
+/** 以整体（双侧）记录的测试；其余测试按左/右记录（与引擎 tests_registry.sides、后端 BILATERAL_TESTS 一致；YBT 侧别 = 支撑腿） */
+export const BILATERAL_TESTS = new Set([
+  'FMS_DEEP_SQUAT',
+  'FMS_TSPU',
+  'NASM_OHS',
+  'NASM_PUSHUP',
+  'NASM_ROW',
+  'NASM_DB_PRESS',
+  'NASM_GAIT',
+  'TUCK_JUMP',
+  'LESS'
+])
+export const sideOptionsFor = (testCode?: string) =>
+  !testCode ? SIDE_OPTIONS : SIDE_OPTIONS.filter((o) => (BILATERAL_TESTS.has(testCode) ? o.value === 'bilateral' : o.value !== 'bilateral'))
+/** 侧别归一：双侧测试固定 bilateral；左右测试保留 left/right，否则置空要求治疗师选择（不猜测侧别） */
+export const normalizeSide = (testCode: string | undefined, side?: string) => {
+  const opts = sideOptionsFor(testCode)
+  if (opts.length === 1) return opts[0].value
+  return opts.some((o) => o.value === side) ? side! : ''
+}
 export const sideLabel = (s?: string) =>
   s === 'overall' ? '' : SIDE_OPTIONS.find((x) => x.value === s)?.label || s || ''
 

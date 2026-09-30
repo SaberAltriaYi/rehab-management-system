@@ -23,3 +23,4 @@
 022|c4c1fbb24dc91e34addfefaabafbef0389b842cf64b14e62265fa53a29669755|sql/mysql/rehab-bpm-core-v1.sql|BPM流程八表
 023|a650926756f203d79f9d6c0cb2051df389dee894c073632407a077253643a810|sql/mysql/rehab-erp-core-v1.sql|ERP库存财务三十三表
 024|a3db2d5b336f523c7db516e7a815236629d5e69115842bc962d2874f1be5496a|sql/mysql/rehab-motion-assessment-v1.sql|智能动作评估十一表与菜单
+025|ca388b3cf7cf5e08a0c590c4acc392e72f9fc17c48a106e070a5a15cc7cfbfb0|sql/mysql/rehab-motion-audit-columns-v1.sql|动作评估审计列允许后台任务写入

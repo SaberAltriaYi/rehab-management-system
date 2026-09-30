@@ -39,7 +39,7 @@ services:
       - ../../sql/mysql/rehab-step13-disable-undelivered-menus-v1.sql:/docker-entrypoint-initdb.d/108-disable-undelivered-menus.sql:ro
       - ./init-schema-history.sql:/docker-entrypoint-initdb.d/110-schema-history.sql:ro
       # 020+ 增量迁移：按清单实际执行并登记账本（与 migrate.sh apply 语义一致）
-      - ./init-incremental-migrations.sh:/docker-entrypoint-initdb.d/111-incremental-migrations.sh:ro
+      - ./init-incremental-migrations.sh:/docker-entrypoint-initdb.d/zz-incremental-migrations.sh:ro
       - ./migrations.manifest:/opt/rehab-migrations/migrations.manifest:ro
       - ../../sql/mysql:/opt/rehab-migrations/sql/mysql:ro
     healthcheck:
@@ -132,6 +132,8 @@ services:
       MOTION_ENGINE_TOKEN: ${MOTION_ENGINE_TOKEN:-}
       # 可选：OpenCap 接口拉取（仅引擎持有，前端/Java 不接触）
       OPENCAP_API_TOKEN: ${OPENCAP_API_TOKEN:-}
+      # OpenCap 结果文件为 S3 预签名地址；引擎只允许精确列出的下载主机
+      OPENCAP_MEDIA_HOSTS: ${OPENCAP_MEDIA_HOSTS:-mc-mocap-video-storage.s3.amazonaws.com}
     read_only: true
     tmpfs:
       - /tmp:size=512m

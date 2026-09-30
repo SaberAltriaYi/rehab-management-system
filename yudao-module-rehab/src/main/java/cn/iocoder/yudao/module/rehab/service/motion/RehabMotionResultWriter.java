@@ -54,7 +54,7 @@ public class RehabMotionResultWriter {
     @Resource
     private RehabMotionProtocolVersionMapper protocolVersionMapper;
     @Resource
-    private RehabMotionFileMapper fileMapper;
+    private RehabMotionFileMapper motionFileMapper;
     @Resource
     private MotionStorage storage;
 
@@ -72,7 +72,7 @@ public class RehabMotionResultWriter {
                 .contentType("application/json")
                 .source("engine")
                 .build();
-        fileMapper.insert(file);
+        motionFileMapper.insert(file);
         return file.getId();
     }
 
@@ -179,7 +179,7 @@ public class RehabMotionResultWriter {
         if (a.getResultFileId() == null) {
             return Collections.emptyMap();
         }
-        RehabMotionFileDO file = fileMapper.selectById(a.getResultFileId());
+        RehabMotionFileDO file = motionFileMapper.selectById(a.getResultFileId());
         if (file == null || !a.getId().equals(file.getAssessmentId())) {
             return Collections.emptyMap();
         }

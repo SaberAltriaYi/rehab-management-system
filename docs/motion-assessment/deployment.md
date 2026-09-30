@@ -30,6 +30,13 @@
 * 执行：备份 → `deploy/internal/migrate.sh`（新库）或 `migrate.sh adopt`（历史库补记录）→ `check-database.sh`。
 * 回滚：024 是纯新增，回滚 = 恢复迁移前备份；不要手工 DROP 以免破坏迁移记录一致性。
 
+## 2.1 迁移 025（审计列可空）
+
+* 文件：`sql/mysql/rehab-motion-audit-columns-v1.sql`。只 `ALTER … MODIFY creator/updater … NULL`，无数据变更。
+* 原因：处理任务由后台 worker 执行，没有登录用户，MyBatis-Plus 自动填充会写 NULL；024 的 NOT NULL
+  使任务卡在“解析”。024 已在部分库执行，按规则不修改 024，而是追加 025。
+* 执行方式同 024；已执行 024 的库必须执行 025。
+
 ## 3. 分析引擎（可选）
 
 见 `deploy/internal/README.md` “智能动作评估（可选组件）”：

@@ -88,7 +88,7 @@ public class RehabMotionReviewService {
     @Resource
     private RehabMotionReportMapper reportMapper;
     @Resource
-    private RehabMotionFileMapper fileMapper;
+    private RehabMotionFileMapper motionFileMapper;
     @Resource
     private RehabMotionManualEditMapper manualEditMapper;
     @Resource
@@ -522,7 +522,7 @@ public class RehabMotionReviewService {
         if (!"ready".equals(r.getPdfStatus()) || r.getPdfFileId() == null) {
             throw exception(MOTION_PDF_NOT_READY);
         }
-        RehabMotionFileDO f = fileMapper.selectById(r.getPdfFileId());
+        RehabMotionFileDO f = motionFileMapper.selectById(r.getPdfFileId());
         if (f == null || !Objects.equals(f.getAssessmentId(), r.getAssessmentId())) {
             throw exception(MOTION_FILE_NOT_EXISTS);
         }

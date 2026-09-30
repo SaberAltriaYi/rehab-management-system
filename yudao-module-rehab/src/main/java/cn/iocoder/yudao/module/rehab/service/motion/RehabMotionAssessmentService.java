@@ -55,7 +55,7 @@ public class RehabMotionAssessmentService {
     @Resource
     private RehabMotionAssessmentMapper assessmentMapper;
     @Resource
-    private RehabMotionFileMapper fileMapper;
+    private RehabMotionFileMapper motionFileMapper;
     @Resource
     private RehabMotionTrialMapper trialMapper;
     @Resource
@@ -150,9 +150,9 @@ public class RehabMotionAssessmentService {
         assessmentMapper.updateById(upd);
         if (Boolean.TRUE.equals(a.getVideoConsent()) && !Boolean.TRUE.equals(req.getVideoConsent())) {
             // 撤回视频同意：立即删除已保存的视频
-            for (RehabMotionFileDO f : fileMapper.selectListByAssessmentId(a.getId())) {
+            for (RehabMotionFileDO f : motionFileMapper.selectListByAssessmentId(a.getId())) {
                 if (FILE_VIDEO.equals(f.getFileKind())) {
-                    fileMapper.deleteById(f.getId());
+                    motionFileMapper.deleteById(f.getId());
                     storage.deleteQuietly(f.getStoragePath());
                 }
             }
@@ -347,7 +347,7 @@ public class RehabMotionAssessmentService {
     public List<RehabMotionFileRespVO> listFiles(Long assessmentId, Long userId) {
         access.readable(assessmentId, userId);
         List<RehabMotionFileRespVO> out = new ArrayList<RehabMotionFileRespVO>();
-        for (RehabMotionFileDO f : fileMapper.selectListByAssessmentId(assessmentId)) {
+        for (RehabMotionFileDO f : motionFileMapper.selectListByAssessmentId(assessmentId)) {
             if (FILE_RESULT.equals(f.getFileKind()) || FILE_PDF.equals(f.getFileKind())) {
                 continue;
             }
@@ -357,7 +357,7 @@ public class RehabMotionAssessmentService {
     }
 
     public void deleteFile(Long fileId, Long userId) {
-        RehabMotionFileDO f = fileMapper.selectById(fileId);
+        RehabMotionFileDO f = motionFileMapper.selectById(fileId);
         if (f == null) {
             throw exception(MOTION_FILE_NOT_EXISTS);
         }
@@ -365,7 +365,7 @@ public class RehabMotionAssessmentService {
         if (FILE_RESULT.equals(f.getFileKind()) || FILE_PDF.equals(f.getFileKind())) {
             throw exception(MOTION_FILE_NOT_EXISTS);
         }
-        fileMapper.deleteById(fileId);
+        motionFileMapper.deleteById(fileId);
         storage.deleteQuietly(f.getStoragePath());
         if (KINEMATIC_FILE_KINDS.contains(f.getFileKind())) {
             access.bumpRevision(a.getId());
@@ -386,7 +386,7 @@ public class RehabMotionAssessmentService {
     }
 
     public Download download(Long fileId, Long userId) {
-        RehabMotionFileDO f = fileMapper.selectById(fileId);
+        RehabMotionFileDO f = motionFileMapper.selectById(fileId);
         if (f == null) {
             throw exception(MOTION_FILE_NOT_EXISTS);
         }
@@ -621,7 +621,7 @@ public class RehabMotionAssessmentService {
             throw exception(MOTION_TRIAL_INVALID, "至少需要配置一个 Trial");
         }
         boolean hasMot = false;
-        for (RehabMotionFileDO f : fileMapper.selectListByAssessmentId(a.getId())) {
+        for (RehabMotionFileDO f : motionFileMapper.selectListByAssessmentId(a.getId())) {
             if (FILE_MOT.equals(f.getFileKind())) {
                 hasMot = true;
                 break;
@@ -738,7 +738,7 @@ public class RehabMotionAssessmentService {
 
     public Collection<RehabMotionFileDO> kinematicFiles(Long assessmentId) {
         List<RehabMotionFileDO> out = new ArrayList<RehabMotionFileDO>();
-        for (RehabMotionFileDO f : fileMapper.selectListByAssessmentId(assessmentId)) {
+        for (RehabMotionFileDO f : motionFileMapper.selectListByAssessmentId(assessmentId)) {
             if (KINEMATIC_FILE_KINDS.contains(f.getFileKind())) {
                 out.add(f);
             }

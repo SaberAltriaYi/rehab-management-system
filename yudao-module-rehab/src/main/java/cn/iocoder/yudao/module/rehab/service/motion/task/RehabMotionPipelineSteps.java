@@ -54,7 +54,7 @@ public class RehabMotionPipelineSteps {
     @Resource
     private MotionStorage storage;
     @Resource
-    private RehabMotionFileMapper fileMapper;
+    private RehabMotionFileMapper motionFileMapper;
     @Resource
     private RehabMotionTrialMapper trialMapper;
     @Resource
@@ -210,7 +210,7 @@ public class RehabMotionPipelineSteps {
                                       String cameraKey, String ext, String contentType, byte[] data, String source,
                                       Long userId) throws IOException {
         MotionStorage.Stored stored = storage.save(a.getTenantId(), a.getId(), kind, ext, data);
-        RehabMotionFileDO old = fileMapper.selectByRelativePath(a.getId(), relativePath);
+        RehabMotionFileDO old = motionFileMapper.selectByRelativePath(a.getId(), relativePath);
         RehabMotionFileDO row = RehabMotionFileDO.builder()
                 .assessmentId(a.getId())
                 .fileKind(kind)
@@ -224,9 +224,9 @@ public class RehabMotionPipelineSteps {
                 .source(source)
                 .uploadUserId(userId)
                 .build();
-        fileMapper.insert(row);
+        motionFileMapper.insert(row);
         if (old != null) {
-            fileMapper.deleteById(old.getId());
+            motionFileMapper.deleteById(old.getId());
             storage.deleteQuietly(old.getStoragePath());
         }
         return row;
@@ -237,7 +237,7 @@ public class RehabMotionPipelineSteps {
     void validateInputs(RehabMotionAssessmentDO a) {
         List<RehabMotionTrialDO> trials = trialMapper.selectListByAssessmentId(a.getId());
         Set<String> motNames = new HashSet<String>();
-        for (RehabMotionFileDO f : fileMapper.selectListByAssessmentId(a.getId())) {
+        for (RehabMotionFileDO f : motionFileMapper.selectListByAssessmentId(a.getId())) {
             if (FILE_MOT.equals(f.getFileKind()) && f.getTrialName() != null) {
                 motNames.add(f.getTrialName());
             }
@@ -267,7 +267,7 @@ public class RehabMotionPipelineSteps {
                 MotionEngineRequestBuilder.parseManualInputs(a.getManualInputsJson()));
         List<MotionEngineRequestBuilder.InputFile> files = new ArrayList<MotionEngineRequestBuilder.InputFile>();
         long total = 0;
-        for (RehabMotionFileDO f : fileMapper.selectListByAssessmentId(a.getId())) {
+        for (RehabMotionFileDO f : motionFileMapper.selectListByAssessmentId(a.getId())) {
             if (!KINEMATIC_FILE_KINDS.contains(f.getFileKind())) {
                 continue;
             }

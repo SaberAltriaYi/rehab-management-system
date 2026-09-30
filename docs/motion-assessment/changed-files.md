@@ -148,3 +148,25 @@
 * A `src/rehab_biomechanics/motion/`（解析、QC、阶段、指标、FMS/NASM/YBT/TJA/LESS 评分、协议 JSON、HTTP 服务、OpenCap 客户端）
 * A `tests/motion_synth.py`、`tests/test_motion_engine.py`、`tests/test_motion_scoring.py`、`tests/test_motion_service.py`、`tests/test_motion_real_sample.py`
 * A `docs/motion-assessment.md`
+
+## 联调修复（2026-09-30，容器联调 + 真实 OpenCap + 浏览器走查）
+
+主仓库：
+
+* A `sql/mysql/rehab-motion-audit-columns-v1.sql`（迁移 025，审计列可空）；M `deploy/internal/migrations.manifest`
+* M `deploy/internal/{docker-compose.yml,Dockerfile.admin,init-incremental-migrations.sh,migrate.sh,preflight.sh,README.md}`
+* A `deploy/internal/{test_spring_bean_names.py,test_admin_image.py,test_internal_routes.py}`；
+  M `deploy/internal/{test_migration_guard.py,test_motion_engine_compose.py}`
+* M `RehabMotionConstants`（每个测试允许的侧别）、`RehabMotionAssessmentService`（保存映射时校验侧别）、
+  `MotionEngineRequestBuilder`、`RehabMotionResultWriter`/`RehabMotionReviewService`/`RehabMotionReportService`/
+  `RehabMotionPipelineSteps`（Mapper Bean 改名注入）、`ai/MotionAiFallback`（患者摘要措辞）
+* M `MotionTrialConditionTest`（侧别用例）
+* M 前端 `router/modules/remaining.internal.ts`（详情路由）、`views/rehab/motion/constants.ts`（侧别规则）、
+  `components/TrialPanel.vue`（OpenCap 字段映射、侧别选项与保存前校验）；A `tests/motion/sides.test.mjs`
+* M `docs/motion-assessment/{testing.md,deployment.md,changed-files.md}`
+
+引擎仓库（提交 `a31deb2d`）：
+
+* M `adapters/opencap/client.py`（`get_session_artifact_manifest`）、`motion/service.py`（按会话清单补齐模型/元数据）、
+  `motion/pipeline.py`（`protocol_versions(request)`）
+* M `tests/{test_adapters.py,test_motion_service.py,test_motion_scoring.py}`、`docs/opencap-integration.md`（§9）

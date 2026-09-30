@@ -236,7 +236,7 @@ if fail and fail in sql:
 
 
 class FreshInitIncrementalMigrationTests(unittest.TestCase):
-    """全新数据卷：020+ 由 111-incremental-migrations.sh 实际执行后登记，不预登记、不直接挂载。"""
+    """全新数据卷：020+ 由 zz-incremental-migrations.sh 实际执行后登记，不预登记、不直接挂载。"""
 
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix='rehab-init-')
@@ -278,13 +278,26 @@ class FreshInitIncrementalMigrationTests(unittest.TestCase):
     def test_compose_runs_ledgered_init_after_baseline_and_never_mounts_incremental_sql(self):
         compose = (ROOT / 'deploy/internal/docker-compose.yml').read_text()
         self.assertIn('./init-schema-history.sql:/docker-entrypoint-initdb.d/110-schema-history.sql:ro', compose)
-        self.assertIn('./init-incremental-migrations.sh:/docker-entrypoint-initdb.d/111-incremental-migrations.sh:ro',
+        self.assertIn('./init-incremental-migrations.sh:/docker-entrypoint-initdb.d/zz-incremental-migrations.sh:ro',
                       compose)
         self.assertIn('./migrations.manifest:/opt/rehab-migrations/migrations.manifest:ro', compose)
         self.assertIn('../../sql/mysql:/opt/rehab-migrations/sql/mysql:ro', compose)
         mounted = re.findall(r'(\S+\.sql):/docker-entrypoint-initdb.d/', compose)
         for _, _, path, _ in self.incremental():
             self.assertNotIn('../../' + path, mounted, path)
+
+    def test_incremental_init_sorts_after_every_other_initdb_script(self):
+        # docker-entrypoint 按 glob 顺序执行 initdb；曾用 111- 前缀，按字典序排在 20-99 业务脚本之前。
+        compose = (ROOT / 'deploy/internal/docker-compose.yml').read_text()
+        targets = re.findall(r':/docker-entrypoint-initdb.d/([^:]+):ro', compose)
+        self.assertIn('zz-incremental-migrations.sh', targets)
+        others = [t for t in targets if t != 'zz-incremental-migrations.sh']
+        self.assertTrue(others)
+        # C 排序（字节序）
+        self.assertEqual(sorted(targets)[-1], 'zz-incremental-migrations.sh')
+        # en_US 排序会忽略标点：去掉非字母数字后，数字仍排在字母之前
+        loose = sorted(targets, key=lambda name: re.sub(r'[^0-9a-z]', '', name.lower()))
+        self.assertEqual(loose[-1], 'zz-incremental-migrations.sh')
 
     def test_applies_every_incremental_migration_in_order_then_registers_it(self):
         result = self.run_init()
@@ -335,6 +348,35 @@ class FreshInitIncrementalMigrationTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn('PENDING: ' + latest, result.stdout)
         fixture.assert_read_only(self)
+
+
+class AuditColumnNullabilityTests(unittest.TestCase):
+    """后台任务（无登录用户）写入时框架会把 creator/updater 置为 NULL；由异步 worker 写入的表必须允许。
+
+    020-023 沿用 NOT NULL 且目前只经由登录请求写入，这里只约束动作评估（异步任务）表。
+    """
+
+    def test_incremental_tables_allow_null_audit_columns_after_all_migrations(self):
+        state = {}
+        for line in (ROOT / 'deploy/internal/migrations.manifest').read_text().splitlines():
+            if not line or line.startswith('#'):
+                continue
+            version, _, path, _ = line.split('|')
+            if int(version) < 20:
+                continue
+            text = (ROOT / path).read_text()
+            for table, body in re.findall(r'CREATE TABLE `([^`]+)` \((.*?)\n\) ENGINE=', text, re.S):
+                for column in ('creator', 'updater'):
+                    match = re.search(r'^\s*`%s`\s+[^\n]*$' % column, body, re.M)
+                    if match:
+                        state[(table, column)] = ('NOT NULL' not in match.group(0).upper(), version)
+            for table, body in re.findall(r'ALTER TABLE `([^`]+)`(.*?);', text, re.S):
+                for column, definition in re.findall(r'MODIFY COLUMN `(creator|updater)`([^,\n]*)', body):
+                    state[(table, column)] = ('NOT NULL' not in definition.upper(), version)
+        self.assertIn(('rehab_motion_task', 'updater'), state)
+        blocked = sorted('%s.%s (%s)' % (t, c, v) for (t, c), (nullable, v) in state.items()
+                         if t.startswith('rehab_motion_') and not nullable)
+        self.assertEqual(blocked, [])
 
 
 ADOPT_ADAPTER = r'''import json, os, re, sys
@@ -532,6 +574,11 @@ class ShellPortabilityTests(unittest.TestCase):
         for script in sorted((ROOT / 'deploy/internal').glob('*.sh')):
             for number, line in enumerate(script.read_text(encoding='utf-8').splitlines(), 1):
                 self.assertIsNone(pattern.search(line), '%s:%d 需改为 ${var}' % (script.name, number))
+
+    def test_deploy_scripts_stay_executable(self):
+        # 文档与安装脚本直接执行 deploy/internal/*.sh；丢失可执行位会导致 Permission denied
+        for script in sorted((ROOT / 'deploy/internal').glob('*.sh')):
+            self.assertTrue(os.access(str(script), os.X_OK), '%s 缺少可执行权限（git mode 100755）' % script.name)
 
 
 if __name__ == '__main__':

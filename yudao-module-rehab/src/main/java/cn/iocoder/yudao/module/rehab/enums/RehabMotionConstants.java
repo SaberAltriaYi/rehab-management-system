@@ -89,6 +89,22 @@ public interface RehabMotionConstants {
     List<String> OTHER_TESTS = Collections.unmodifiableList(Arrays.asList("YBT_LQ", "TUCK_JUMP", "LESS"));
     List<String> CLEARING_TESTS = Collections.unmodifiableList(Arrays.asList("CT-SM-L", "CT-SM-R", "CT-EXT", "CT-FLX"));
     Set<String> SIDES = Collections.unmodifiableSet(new LinkedHashSet<String>(Arrays.asList("bilateral", "left", "right")));
+    /**
+     * 以整体（双侧）方式记录的测试；其余测试必须按左/右分别记录（与引擎 tests_registry.sides 一致，
+     * 例如 YBT 侧别 = 支撑腿，NASM 单腿蹲/肩部测试按侧记录）。
+     */
+    Set<String> BILATERAL_TESTS = Collections.unmodifiableSet(new LinkedHashSet<String>(Arrays.asList(
+            "FMS_DEEP_SQUAT", "FMS_TSPU", "NASM_OHS", "NASM_PUSHUP", "NASM_ROW", "NASM_DB_PRESS", "NASM_GAIT",
+            "TUCK_JUMP", "LESS")));
+
+    /** 测试允许的侧别；未知测试返回空列表。 */
+    static List<String> allowedSides(String testCode) {
+        if (familyOf(testCode) == null) {
+            return Collections.emptyList();
+        }
+        return BILATERAL_TESTS.contains(testCode) ? Collections.singletonList("bilateral")
+                : Collections.unmodifiableList(Arrays.asList("left", "right"));
+    }
 
     // ===== 评分状态 =====
     String FINAL_PENDING = "pending";

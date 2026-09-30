@@ -106,7 +106,7 @@ deploy/internal/generate-backup-key.sh
 | `BIND_ADDRESS` | 是 | 部署机明确的局域网 IPv4 或 `127.0.0.1` |
 | `LAN_HOSTNAME` | 否 | 证书备用名称，默认 `rehab.local`，需局域网 DNS/hosts 解析 |
 | `APP_PORT` | 否 | HTTP 跳转端口，默认 `8080` |
-| `TLS_PORT` | 是 | 当前固定为 `8443` |
+| `TLS_PORT` | 是 | 当前固定为 `8443`（nginx 的 HTTP→HTTPS 跳转与 `smoke-test.sh` 的跳转检查都按 8443 写死；在其他端口做隔离联调时，preflight 的 TLS_PORT 检查和 smoke 的跳转检查会失败，属预期） |
 | `DB_PASSWORD` | 是 | MySQL 业务账号密码，至少 24 字符 |
 | `MYSQL_ROOT_PASSWORD` | 是 | MySQL 管理密码，至少 24 字符 |
 | `REDIS_PASSWORD` | 是 | Redis 密码，至少 24 字符 |
@@ -157,7 +157,8 @@ deploy/internal/smoke-test.sh
 全新数据卷的账本路径：
 
 1. `100-110` initdb 脚本执行 001-019 初始化 SQL，`110-schema-history` 将其登记为基线（`baseline=1`）；
-2. `111-incremental-migrations.sh` 先校验清单中 020+ 全部文件的 SHA-256，再逐个实际执行，
+2. `zz-incremental-migrations.sh`（`zz-` 前缀保证它在 C 与 en_US 排序下都排在所有 initdb 脚本之后，
+   即 20-99 业务脚本全部执行完毕后才运行）先校验清单中 020+ 全部文件的 SHA-256，再逐个实际执行，
    每个版本执行成功后才登记（`baseline=0`，`installed_by=docker-init`）；任何失败都会中止 MySQL 初始化；
 3. 首次启动后 `deploy/internal/migrate.sh status` 应显示全部版本已登记、无 PENDING。
 
@@ -226,11 +227,22 @@ docker compose --env-file deploy/internal/.env \
    MOTION_ENGINE_TOKEN=<openssl rand -hex 32>
    # 可选：由引擎直接拉取 OpenCap 会话（凭据只在引擎容器内）
    OPENCAP_API_TOKEN=
+   # 可选：结果文件下载主机白名单（默认即 OpenCap 官方 S3 存储桶）
+   OPENCAP_MEDIA_HOSTS=mc-mocap-video-storage.s3.amazonaws.com
    ```
+   `OPENCAP_API_TOKEN` 是 OpenCap 账号的 API 令牌（与 opencap-processing `get_token()` 相同：向
+   `https://api.opencap.ai/login/` 提交账号密码换取），只写入本机 `.env`，不要写入仓库或日志；
+   账号密码本身不需要保存。模型文件与 `sessionMetadata.yaml` 位于会话的 neutral Trial，引擎下载时自动补齐。
 3. 启动：`docker compose --env-file deploy/internal/.env -f deploy/internal/docker-compose.yml --profile motion up -d`
 4. 引擎容器：只读根文件系统、`/tmp` tmpfs 512 MB、`cap_drop: ALL`、`no-new-privileges`、不映射宿主端口；
    除 `/internal/v1/health` 外所有接口需 Bearer 令牌。镜像 ENTRYPOINT 是研究 CLI，Compose 已覆盖为
    `python -m rehab_biomechanics.motion.service`。
+
+5. **宿主机开了 fake-IP 代理（Shadowrocket/Clash 等）时**：容器里 `api.opencap.ai`、S3 域名会被解析到
+   `198.18.0.0/15`，引擎的 SSRF 防护会返回 `UNSAFE_URL`。这是防护按设计生效，**不要放宽校验**；在本机
+   Compose 覆盖文件里给 `motion-engine` 指定真实 DNS（如 `dns: [223.5.5.5, 1.1.1.1]`），或在代理中对这些域名直连。
+6. 迁移 025（`rehab-motion-audit-columns-v1.sql`）把动作评估表的 `creator/updater` 改为可空：后台 worker 没有
+   登录用户，MyBatis-Plus 自动填充会写 NULL。已执行 024 的库必须同时执行 025，否则处理任务会卡在“解析”。
 
 上传限制（与附件一致，不单独放宽）：`.mot/.trc/视频` 单文件 16 MB、`.osim` 8 MB、`sessionMetadata.yaml`
 256 KB，Nginx 请求 32 MB。前端“选择 OpenCap 文件夹”会按服务端策略自动筛选（跳过 pkl/vtp/OutputMedia/
