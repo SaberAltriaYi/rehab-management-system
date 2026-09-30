@@ -24,6 +24,8 @@ pnpm build:internal
 
 Backend:
 
+Use JDK 17 for Maven; the current tests fail with Byte Buddy/Mockito on JDK 23.
+
 ```bash
 mvn -B -pl yudao-module-rehab -am test
 mvn -B -pl yudao-framework/yudao-spring-boot-starter-web \
@@ -49,8 +51,8 @@ Runtime resources:
 node desktop/scripts/build-sanitized-bootstrap.mjs
 node desktop/scripts/build-runtime.mjs
 node desktop/scripts/check-runtime.mjs desktop/runtime/1.0.0
-node --test desktop/scripts/runtime-tools.test.mjs
-desktop/scripts/test-runtime-e2e.sh # only on an isolated Docker host with no rehab-desktop volumes
+node --test desktop/scripts/*.test.mjs
+desktop/scripts/test-runtime-e2e.sh # controlled test Docker environment; uses unique test volumes/images, never business volumes
 ```
 
 ## Files that must never be committed
@@ -72,6 +74,8 @@ Before a desktop release:
 3. Build the frontend with `build:internal`.
 4. Run frontend production dependency audit.
 5. Build and check the minimal desktop runtime resources.
+   The standard frontend build must write a matching `desktop/build/frontend-build-receipt.json`;
+   never package an old `dist-internal` after a failed build.
 6. Run desktop Rust and frontend tests without requiring Docker.
 7. Confirm all Docker image versions are fixed and no `latest` base image is used.
 8. Confirm normal stop/update paths never use `docker compose down -v`.

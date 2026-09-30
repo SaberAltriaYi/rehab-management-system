@@ -2,20 +2,22 @@
 // Copyright (c) 2026 杨玺龙
 
 import { randomBytes } from 'node:crypto'
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { basename, dirname, resolve } from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 
 const scriptDir = dirname(fileURLToPath(import.meta.url))
 const projectRoot = resolve(scriptDir, '../..')
+const defaultOutput = resolve(projectRoot, 'desktop/build/desktop-bootstrap.sql')
 const output =
   process.argv[2] === '--output' && process.argv[3]
     ? resolve(process.argv[3])
-    : resolve(projectRoot, 'desktop/build/desktop-bootstrap.sql')
+    : defaultOutput
+const temporaryOutput = `${output}.${process.pid}.${randomBytes(6).toString('hex')}.tmp`
 const docker = process.env.DOCKER_CLI_PATH || 'docker'
-const image = 'mysql:8.4.10'
-const container = `rehab-desktop-bootstrap-${process.pid}`
+const image = 'mysql:8.4.10@sha256:8dbcf531a03aade657e181b9cf2f1d1803ce621a1d55610cb44cb531ab7d7db6'
+const container = `rehab-desktop-bootstrap-${process.pid}-${randomBytes(6).toString('hex')}`
 const rootPassword = randomBytes(32).toString('base64url')
 const database = 'ruoyi-vue-pro'
 // A fresh install baselines only immutable migrations 001-019. Later
@@ -203,7 +205,9 @@ try {
       throw new Error(`构建输入缺失：${relativePath}`)
     }
   }
-  removeContainer()
+  // A failed generation must not leave the previous default snapshot available
+  // for a later desktop package. Explicit --output paths are caller-managed.
+  if (output === defaultOutput) rmSync(output, { force: true })
   run([
     'run',
     '--detach',
@@ -243,13 +247,14 @@ try {
   assertSanitized(dump)
   verifyFreshImport(dump)
   mkdirSync(dirname(output), { recursive: true })
-  rmSync(output, { force: true })
   writeFileSync(
-    output,
+    temporaryOutput,
     `-- 康复管理系统 V1.0 桌面端脱敏初始化快照\n-- 构建输入：固定迁移账本 001-019；不包含患者、演示账号或云端密钥\n${dump}`,
     { mode: 0o644 }
   )
+  renameSync(temporaryOutput, output)
   process.stdout.write(`已生成脱敏数据库快照：${basename(output)}\n`)
 } finally {
+  rmSync(temporaryOutput, { force: true })
   removeContainer()
 }

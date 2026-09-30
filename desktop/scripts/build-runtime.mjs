@@ -4,6 +4,7 @@
 import { resolve } from 'node:path'
 import { dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { resolveBuildCommit } from './frontend-receipt.mjs'
 import { buildRuntime } from './runtime-tools.mjs'
 
 const scriptDir = dirname(fileURLToPath(import.meta.url))
@@ -13,7 +14,7 @@ const outputRoot =
   outputIndex >= 0 && process.argv[outputIndex + 1]
     ? resolve(process.argv[outputIndex + 1])
     : resolve(projectRoot, 'desktop/runtime')
-const commitSha = process.env.GITHUB_SHA || process.env.REHAB_BUILD_COMMIT || 'local-development'
+const commitSha = resolveBuildCommit(projectRoot)
 
 const root = buildRuntime({ projectRoot, outputRoot, commitSha })
 process.stdout.write(`运行资源已生成并验证：${root}\n`)
