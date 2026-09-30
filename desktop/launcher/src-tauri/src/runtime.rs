@@ -61,6 +61,7 @@ pub fn verify_runtime(root: &Path) -> LauncherResult<()> {
         "admin/nginx.conf.template",
         "admin/web/index.html",
         "sql/desktop-bootstrap.sql",
+        "sql/migrations.manifest",
         "VERSION.json",
         "LICENSE",
     ];

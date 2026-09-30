@@ -1,0 +1,39 @@
+{
+  "rules": [
+    {
+      "kind": "metadata",
+      "pattern": "^(OpenCapData_[A-Za-z0-9-]{1,64}/)?sessionMetadata\\.yaml$",
+      "maxBytes": 262144,
+      "requiredForAnalysis": true
+    },
+    {
+      "kind": "mot",
+      "pattern": "^(OpenCapData_[A-Za-z0-9-]{1,64}/)?OpenSimData/Kinematics/[A-Za-z0-9][A-Za-z0-9_.-]{0,127}\\.mot$",
+      "maxBytes": 16777216,
+      "requiredForAnalysis": true
+    },
+    {
+      "kind": "trc",
+      "pattern": "^(OpenCapData_[A-Za-z0-9-]{1,64}/)?MarkerData/[A-Za-z0-9][A-Za-z0-9_.-]{0,127}\\.trc$",
+      "maxBytes": 16777216,
+      "requiredForAnalysis": false
+    },
+    {
+      "kind": "osim",
+      "pattern": "^(OpenCapData_[A-Za-z0-9-]{1,64}/)?OpenSimData/Model/[A-Za-z0-9][A-Za-z0-9_.-]{0,127}\\.osim$",
+      "maxBytes": 8388608,
+      "requiredForAnalysis": false
+    },
+    {
+      "kind": "video",
+      "pattern": "^(OpenCapData_[A-Za-z0-9-]{1,64}/)?Videos/Cam[0-9]{1,2}/InputMedia/[A-Za-z0-9][A-Za-z0-9_.-]{0,127}/[A-Za-z0-9][A-Za-z0-9_.-]{0,127}\\.(mp4|mov|MP4|MOV)$",
+      "maxBytes": 16777216,
+      "requiredForAnalysis": false
+    }
+  ],
+  "maxPathLength": 255,
+  "videoRequiresConsent": true,
+  "concurrency": 1,
+  "maxRetries": 3,
+  "skipNote": "pickle/pkl、vtp 几何、OutputMedia 叠加视频、图片与系统文件不参与分析，自动跳过"
+}

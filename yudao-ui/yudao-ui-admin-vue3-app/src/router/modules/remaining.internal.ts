@@ -116,6 +116,18 @@ const remainingRouter: AppRouteRecordRaw[] = [
         }
       },
       {
+        path: 'motion/detail/:id',
+        component: () => import('@/views/rehab/motion/detail/index.vue'),
+        name: 'RehabMotionDetail',
+        meta: {
+          title: '动作评估详情',
+          noCache: true,
+          hidden: true,
+          canTo: true,
+          activeMenu: '/rehab/motion'
+        }
+      },
+      {
         path: 'assessment/create',
         component: () => import('@/views/rehab/assessment/create/index.vue'),
         name: 'RehabAssessmentCreate',

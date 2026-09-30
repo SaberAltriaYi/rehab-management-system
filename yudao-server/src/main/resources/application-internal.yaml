@@ -150,3 +150,19 @@ yudao:
       enable-analysis: false
       mock-mode: false
       use-platform-bridge: false
+    # 智能动作评估：引擎为内部服务（Bearer 令牌），未配置 URL 时仅禁用“发起分析”，其余功能可用。
+    motion:
+      engine-url: ${MOTION_ENGINE_URL:}
+      engine-token: ${MOTION_ENGINE_TOKEN:}
+      engine-connect-timeout-ms: 5000
+      engine-read-timeout-ms: 180000
+      worker-enabled: true
+      worker-delay-ms: 3000
+      worker-batch: 5
+      lock-seconds: 300
+      max-attempts: 5
+      opencap-poll-seconds: 30
+      opencap-deadline-hours: 12
+      # AI 仅生成解释草稿；内部版与全局 AI 开关一同默认关闭，关闭时使用模板草稿
+      ai-enabled: false
+      ai-max-output-tokens: 2500

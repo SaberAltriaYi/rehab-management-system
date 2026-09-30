@@ -14,9 +14,12 @@ All notable product changes are recorded here. Product versions use semantic ver
 - Add visual metric icons to the rehabilitation workspace, home dashboard and operations dashboard.
 - Add encrypted full-store transfer packages and automatic destination backup before full database/attachment replacement.
 - Add desktop launcher backend entry and secure built-in super-administrator username/password settings.
+- Add optional intelligent motion assessment (migration 024): OpenCap upload/session import with a filtered sequential uploader, internal biomechanics engine (QC, phases, metrics, deterministic FMS/NASM-CES/YBT/TJA/LESS scoring aligned to the official FMS criteria), evidence-cited AI drafts (off by default), therapist review/sign-off, reports/PDF, comparison and trends. See `docs/motion-assessment/`.
 
 ### Fixed
 
+- Register incremental migrations executed by MySQL initdb (`111` init script) and add a verified `migrate.sh adopt` path for older databases whose 020+ tables were created without history records.
+- Brace shell variables followed by CJK text so deploy scripts run under macOS bash 3.2.
 - Split the desktop administrator password generator from 48-character infrastructure-secret generation.
 - Generate a 16-character temporary administrator password compatible with the login and password-change contract.
 - Allow affected `desktop-v1.0.0-preview.1` installations to log in with their existing 48-character temporary password and then change it, without reinstalling or deleting Docker volumes.

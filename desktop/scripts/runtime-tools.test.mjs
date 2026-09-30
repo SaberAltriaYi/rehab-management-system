@@ -7,7 +7,16 @@ import { join } from 'node:path'
 import test from 'node:test'
 import { randomUUID } from 'node:crypto'
 import { createFrontendReceipt } from './frontend-receipt.mjs'
-import { buildRuntime, listFiles, sha256, validateRuntime, verifyRuntimeManifest } from './runtime-tools.mjs'
+import {
+  buildRuntime,
+  incrementalMigrations,
+  listFiles,
+  migrationLedgerRange,
+  sha256,
+  validateRuntime,
+  verifyRuntimeManifest,
+  verifyRuntimeMigrations
+} from './runtime-tools.mjs'
 
 test('sha256 结果稳定', () => {
   const root = join(tmpdir(), `rehab-runtime-test-${randomUUID()}`)
@@ -34,6 +43,23 @@ test('Windows 卸载钩子默认保留用户数据', () => {
   assert.match(hook, /NSIS_HOOK_PREUNINSTALL/)
   assert.match(hook, /DeleteAppDataCheckboxState 0/)
   assert.doesNotMatch(hook, /RmDir/)
+})
+
+test('desktop VERSION.json 迁移范围取自发布清单（含实际执行的增量迁移）', () => {
+  const root = join(tmpdir(), `rehab-ledger-${randomUUID()}`)
+  try {
+    mkdirSync(join(root, 'deploy/internal'), { recursive: true })
+    writeFileSync(
+      join(root, 'deploy/internal/migrations.manifest'),
+      '# header\n001|a|sql/mysql/a.sql|a\n019|b|sql/mysql/b.sql|b\n024|c|sql/mysql/c.sql|c\n'
+    )
+    assert.equal(migrationLedgerRange(root), '001-024')
+    const real = migrationLedgerRange(new URL('../..', import.meta.url).pathname)
+    assert.match(real, /^001-\d{3}$/)
+    assert.ok(Number(real.slice(4)) >= 19)
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
 })
 
 test('校验清单覆盖每个文件，拒绝遗漏、重复、越界和被修改的资源', (t) => {
@@ -99,6 +125,14 @@ test('新运行资源先在临时目录完整校验，再原子替换旧版本',
   file('desktop/runtime-template/admin/nginx.conf.template', 'server { listen 443; }')
   file('desktop/runtime-template/RUNTIME-README.txt', 'desktop runtime')
   file('desktop/build/desktop-bootstrap.sql', 'CREATE TABLE sample(id INT);')
+  file('sql/mysql/motion.sql', 'CREATE TABLE motion_sample(id INT);')
+  const motionSha = sha256(join(projectRoot, 'sql/mysql/motion.sql'))
+  file('deploy/internal/migrations.manifest', [
+    '# header',
+    ...Array.from({ length: 19 }, (_, index) => `${String(index + 1).padStart(3, '0')}|${'a'.repeat(64)}|sql/mysql/base.sql|基线`),
+    `025|${motionSha}|sql/mysql/motion.sql|动作评估`,
+    ''
+  ].join('\n'))
   file('yudao-server/target/yudao-server.jar', 'fake jar for unit test only')
   file('LICENSE', 'Apache-2.0')
   const outputRoot = join(projectRoot, 'desktop/runtime')
@@ -110,6 +144,9 @@ test('新运行资源先在临时目录完整校验，再原子替换旧版本',
   assert.match(readFileSync(join(root, 'admin/web/index.html'), 'utf8'), /fresh build/)
   const version = JSON.parse(readFileSync(join(root, 'VERSION.json'), 'utf8'))
   assert.equal(version.commitSha, commitSha)
+  assert.equal(version.migrationLedger, '001-025')
+  assert.equal(readFileSync(join(root, 'sql/migrations/025.sql'), 'utf8'), 'CREATE TABLE motion_sample(id INT);')
+  assert.match(readFileSync(join(root, 'sql/migrations.manifest'), 'utf8'), /^025\|/m)
   assert.equal(version.frontendSourceSha256, receipt.sourceSha256)
   assert.equal(version.frontendOutputSha256, receipt.outputSha256)
   assert.equal(version.serverJarSha256, sha256(join(projectRoot, 'yudao-server/target/yudao-server.jar')))
@@ -117,4 +154,33 @@ test('新运行资源先在临时目录完整校验，再原子替换旧版本',
   file(frontend + 'dist-internal/index.html', '<html>modified after successful build</html>')
   assert.throws(() => buildRuntime({ projectRoot, outputRoot, commitSha }), /outputSha256 已改变/)
   assert.match(readFileSync(join(root, 'admin/web/index.html'), 'utf8'), /fresh build/)
+})
+
+test('运行资源增量迁移必须与清单一一对应，且拒绝被篡改或漂移的脚本', (t) => {
+  const projectRoot = join(tmpdir(), `rehab-migrations-${randomUUID()}`)
+  t.after(() => rmSync(projectRoot, { recursive: true, force: true }))
+  mkdirSync(join(projectRoot, 'sql/mysql'), { recursive: true })
+  mkdirSync(join(projectRoot, 'deploy/internal'), { recursive: true })
+  writeFileSync(join(projectRoot, 'sql/mysql/motion.sql'), 'CREATE TABLE m(id INT);')
+  const good = sha256(join(projectRoot, 'sql/mysql/motion.sql'))
+  const manifest = (checksum, path = 'sql/mysql/motion.sql') =>
+    `001|${'a'.repeat(64)}|sql/mysql/base.sql|基线\n024|${checksum}|${path}|动作评估\n`
+  writeFileSync(join(projectRoot, 'deploy/internal/migrations.manifest'), manifest(good))
+  assert.deepEqual(incrementalMigrations(projectRoot).map((row) => row.version), ['024'])
+  writeFileSync(join(projectRoot, 'deploy/internal/migrations.manifest'), manifest('b'.repeat(64)))
+  assert.throws(() => incrementalMigrations(projectRoot), /校验和漂移/)
+  writeFileSync(join(projectRoot, 'deploy/internal/migrations.manifest'), manifest(good, 'deploy/internal/x.sql'))
+  assert.throws(() => incrementalMigrations(projectRoot), /只允许 sql\/mysql/)
+
+  const runtime = join(projectRoot, 'runtime')
+  mkdirSync(join(runtime, 'sql/migrations'), { recursive: true })
+  writeFileSync(join(runtime, 'sql/migrations.manifest'), manifest(good))
+  assert.throws(() => verifyRuntimeMigrations(runtime), /与清单不一致/)
+  writeFileSync(join(runtime, 'sql/migrations/024.sql'), 'CREATE TABLE m(id INT);')
+  assert.equal(verifyRuntimeMigrations(runtime), true)
+  writeFileSync(join(runtime, 'sql/migrations/024.sql'), 'DROP TABLE rehab_patient;')
+  assert.throws(() => verifyRuntimeMigrations(runtime), /校验失败：024/)
+  writeFileSync(join(runtime, 'sql/migrations/024.sql'), 'CREATE TABLE m(id INT);')
+  writeFileSync(join(runtime, 'sql/migrations/099.sql'), 'extra')
+  assert.throws(() => verifyRuntimeMigrations(runtime), /与清单不一致/)
 })

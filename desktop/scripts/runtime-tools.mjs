@@ -24,9 +24,79 @@ export const REQUIRED_FILES = [
   'admin/nginx.conf.template',
   'admin/web/index.html',
   'sql/desktop-bootstrap.sql',
+  'sql/migrations.manifest',
   'VERSION.json',
   'LICENSE'
 ]
+
+export const BASELINE_THROUGH = 19
+
+function parseMigrationManifest(text) {
+  const rows = []
+  let previous = 0
+  for (const line of text.split(/\r?\n/)) {
+    if (!line || line.startsWith('#')) continue
+    const fields = line.split('|')
+    if (fields.length !== 4) throw new Error(`迁移清单格式错误：${line}`)
+    const [version, checksum, relativePath, description] = fields
+    if (!/^\d{3}$/.test(version) || Number(version) <= previous) {
+      throw new Error(`迁移清单版本非法或乱序：${version}`)
+    }
+    previous = Number(version)
+    rows.push({ version, checksum, relativePath, description })
+  }
+  return rows
+}
+
+// 桌面启动器升级已有数据卷所需的 020+ 增量迁移：只允许 sql/mysql/*.sql，且内容与清单 SHA-256 一致。
+export function incrementalMigrations(projectRoot) {
+  const text = readFileSync(resolve(projectRoot, 'deploy/internal/migrations.manifest'), 'utf8')
+  return parseMigrationManifest(text)
+    .filter((row) => Number(row.version) > BASELINE_THROUGH)
+    .map((row) => {
+      if (!/^[0-9a-f]{64}$/.test(row.checksum)) throw new Error(`增量迁移校验和非法：${row.version}`)
+      if (!/^sql\/mysql\/[A-Za-z0-9._-]+\.sql$/.test(row.relativePath) || row.relativePath.includes('..')) {
+        throw new Error(`增量迁移只允许 sql/mysql/*.sql：${row.relativePath}`)
+      }
+      if (!row.description || /['\\|`]/.test(row.description)) {
+        throw new Error(`增量迁移说明为空或包含不支持字符：${row.version}`)
+      }
+      const source = resolve(projectRoot, row.relativePath)
+      if (!existsSync(source) || !lstatSync(source).isFile()) {
+        throw new Error(`增量迁移文件不存在：${row.relativePath}`)
+      }
+      if (sha256(source) !== row.checksum) throw new Error(`增量迁移校验和漂移：${row.relativePath}`)
+      return { ...row, source }
+    })
+}
+
+// 运行资源中的迁移清单与 sql/migrations/<版本>.sql 必须一一对应且校验和一致。
+export function verifyRuntimeMigrations(root) {
+  const rows = parseMigrationManifest(readFileSync(join(root, 'sql/migrations.manifest'), 'utf8'))
+  const incremental = rows.filter((row) => Number(row.version) > BASELINE_THROUGH)
+  const directory = join(root, 'sql/migrations')
+  const present = existsSync(directory) ? readdirSync(directory).sort() : []
+  const expected = incremental.map((row) => `${row.version}.sql`).sort()
+  if (JSON.stringify(present) !== JSON.stringify(expected)) {
+    throw new Error(`运行资源增量迁移与清单不一致：期望 ${expected.join(',') || '无'}，实际 ${present.join(',') || '无'}`)
+  }
+  for (const row of incremental) {
+    if (sha256(join(directory, `${row.version}.sql`)) !== row.checksum) {
+      throw new Error(`运行资源增量迁移校验失败：${row.version}`)
+    }
+  }
+  return true
+}
+
+// 桌面快照登记的迁移范围：001-019 基线 + 实际执行的 020+ 增量迁移，以发布清单为准。
+export function migrationLedgerRange(projectRoot) {
+  const versions = readFileSync(resolve(projectRoot, 'deploy/internal/migrations.manifest'), 'utf8')
+    .split('\n')
+    .filter((line) => line && !line.startsWith('#'))
+    .map((line) => line.split('|')[0])
+  if (versions.length === 0) throw new Error('迁移清单为空')
+  return `${versions[0]}-${versions[versions.length - 1]}`
+}
 
 const forbiddenNames = new Set([
   '.git',
@@ -97,6 +167,7 @@ export function validateRuntime(root) {
     throw new Error('管理端运行镜像未固定到明确的 Nginx/Alpine 版本')
   }
 
+  verifyRuntimeMigrations(root)
   verifyRuntimeManifest(root, files)
   return true
 }
@@ -152,6 +223,7 @@ export function buildRuntime({ projectRoot, outputRoot, commitSha }) {
     }
   }
   const serverJarSha256 = sha256(resolve(projectRoot, 'yudao-server/target/yudao-server.jar'))
+  const migrations = incrementalMigrations(projectRoot)
 
   const root = resolve(outputRoot, VERSION)
   const staging = resolve(outputRoot, `.${VERSION}.${randomUUID()}.tmp`)
@@ -180,6 +252,15 @@ export function buildRuntime({ projectRoot, outputRoot, commitSha }) {
       resolve(projectRoot, 'desktop/build/desktop-bootstrap.sql'),
       join(staging, 'sql/desktop-bootstrap.sql')
     )
+    // 已有数据卷由启动器按清单补齐 020+（与 migrate.sh apply 语义一致）；全新安装由快照直接登记。
+    mkdirSync(join(staging, 'sql/migrations'), { recursive: true })
+    for (const row of migrations) {
+      cpSync(row.source, join(staging, `sql/migrations/${row.version}.sql`))
+    }
+    cpSync(
+      resolve(projectRoot, 'deploy/internal/migrations.manifest'),
+      join(staging, 'sql/migrations.manifest')
+    )
     cpSync(resolve(projectRoot, 'LICENSE'), join(staging, 'LICENSE'))
     if (existsSync(resolve(projectRoot, 'NOTICE.md'))) {
       cpSync(resolve(projectRoot, 'NOTICE.md'), join(staging, 'NOTICE.md'))
@@ -200,7 +281,7 @@ export function buildRuntime({ projectRoot, outputRoot, commitSha }) {
           frontendSourceSha256: frontendReceipt.sourceSha256,
           frontendOutputSha256: frontendReceipt.outputSha256,
           serverJarSha256,
-          migrationLedger: '001-019',
+          migrationLedger: migrationLedgerRange(projectRoot),
           dataFormat: 1
         },
         null,

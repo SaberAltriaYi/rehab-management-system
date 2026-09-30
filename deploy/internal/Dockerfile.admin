@@ -2,5 +2,8 @@ FROM nginx:1.30.4-alpine
 
 COPY deploy/internal/nginx.conf /etc/nginx/conf.d/default.conf
 COPY yudao-ui/yudao-ui-admin-vue3-app/dist-internal/ /usr/share/nginx/html/
+# 构建机 umask 为 077 时 dist 会是 600/700，nginx worker 无法读取（403 且健康检查失败）；统一为只读可遍历权限。
+RUN find /usr/share/nginx/html -type d -exec chmod 0755 {} + \
+  && find /usr/share/nginx/html -type f -exec chmod 0644 {} +
 
 EXPOSE 80 443

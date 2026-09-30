@@ -106,7 +106,7 @@ deploy/internal/generate-backup-key.sh
 | `BIND_ADDRESS` | 是 | 部署机明确的局域网 IPv4 或 `127.0.0.1` |
 | `LAN_HOSTNAME` | 否 | 证书备用名称，默认 `rehab.local`，需局域网 DNS/hosts 解析 |
 | `APP_PORT` | 否 | HTTP 跳转端口，默认 `8080` |
-| `TLS_PORT` | 是 | 当前固定为 `8443` |
+| `TLS_PORT` | 是 | 当前固定为 `8443`（nginx 的 HTTP→HTTPS 跳转与 `smoke-test.sh` 的跳转检查都按 8443 写死；在其他端口做隔离联调时，preflight 的 TLS_PORT 检查和 smoke 的跳转检查会失败，属预期） |
 | `DB_PASSWORD` | 是 | MySQL 业务账号密码，至少 24 字符 |
 | `MYSQL_ROOT_PASSWORD` | 是 | MySQL 管理密码，至少 24 字符 |
 | `REDIS_PASSWORD` | 是 | Redis 密码，至少 24 字符 |
@@ -129,7 +129,7 @@ deploy/internal/check-database.sh
 deploy/internal/smoke-test.sh
 ```
 
-全新数据卷会初始化基础表、Quartz 表、34 张康复表、41 个核心外键和历史基线 001–019 的迁移账本，停用非本期
+全新数据卷会初始化基础表、Quartz 表、34 张康复表、41 个核心外键和完整迁移账本（001–019 初始化基线 + 实际执行的 020 起增量迁移），停用非本期
 菜单、演示账号、演示租户、非登录 OAuth2 演示客户端和 AI，轮换弱演示 secret，并清除康复演示
 数据。系统仅保留后台生成会话所需、且不具备外部授权类型的 `default` 内部客户端。首次登录后立即
 修改初始管理员密码，为每位成员创建独立账号，按最小权限分配角色；日常工作不得共用管理员账号。
@@ -151,11 +151,42 @@ deploy/internal/smoke-test.sh
 ```
 
 只有在已逐项确认某个旧库已经执行相应 SQL、但尚未创建账本时，才可使用
-`deploy/internal/migrate.sh baseline 015`。不得猜测基线版本。当前清单为 001–023：
-001–019 是历史初始化基线，**不得在已有数据库重放**；020–023 是另行审查的模块增量迁移，
-不会因新建数据卷或生成安装包而自动视为已执行。启用对应模块前先在隔离副本核验数据库与附件备份、
-迁移和权限；明确适用范围后再用 `migrate.sh apply`，并以 `migrate.sh status` 核验全部登记和校验和。
-若仅运行默认内部包且模块增量未执行，`status` 将如实返回待执行，不得把它记为发布通过。
+`deploy/internal/migrate.sh baseline 015`（仅限 001-019）。不得猜测基线版本。当前发布清单以
+`migrations.manifest` 为准（001-019 为初始化基线，020 起为增量迁移），数据库必须显示全部登记且校验和一致。
+
+全新数据卷的账本路径：
+
+1. `100-110` initdb 脚本执行 001-019 初始化 SQL，`110-schema-history` 将其登记为基线（`baseline=1`）；
+2. `zz-incremental-migrations.sh`（`zz-` 前缀保证它在 C 与 en_US 排序下都排在所有 initdb 脚本之后，
+   即 20-99 业务脚本全部执行完毕后才运行）先校验清单中 020+ 全部文件的 SHA-256，再逐个实际执行，
+   每个版本执行成功后才登记（`baseline=0`，`installed_by=docker-init`）；任何失败都会中止 MySQL 初始化；
+3. 首次启动后 `deploy/internal/migrate.sh status` 应显示全部版本已登记、无 PENDING。
+
+增量迁移禁止再直接挂载到 `/docker-entrypoint-initdb.d`（`preflight.sh` 会拦截），否则会出现
+“表已存在但账本未登记”，导致后续 `apply` 重复建表失败。桌面端快照
+（`desktop/scripts/build-sanitized-bootstrap.mjs`）采用同样的“执行后登记”规则，`installed_by=desktop-bootstrap`。
+
+### 旧数据卷修复（由旧版 Compose 直接挂载 020-023 初始化）
+
+旧版 Compose 曾把 020-023 直接挂载到 initdb，这类数据库的 `status` 会显示 020-023 为 PENDING，但表已经存在，
+直接 `apply` 会因重复建表失败。先备份，再按顺序逐个执行：
+
+```bash
+deploy/internal/backup.sh
+CONFIRM_ADOPT=ADOPT-REHAB-INITDB deploy/internal/migrate.sh adopt 020
+CONFIRM_ADOPT=ADOPT-REHAB-INITDB deploy/internal/migrate.sh adopt 021
+CONFIRM_ADOPT=ADOPT-REHAB-INITDB deploy/internal/migrate.sh adopt 022
+CONFIRM_ADOPT=ADOPT-REHAB-INITDB deploy/internal/migrate.sh adopt 023
+deploy/internal/migrate.sh apply     # 执行其余真正未执行的迁移（例如 024 动作评估）
+deploy/internal/migrate.sh status
+```
+
+`adopt` 不执行任何 SQL，只在同时满足以下条件时登记（`installed_by=adopt-verified`，`baseline=0`）：
+版本为 020+；更早版本均已登记；脚本只包含 `CREATE TABLE`；数据库中每张表的列名与顺序与脚本完全一致。
+任一条件不满足即失败且不写账本。包含 INSERT/ALTER 的迁移（如 024）不能 adopt，只能 `apply`。
+
+当前清单为 001–025（以 `migrations.manifest` 为准）。已有业务库执行任何增量迁移前，先在隔离副本核验数据库与附件备份、迁移和权限，再用 `migrate.sh apply`
+（或上文 `adopt`）；`migrate.sh status` 仍有 PENDING 或校验和不一致时，不得记为发布通过。
 
 不要对已有业务库手工执行 `clean-demo-rehab-data.sql` 或 `internal-hardening.sql`；这两个脚本只用于
 全新内部部署初始化。
@@ -184,6 +215,47 @@ docker compose --env-file deploy/internal/.env \
 - 文件名会去除路径和控制字符并限制长度，失败上传会清理残留文件
 
 数据库与附件必须作为同一恢复点成对备份。
+
+### 智能动作评估（可选组件）
+
+完整说明（官方对齐、安全、测试、临床验证计划）见 `docs/motion-assessment/`。
+
+动作评估模块（菜单“康复管理 → 动作评估”，迁移 024）默认随 server 部署，但**分析引擎是可选服务**：
+未启用时可以建档、上传、人工录入，但“开始处理”会以“引擎未配置”失败，不会伪造结果。
+
+1. 在引擎仓库 `rehab-biomechanics-engine` 构建镜像：`docker build -t rehab-motion-engine:1.0.0 .`
+2. `.env` 增加（令牌 ≥32 位随机串，不得复用其他密码，preflight 会校验）：
+   ```
+   MOTION_ENGINE_URL=http://motion-engine:8790
+   MOTION_ENGINE_TOKEN=<openssl rand -hex 32>
+   # 可选：由引擎直接拉取 OpenCap 会话（凭据只在引擎容器内）
+   OPENCAP_API_TOKEN=
+   # 可选：结果文件下载主机白名单（默认即 OpenCap 官方 S3 存储桶）
+   OPENCAP_MEDIA_HOSTS=mc-mocap-video-storage.s3.amazonaws.com
+   ```
+   `OPENCAP_API_TOKEN` 是 OpenCap 账号的 API 令牌（与 opencap-processing `get_token()` 相同：向
+   `https://api.opencap.ai/login/` 提交账号密码换取），只写入本机 `.env`，不要写入仓库或日志；
+   账号密码本身不需要保存。模型文件与 `sessionMetadata.yaml` 位于会话的 neutral Trial，引擎下载时自动补齐。
+3. 启动：`docker compose --env-file deploy/internal/.env -f deploy/internal/docker-compose.yml --profile motion up -d`
+4. 引擎容器：只读根文件系统、`/tmp` tmpfs 512 MB、`cap_drop: ALL`、`no-new-privileges`、不映射宿主端口；
+   除 `/internal/v1/health` 外所有接口需 Bearer 令牌。镜像 ENTRYPOINT 是研究 CLI，Compose 已覆盖为
+   `python -m rehab_biomechanics.motion.service`。
+
+5. **宿主机开了 fake-IP 代理（Shadowrocket/Clash 等）时**：容器里 `api.opencap.ai`、S3 域名会被解析到
+   `198.18.0.0/15`，引擎的 SSRF 防护会返回 `UNSAFE_URL`。这是防护按设计生效，**不要放宽校验**；在本机
+   Compose 覆盖文件里给 `motion-engine` 指定真实 DNS（如 `dns: [223.5.5.5, 1.1.1.1]`），或在代理中对这些域名直连。
+6. 迁移 025（`rehab-motion-audit-columns-v1.sql`）把动作评估表的 `creator/updater` 改为可空：后台 worker 没有
+   登录用户，MyBatis-Plus 自动填充会写 NULL。已执行 024 的库必须同时执行 025，否则处理任务会卡在“解析”。
+
+上传限制（与附件一致，不单独放宽）：`.mot/.trc/视频` 单文件 16 MB、`.osim` 8 MB、`sessionMetadata.yaml`
+256 KB，Nginx 请求 32 MB。前端“选择 OpenCap 文件夹”会按服务端策略自动筛选（跳过 pkl/vtp/OutputMedia/
+图片/日志；未取得视频授权时跳过全部视频），并**逐个串行上传**，网络错误/5xx/429 自动重试 3 次。
+如确需提高上限，必须同时修改三处并重新构建：Spring `spring.servlet.multipart.max-file-size/max-request-size`、
+Nginx `client_max_body_size`、`MotionFileRules` 的对应单文件上限（`MAX_VIDEO_BYTES` 等），并同步
+`yudao-module-rehab/src/test/resources/motion/upload-policy.json`（前后端一致性测试会检查）。
+
+AI 解释默认关闭（`yudao.rehab.motion.ai-enabled=false`，Compose 同时强制 `OPENAI_ENABLE_AI_ANALYSIS=false`）。
+关闭或失败时系统生成不含 AI 内容的模板草稿，评分、审核、签署、PDF 均不受影响；AI 永远不能修改分数。
 
 ## 八、备份、恢复和演练
 
