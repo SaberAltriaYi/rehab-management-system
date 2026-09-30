@@ -684,6 +684,38 @@ macOS universal DMG：
 pnpm tauri build --bundles dmg --target universal-apple-darwin
 ```
 
+### 本地工作区约定
+
+本仓库是**唯一的正式源码仓库**。并行开发使用分支 + `git worktree`，不再复制整个项目目录：
+
+```text
+<工作根目录>/
+├── rehab-management-system/        # 本仓库（master）
+├── worktrees/<名称>/               # git worktree，对应 feature/… 或 fix/… 分支
+└── services/rehab-reporter/        # 独立的 Python 报告服务仓库（可选）
+<运行数据目录>/                      # 数据库文件、证书、.env 等运行数据，放在源码树之外
+```
+
+```bash
+# 新建功能 worktree
+git worktree add ../worktrees/<名称> -b feature/<名称> master
+# 完成并合并后移除
+git worktree remove ../worktrees/<名称>
+git worktree prune
+```
+
+- 上游芋道仓库只作为远程引用，不单独克隆。上游有自己的 `v1.0.0`、`v2.x` 等标签，会与本项目的版本标签冲突，
+  所以必须关闭上游的标签拉取：
+
+  ```bash
+  git remote add upstream https://gitee.com/zhijiantianya/ruoyi-vue-pro.git
+  git config remote.upstream.tagOpt --no-tags
+  git remote set-url --push upstream DISABLED
+  ```
+- `node_modules/`、`target/`、`dist/`、`dist-internal/`、`desktop/build/`、`desktop/runtime/` 都可以随时重新生成，
+  不需要长期保留，也不得归档或提交。在仓库根目录执行 `git clean -ndX` 可以先预览会被清理的忽略文件。
+- 真实患者数据、数据库备份、`.env`、证书私钥和日志不得放入源码树或 Git 历史。
+
 ### 最小运行资源
 
 ```bash
@@ -715,6 +747,25 @@ desktop/scripts/test-runtime-e2e.sh
 - 没有签名 Secret 时仍生成明确标记为 unsigned 的测试构建。
 
 正式发布前的签名配置见 [桌面签名与公证](docs/desktop-signing.md)。
+
+## 版本、分支与历史
+
+历史版本统一保存在 Git 标签和分支中，本地不再保留历史项目副本目录。完整对照表见
+[版本清单](docs/releases/VERSIONS.md)。
+
+| 类型 | 命名 | 示例 |
+| --- | --- | --- |
+| 正式发布 | `vX.Y.Z` | `v1.0.0` |
+| 发布候选 | `vX.Y.Z-rc.N` | `v1.0.0-rc.1` |
+| 桌面预览 | `desktop-vX.Y.Z-preview.N` | `desktop-v1.0.0-preview.4` |
+| 软著基线 | `copyright-vX.Y.Z` | `copyright-v1.0.0` |
+| 局域网部署 | `lan-vX.Y.Z[-rc.N]` | `lan-v1.1.0-rc.1` |
+| 历史归档 | `archive/YYYY-MM-DD/用途` | `archive/2026-07-31/desktop-packaging-v1` |
+| 功能 / 修复分支 | `feature/…`、`fix/…` | `feature/motion-assessment` |
+
+- 所有新标签都使用附注标签（`git tag -a`），说明中写明来源和制品 SHA-256；已发布的标签不改名、不删除。
+- 查看某个历史状态：`git fetch --tags && git switch --detach <标签>`。
+- `archive/*-wip` 标签保存历史目录删除前的未提交工作快照，仅供追溯，未经评审，不能直接用于发布。
 
 ## 项目目录
 
@@ -773,6 +824,7 @@ desktop/scripts/test-runtime-e2e.sh
 - [发布检查清单](docs/desktop-release-checklist.md)
 - [局域网一键部署](deploy/lan/README.md)
 - [内部生产部署](deploy/internal/README.md)
+- [版本清单与历史标签](docs/releases/VERSIONS.md)
 - [V1.0 变更记录](CHANGELOG.md)
 - [V1.0 软件著作权材料目录](docs/software-copyright/v1.0/README.md)
 - [权属说明](COPYRIGHT.md)
