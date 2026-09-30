@@ -2,7 +2,7 @@
 
 ## 架构与前置条件
 
-康复管理系统 V1.0 桌面版是 Tauri v2 启动器，不是把现有服务改写成单机数据库。安装包已
+康复管理系统 V1.0 桌面版设计为 Tauri v2 启动器，不是把现有服务改写成单机数据库。正式安装包应
 包含构建后的 Java 后端、Vue 内部版页面、Nginx 配置和脱敏数据库初始化快照，因此最终用户
 不需要 JDK、Maven、Node.js 或 pnpm；MySQL 8.4.10、Redis 7.4.10、Temurin 8u492 和
 Nginx 1.30.4 均以固定标签及多架构摘要锁定，后端和管理端仍由本机 Docker Compose 运行。
@@ -100,7 +100,20 @@ Windows 从“已安装的应用”卸载；macOS 退出启动器后删除 `/App
 
 本地构建前必须先生成运行资源：
 
+`pnpm build:internal` 现在先使旧构建凭据失效，再把仓库内 `.env` 和 `.env.internal`
+暂存到隔离目录运行 Vite，不读取开发机 `.env.local`；成功后才在忽略的
+`desktop/build/frontend-build-receipt.json` 记录提交、输入源码和完整输出的校验值。
+`build-runtime.mjs` 必须核对该凭据与目标 Git SHA；失败/诊断构建的旧 `dist-internal`
+不能打包。运行资源先在临时目录验证后替换旧版本，且不会借此自动回滚数据库迁移。
+后端隔离构建仅暂存 Maven 源码白名单并要求 JDK 17，失败时使旧 JAR 失效；脱敏 SQL 重新
+生成并在空库验证，失败时使默认旧快照失效。`VERSION.json` 与 `BUILD-INFO.txt` 记录前端
+源码/产物和 JAR 摘要。工作树未提交时，凭据中的 commit 仍是当前 HEAD，不能将本地运行资源
+冒充最终目标提交；正式发布须在干净 checkout 的 CI 中重新构建和验证。
+
 ```bash
+# 使用 JDK 17（将路径替换为本机安装位置），避免 Maven 默认使用不兼容的 JDK 23
+export JAVA_HOME=/path/to/jdk-17
+export PATH="$JAVA_HOME/bin:$PATH"
 deploy/internal/build-server-isolated.sh
 cd yudao-ui/yudao-ui-admin-vue3-app
 pnpm install --frozen-lockfile
@@ -109,7 +122,7 @@ cd ../../..
 node desktop/scripts/build-sanitized-bootstrap.mjs
 node desktop/scripts/build-runtime.mjs
 node desktop/scripts/check-runtime.mjs desktop/runtime/1.0.0
-# 仅在无 rehab-desktop-* 现存卷的隔离 Docker 主机执行
+# 仅在可控测试 Docker 环境执行；脚本使用随机测试卷/镜像，不删除固定业务卷
 desktop/scripts/test-runtime-e2e.sh
 ```
 
