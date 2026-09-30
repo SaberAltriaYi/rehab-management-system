@@ -145,6 +145,36 @@
 
     </dependencies>
 
+    <!-- Explicit build profile only: CRM pulls in BPM. Do not activate this
+         for a running service before the additive schema and permission gates. -->
+    <profiles>
+        <profile>
+            <id>rehab-business-integration</id>
+            <dependencies>
+                <dependency>
+                    <groupId>cn.iocoder.boot</groupId>
+                    <artifactId>yudao-module-bpm</artifactId>
+                    <version>${revision}</version>
+                </dependency>
+                <dependency>
+                    <groupId>cn.iocoder.boot</groupId>
+                    <artifactId>yudao-module-crm</artifactId>
+                    <version>${revision}</version>
+                </dependency>
+                <dependency>
+                    <groupId>cn.iocoder.boot</groupId>
+                    <artifactId>yudao-module-erp</artifactId>
+                    <version>${revision}</version>
+                </dependency>
+                <dependency>
+                    <groupId>cn.iocoder.boot</groupId>
+                    <artifactId>yudao-module-report</artifactId>
+                    <version>${revision}</version>
+                </dependency>
+            </dependencies>
+        </profile>
+    </profiles>
+
     <build>
         <!-- 设置构建的 jar 包名 -->
         <finalName>${project.artifactId}</finalName>
