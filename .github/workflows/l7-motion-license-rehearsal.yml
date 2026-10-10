@@ -13,7 +13,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: l7-rehearsal-\${{ github.ref }}
+  group: l7-rehearsal-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
