@@ -1,5 +1,9 @@
 # 所有者独立授权控制面（L1 工程交付）
 
+## 云端 Owner 部署准备（非生产）
+
+已新增独立的 [云端部署安全手册](../../deploy/owner-cloud/README.md)、双域名 Nginx TLS/mTLS 模板、默认拒绝的 systemd 服务沙箱、主密钥及 TLS 文件式受限读取和云端合成测试。正式云账号、KMS/HSM、TLS、Owner MFA 初始化及生产签名密钥仍未部署；不可用示例公钥或本地合成证明作为真实授权。执行 `node --test desktop/license-control/credentials.test.mjs deploy/owner-cloud/preflight.test.mjs` 仅验证本地合成安全边界，真实上线继续 NO-GO。
+
 **状态：L1 本地可执行实现与合成安全测试通过；尚未部署运营授权服务器，不是正式生产许可服务。**
 
 这是与 `rehab-management-system` 的患者数据面、Java 登录、Vue 管理后台及 Tauri 启动器**完全分离**的 Node.js 授权控制面。它只管理机构许可/安装公钥、签名密钥和操作审计；**不会读取或迁移病历、治疗视频、诊断报告和患者身份信息**。
