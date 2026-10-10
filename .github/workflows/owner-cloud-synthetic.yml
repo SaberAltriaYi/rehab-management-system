@@ -1,0 +1,45 @@
+name: Owner cloud synthetic safety tests
+
+on:
+  pull_request:
+    branches:
+      - feature/l0-l6-security-source-candidate-20261010
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  owner-cloud-synthetic:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+      - name: Verify no external secrets or infrastructure needed
+        run: |
+          test -z "$REHAB_OWNER_VAULT_KEY_B64"
+          test -z "$REHAB_OWNER_TLS_KEY"
+          test -z "$CREDENTIALS_DIRECTORY"
+      - name: Test private key and TLS credential handling
+        run: node --test desktop/license-control/credentials.test.mjs deploy/owner-cloud/preflight.test.mjs
+      - name: Test two-studio Owner activation and revocation with synthetic identities
+        run: node --test desktop/license-control/l5-e2e.test.mjs
+      - name: Assert real cloud readiness still fails closed
+        run: |
+          set +e
+          node deploy/owner-cloud/preflight.mjs > owner-cloud-result.json
+          status=$?
+          set -e
+          test "$status" -eq 1
+          node --input-type=module -e "import {readFileSync} from 'node:fs';const x=JSON.parse(readFileSync('owner-cloud-result.json','utf8'));if(!x.templatesValid||x.productionReady||!x.blockers.includes('KMS_HSM_AND_KEY_RECOVERY_NOT_ATTESTED'))process.exit(1);"
+      - name: Verify real publisher roots remain gated
+        run: |
+          set +e
+          node desktop/scripts/check-l3-release.mjs > commercial-release-result.json
+          status=$?
+          set -e
+          test "$status" -eq 1
+          node --input-type=module -e "import {readFileSync} from 'node:fs';const x=JSON.parse(readFileSync('commercial-release-result.json','utf8'));if(x.ready)process.exit(1);"
