@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 // Independently operated owner-only service, not part of the studio launcher.
 // No default admin, no default signing key, no remotely callable bootstrap.
-import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { stdin, stdout } from 'node:process'
 import { OwnerLicenseStore } from './store.mjs'
 import { SecretVault } from './security.mjs'
 import { OwnerLicensingService } from './service.mjs'
 import { createOwnerControlServer } from './http.mjs'
+import { loadOwnerVaultKey, loadOwnerTLS } from './credentials.mjs'
 
 function requiredEnv(name) {
   const value = process.env[name]
@@ -16,14 +16,7 @@ function requiredEnv(name) {
 }
 
 function setup() {
-  const encoded = requiredEnv('REHAB_OWNER_VAULT_KEY_B64')
-  if (!/^[A-Za-z0-9_-]{43}$/.test(encoded)) {
-    throw new Error('Vault key must be 32 cryptographically random bytes encoded as base64url')
-  }
-  const key = Buffer.from(encoded, 'base64url')
-  if (key.length !== 32 || key.toString('base64url') !== encoded) {
-    throw new Error('Invalid owner vault encryption key')
-  }
+  const key = loadOwnerVaultKey(process.env)
   const file = resolve(requiredEnv('REHAB_OWNER_DB_PATH'))
   const store = new OwnerLicenseStore(file)
   return { store, service: new OwnerLicensingService(store, new SecretVault(key)) }
@@ -94,8 +87,7 @@ async function main() {
     store.close()
     throw new Error('Owner MFA is not provisioned; run bootstrap locally first')
   }
-  const cert = readFileSync(requiredEnv('REHAB_OWNER_TLS_CERT'))
-  const key = readFileSync(requiredEnv('REHAB_OWNER_TLS_KEY'))
+  const { cert, key } = loadOwnerTLS(process.env)
   const port = Number(process.env.REHAB_OWNER_PORT ?? '9444')
   if (!Number.isSafeInteger(port) || port < 1024 || port > 65535) {
     store.close()
