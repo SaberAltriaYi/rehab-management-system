@@ -31,6 +31,7 @@ pub fn ensure_runtime(source: &Path, paths: &AppPaths) -> LauncherResult<()> {
     let installed_marker = paths.runtime_dir.join(".installed");
     if installed_marker.exists() {
         verify_runtime(&paths.runtime_dir)?;
+        normalize_public_web_permissions(&paths.runtime_dir)?;
         return Ok(());
     }
     let staging = paths
@@ -41,6 +42,7 @@ pub fn ensure_runtime(source: &Path, paths: &AppPaths) -> LauncherResult<()> {
         fs::remove_dir_all(&staging)?;
     }
     copy_tree(source, &staging)?;
+    normalize_public_web_permissions(&staging)?;
     verify_runtime(&staging)?;
     if paths.runtime_dir.exists() {
         fs::remove_dir_all(&paths.runtime_dir)?;
@@ -112,6 +114,34 @@ fn copy_tree(source: &Path, destination: &Path) -> LauncherResult<()> {
     Ok(())
 }
 
+// A hardened host umask or macOS DMG packing can make bundled web asset
+// directories 0700, which unprivileged Nginx cannot traverse once installed.
+// Normalize ONLY public web assets; do not widen secrets, backups or DB files.
+fn normalize_public_web_permissions(root: &Path) -> LauncherResult<()> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        for item in WalkDir::new(root.join("admin/web")) {
+            let item = item.map_err(|error| LauncherError::Io(error.into()))?;
+            let mode = if item.file_type().is_dir() {
+                0o755
+            } else if item.file_type().is_file() {
+                0o644
+            } else {
+                return Err(LauncherError::RuntimeInvalid(
+                    "前端静态资源包含符号链接或特殊文件".to_owned(),
+                ));
+            };
+            fs::set_permissions(item.path(), fs::Permissions::from_mode(mode))?;
+        }
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = root;
+    }
+    Ok(())
+}
+
 fn sha256_file(path: &Path) -> LauncherResult<String> {
     let bytes = fs::read(path).map_err(|_| {
         LauncherError::RuntimeInvalid(format!("清单引用文件不存在：{}", path.display()))
@@ -129,5 +159,33 @@ mod tests {
         let dir = tempdir().unwrap();
         fs::write(dir.path().join("runtime-manifest.sha256"), "00  missing\n").unwrap();
         assert!(verify_runtime(dir.path()).is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn dmgs_hardened_umask_is_fixed_only_for_public_nginx_web_assets() {
+        use std::os::unix::fs::PermissionsExt;
+        let tmp = tempdir().unwrap();
+        let source = tmp.path().join("bundle");
+        let target = tmp.path().join("installed");
+        fs::create_dir_all(source.join("admin/web/assets")).unwrap();
+        fs::write(source.join("admin/web/assets/main.js"), b"synthetic JS").unwrap();
+        fs::write(source.join("private-secret"), b"synthetic secret").unwrap();
+        for dir in ["admin/web", "admin/web/assets"] {
+            fs::set_permissions(source.join(dir), fs::Permissions::from_mode(0o700)).unwrap();
+        }
+        for file in ["admin/web/assets/main.js", "private-secret"] {
+            fs::set_permissions(source.join(file), fs::Permissions::from_mode(0o600)).unwrap();
+        }
+        copy_tree(&source, &target).unwrap();
+        normalize_public_web_permissions(&target).unwrap();
+        for dir in ["admin/web", "admin/web/assets"] {
+            assert_eq!(fs::metadata(target.join(dir)).unwrap().permissions().mode() & 0o777,
+                0o755);
+        }
+        assert_eq!(fs::metadata(target.join("admin/web/assets/main.js"))
+            .unwrap().permissions().mode() & 0o777, 0o644);
+        assert_eq!(fs::metadata(target.join("private-secret"))
+            .unwrap().permissions().mode() & 0o777, 0o600);
     }
 }
