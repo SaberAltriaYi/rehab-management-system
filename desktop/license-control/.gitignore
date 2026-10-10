@@ -1,0 +1,18 @@
+# Owner-control operational state is never part of the application source.
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+*.db
+*.db-wal
+*.db-shm
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+*.env
+secrets/
+vault/
+backups/
+*.owner-session
+*.rehab-license

@@ -206,6 +206,8 @@ class RehabReportServiceImplTest {
         assertTrue(generated.getReportJson().contains("\"totalScore\":16"));
         assertTrue(generated.getReportJson().contains("\"fms\""));
         assertTrue(generated.getReportJson().contains("\"contentPolicy\":\"raw-data-only\""));
+        assertTrue(generated.getReportJson().contains("\"adolescentProductionQuality\""));
+        assertTrue(generated.getReportJson().contains("\"clinicalReady\":false"));
         assertFalse(generated.getReportJson().contains("优先改善髋部控制"));
         assertFalse(generated.getReportJson().contains("髋稳定性需继续训练"));
 
@@ -316,6 +318,29 @@ class RehabReportServiceImplTest {
 
         ServiceException ex = assertThrows(ServiceException.class, () -> reportService.exportDocx(30002L, 1L));
         assertEquals(REPORT_CAN_NOT_EXPORT.getCode(), ex.getCode());
+    }
+
+    @Test
+    void emptySectionsAreExplicitlyMarkedAsIncompleteAndHtmlEscaped() {
+        java.util.Map<String, Object> payload = new java.util.LinkedHashMap<>();
+        payload.put("reportNo", "SYNTHETIC-001");
+        payload.put("generatedAt", "2026-10-08");
+        payload.put("contentPolicy", "raw-data-only");
+        java.util.Map<String, Object> section = new java.util.LinkedHashMap<>();
+        section.put("index", 13);
+        section.put("title", "临床推理与假设");
+        section.put("content", "");
+        java.util.Map<String, Object> unsafe = new java.util.LinkedHashMap<>();
+        unsafe.put("index", 14);
+        unsafe.put("title", "合成测试");
+        unsafe.put("content", "<script>alert(1)</script>");
+        payload.put("sections", java.util.Arrays.asList(section, unsafe));
+        String html = ReflectionTestUtils.invokeMethod(reportService, "buildHtml", payload);
+        assertNotNull(html);
+        assertTrue(html.contains("未形成有效或已审核的本章内容"));
+        assertTrue(html.contains("不可直接作为专业评估终稿"));
+        assertFalse(html.contains("<script>"));
+        assertTrue(html.contains("&lt;script&gt;"));
     }
 
 }

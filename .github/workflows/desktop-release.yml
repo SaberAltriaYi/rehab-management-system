@@ -106,6 +106,11 @@ jobs:
       - name: Test runtime tooling
         run: node --test desktop/scripts/*.test.mjs
 
+      # L3 official packaging fails closed until publisher trust roots
+      # and a numbered, hash-verified license migration are integrated.
+      - name: Enforce L3 commercial licensing release requirements
+        run: node desktop/scripts/check-l3-release.mjs
+
       - name: Generate sanitized database bootstrap
         run: node desktop/scripts/build-sanitized-bootstrap.mjs
 
@@ -177,6 +182,10 @@ jobs:
           pnpm test
           pnpm cargo:test
 
+      - name: Test the enforced L3 license launcher mode
+        working-directory: ${{ env.LAUNCHER_DIR }}
+        run: cargo test --manifest-path src-tauri/Cargo.toml --features license-required
+
       - name: Import Windows signing certificate
         if: ${{ env.WINDOWS_CERTIFICATE != '' && env.WINDOWS_CERTIFICATE_PASSWORD != '' }}
         shell: pwsh
@@ -197,17 +206,20 @@ jobs:
             }
           } | ConvertTo-Json -Depth 5 | Set-Content -Encoding utf8 desktop/launcher/src-tauri/tauri.windows-signing.json
           "WINDOWS_SIGNING_CONFIG=src-tauri/tauri.windows-signing.json" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "WINDOWS_SIGNING_THUMBPRINT=$($certificate.Thumbprint)" | Out-File -FilePath $env:GITHUB_ENV -Append
           Remove-Item $pfxPath -Force
+
+      - name: Require Windows code-signing credentials for any installer
+        shell: pwsh
+        run: |
+          if (-not $env:WINDOWS_SIGNING_CONFIG -or -not $env:WINDOWS_SIGNING_THUMBPRINT) {
+            throw "NO-GO: unsigned Windows installers must not enter release artifacts"
+          }
 
       - name: Build signed Windows installer
         if: ${{ env.WINDOWS_SIGNING_CONFIG != '' }}
         working-directory: ${{ env.LAUNCHER_DIR }}
-        run: pnpm tauri build --bundles nsis --target x86_64-pc-windows-msvc --config $env:WINDOWS_SIGNING_CONFIG
-
-      - name: Build unsigned Windows installer
-        if: ${{ env.WINDOWS_SIGNING_CONFIG == '' }}
-        working-directory: ${{ env.LAUNCHER_DIR }}
-        run: pnpm tauri build --bundles nsis --target x86_64-pc-windows-msvc
+        run: pnpm tauri build --bundles nsis --target x86_64-pc-windows-msvc --features license-required --config $env:WINDOWS_SIGNING_CONFIG
 
       - name: Collect Windows installer and checksums
         shell: pwsh
@@ -215,9 +227,13 @@ jobs:
           New-Item -ItemType Directory -Force artifacts | Out-Null
           $installer = Get-ChildItem desktop/launcher/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe | Select-Object -First 1
           if (-not $installer) { throw "NSIS installer not found" }
-          $suffix = if ($env:WINDOWS_SIGNING_CONFIG) { "" } else { "_unsigned" }
+          $signature = Get-AuthenticodeSignature $installer.FullName
+          if ($signature.Status -ne 'Valid' -or -not $signature.SignerCertificate -or
+              $signature.SignerCertificate.Thumbprint -ne $env:WINDOWS_SIGNING_THUMBPRINT) {
+            throw "NO-GO: Windows installer signature invalid or wrong publisher certificate"
+          }
           # GitHub 会清理发布附件文件名中的非 ASCII 前缀，因此统一使用稳定英文标识。
-          $name = "rehab-management-system_${env:APP_VERSION}_windows-x64${suffix}-setup.exe"
+          $name = "rehab-management-system_${env:APP_VERSION}_windows-x64-setup.exe"
           Copy-Item $installer.FullName (Join-Path artifacts $name)
           $hash = (Get-FileHash (Join-Path artifacts $name) -Algorithm SHA256).Hash.ToLower()
           $utf8NoBom = [Text.UTF8Encoding]::new($false)
@@ -226,12 +242,11 @@ jobs:
             "$hash  $name`n",
             $utf8NoBom
           )
-          $isSigned = -not [string]::IsNullOrEmpty($env:WINDOWS_SIGNING_CONFIG)
           $buildInfo = @(
             "version=$env:APP_VERSION"
             "commit=$env:GITHUB_SHA"
             "platform=windows-x64"
-            "signed=$($isSigned.ToString().ToLowerInvariant())"
+            "signed=true"
           ) -join "`n"
           [IO.File]::WriteAllText(
             (Join-Path $PWD "artifacts/BUILD-INFO-windows.txt"),
@@ -301,6 +316,10 @@ jobs:
           pnpm test
           pnpm cargo:test
 
+      - name: Test the enforced L3 license launcher mode
+        working-directory: ${{ env.LAUNCHER_DIR }}
+        run: cargo test --manifest-path src-tauri/Cargo.toml --features license-required
+
       - name: Import Apple signing certificate
         if: ${{ env.MACOS_CERTIFICATE_B64 != '' && env.MACOS_CERTIFICATE_PASSWORD != '' && env.MACOS_SIGNING_IDENTITY != '' }}
         run: |
@@ -330,30 +349,45 @@ jobs:
             echo "MACOS_NOTARIZATION_READY=true"
           } >> "$GITHUB_ENV"
 
+      - name: Require Apple signing and notarization credentials for any installer
+        run: |
+          test "${MACOS_SIGNING_READY:-}" = "true" || { echo 'NO-GO: Apple signing missing' >&2; exit 1; }
+          test "${MACOS_NOTARIZATION_READY:-}" = "true" || { echo 'NO-GO: Apple notarization missing' >&2; exit 1; }
+
       - name: Build macOS universal DMG
         working-directory: ${{ env.LAUNCHER_DIR }}
-        run: pnpm tauri build --bundles dmg --target universal-apple-darwin
+        run: pnpm tauri build --bundles dmg --target universal-apple-darwin --features license-required
+
+      - name: Verify Apple signature, notarize and staple the DMG
+        run: |
+          set -Eeuo pipefail
+          APP="$(find desktop/launcher/src-tauri/target/universal-apple-darwin/release/bundle/macos -maxdepth 1 -type d -name '*.app' -print -quit)"
+          DMG="$(find desktop/launcher/src-tauri/target/universal-apple-darwin/release/bundle/dmg -name '*.dmg' -type f -print -quit)"
+          test -n "$APP" && test -n "$DMG"
+          codesign --verify --deep --strict --verbose=2 "$APP"
+          codesign -dv --verbose=4 "$APP" 2>&1 | grep -F "Authority=" | grep -F 'Developer ID Application'
+          xcrun notarytool submit "$DMG" --key "$APPLE_API_KEY_PATH" \
+            --key-id "$APPLE_API_KEY" --issuer "$APPLE_API_ISSUER" --wait \
+            --output-format json > "$RUNNER_TEMP/l5-notarization.json"
+          jq -e '.status == "Accepted"' "$RUNNER_TEMP/l5-notarization.json" >/dev/null
+          xcrun stapler staple "$DMG"
+          xcrun stapler validate "$DMG"
+          spctl -a -t open --context context:primary-signature "$DMG"
 
       - name: Collect macOS DMG and checksums
         run: |
           mkdir -p artifacts
           DMG=$(find desktop/launcher/src-tauri/target/universal-apple-darwin/release/bundle/dmg -name '*.dmg' -type f -print -quit)
           test -n "$DMG"
-          if [ "${MACOS_SIGNING_READY:-}" = "true" ]; then
-            OUTPUT="rehab-management-system_${APP_VERSION}_macos-universal.dmg"
-            SIGNED=true
-          else
-            OUTPUT="rehab-management-system_${APP_VERSION}_macos-universal_unsigned.dmg"
-            SIGNED=false
-          fi
+          OUTPUT="rehab-management-system_${APP_VERSION}_macos-universal.dmg"
           cp "$DMG" "artifacts/$OUTPUT"
           shasum -a 256 "artifacts/$OUTPUT" | sed 's#artifacts/##' > artifacts/SHA256SUMS-macos.txt
           {
             echo "version=${APP_VERSION}"
             echo "commit=${GITHUB_SHA}"
             echo "platform=macos-universal"
-            echo "signed=${SIGNED}"
-            echo "notarization=${MACOS_NOTARIZATION_READY:-false}"
+            echo "signed=true"
+            echo "notarization=accepted-and-stapled"
           } > artifacts/BUILD-INFO-macos.txt
 
       - name: Upload macOS installer
@@ -393,7 +427,7 @@ jobs:
             echo "- 运行前置条件: Docker Desktop（Compose v2）"
             echo "- 新增患者 Excel 批量导入/导出、V4.1 原始数据评估报告和课程签到。"
             echo "- 启动器新增整店加密迁移、后台入口及内置管理员账号设置。"
-            echo "- unsigned 文件仅用于测试；正式分发前必须完成代码签名与 macOS 公证。"
+            echo "- Windows 安装包已通过证书签名验证；macOS 安装包已通过 Developer ID 验证、Apple 公证与 stapler 校验。"
           } > RELEASE-NOTES.md
 
       - name: Create draft GitHub Release

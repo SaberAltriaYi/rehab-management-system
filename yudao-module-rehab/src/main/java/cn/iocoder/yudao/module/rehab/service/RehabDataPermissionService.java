@@ -47,6 +47,12 @@ public class RehabDataPermissionService {
      * null 表示可见全部（管理员/文员）。
      */
     public Set<Long> getVisiblePatientIds(Long userId) {
+        // MEMBER and ADMIN account IDs use distinct namespaces. Do not query
+        // ADMIN roles with a MEMBER id: a numeric collision might otherwise
+        // return null, which represents unrestricted patient visibility.
+        if (userId == null || Objects.equals(WebFrameworkUtils.getLoginUserType(), UserTypeEnum.MEMBER.getValue())) {
+            return Collections.emptySet();
+        }
         if (isSuperAdmin(userId) || isClerk(userId)) {
             return null;
         }
@@ -64,6 +70,9 @@ public class RehabDataPermissionService {
     }
 
     public boolean canReadPatient(Long patientId, Long userId) {
+        if (patientId == null || userId == null) {
+            return false;
+        }
         Integer userType = WebFrameworkUtils.getLoginUserType();
         if (Objects.equals(userType, UserTypeEnum.MEMBER.getValue())) {
             return patientUserBindingMapper.selectActiveByPatientIdAndAppUserId(patientId, userId) != null;

@@ -1,7 +1,7 @@
 // Copyright (c) 2026 杨玺龙
 
 import assert from 'node:assert/strict'
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { chmodSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
@@ -89,6 +89,11 @@ test('新运行资源先在临时目录完整校验，再原子替换旧版本',
     'tsconfig.json', 'types/env.d.ts', 'uno.config.ts', 'vite.config.ts'
   ]) file(frontend + path, `source:${path}`)
   file(frontend + 'dist-internal/index.html', '<html>fresh build</html>')
+  file(frontend + 'dist-internal/assets/app.js', 'console.log("synthetic")')
+  // Reproduce frontend assets generated under umask 077.
+  chmodSync(join(projectRoot, frontend, 'dist-internal/index.html'), 0o600)
+  chmodSync(join(projectRoot, frontend, 'dist-internal/assets/app.js'), 0o600)
+  chmodSync(join(projectRoot, frontend, 'dist-internal/assets'), 0o700)
   file('desktop/runtime-template/docker-compose.yml', [
     'mysql:8.4.10@sha256:8dbcf531a03aade657e181b9cf2f1d1803ce621a1d55610cb44cb531ab7d7db6',
     'redis:7.4.10-alpine3.21@sha256:e7723ff73d963f5cc6d9c4643ea3d989527a402a319239054e9472a7fb9219a2',
@@ -108,6 +113,16 @@ test('新运行资源先在临时目录完整校验，再原子替换旧版本',
   const root = buildRuntime({ projectRoot, outputRoot, commitSha })
   assert.equal(validateRuntime(root), true)
   assert.match(readFileSync(join(root, 'admin/web/index.html'), 'utf8'), /fresh build/)
+  if (process.platform !== 'win32') {
+    assert.equal(statSync(join(root, 'admin/web/index.html')).mode & 0o777, 0o644)
+    assert.equal(statSync(join(root, 'admin/web/assets')).mode & 0o777, 0o755)
+    assert.equal(statSync(join(root, 'admin/web/assets/app.js')).mode & 0o777, 0o644)
+    assert.equal(statSync(join(projectRoot, frontend, 'dist-internal/index.html')).mode & 0o777, 0o600)
+    chmodSync(join(root, 'admin/web/index.html'), 0o600)
+    assert.throws(() => validateRuntime(root), /管理端静态资源权限异常/)
+    chmodSync(join(root, 'admin/web/index.html'), 0o644)
+    assert.equal(validateRuntime(root), true)
+  }
   const version = JSON.parse(readFileSync(join(root, 'VERSION.json'), 'utf8'))
   assert.equal(version.commitSha, commitSha)
   assert.equal(version.frontendSourceSha256, receipt.sourceSha256)

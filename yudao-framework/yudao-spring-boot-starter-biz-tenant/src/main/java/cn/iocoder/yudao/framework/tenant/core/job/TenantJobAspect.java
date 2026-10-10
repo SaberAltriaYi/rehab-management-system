@@ -8,6 +8,7 @@ import cn.iocoder.yudao.framework.tenant.core.service.TenantFrameworkService;
 import cn.iocoder.yudao.framework.tenant.core.util.TenantUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.annotation.Around;
 import org.aspectj.lang.annotation.Aspect;
@@ -30,6 +31,8 @@ import java.util.concurrent.ConcurrentHashMap;
 public class TenantJobAspect {
 
     private final TenantFrameworkService tenantFrameworkService;
+    @Autowired(required = false)
+    private TenantJobExecutionGuard tenantJobExecutionGuard;
 
     @Around("@annotation(tenantJob)")
     public String around(ProceedingJoinPoint joinPoint, TenantJob tenantJob) {
@@ -45,6 +48,11 @@ public class TenantJobAspect {
             // TODO 芋艿：先通过 parallel 实现并行；1）多个租户，是一条执行日志；2）异常的情况
             TenantUtils.execute(tenantId, () -> {
                 try {
+                    // Must not rely on cached tenant status: a signed lease may
+                    // expire or be revoked between tenant list refreshes.
+                    if (tenantJobExecutionGuard != null) {
+                        tenantJobExecutionGuard.requireActiveTenant(tenantId);
+                    }
                     Object result = joinPoint.proceed();
                     results.put(tenantId, StrUtil.toStringOrEmpty(result));
                 } catch (Throwable e) {

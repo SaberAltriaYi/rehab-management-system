@@ -1,0 +1,18 @@
+{
+  "schema": "prepackage-evidence/1.0.0",
+  "revision": "REPLACE_WITH_FROZEN_GIT_COMMIT",
+  "gates": {
+    "source_integration": { "status": "pending" },
+    "java_full_test": { "status": "pending" },
+    "frontend_build": { "status": "pending" },
+    "database_migration": { "status": "pending" },
+    "tenant_permission": { "status": "pending" },
+    "biomechanics_contract": { "status": "pending" },
+    "clinical_report_b": { "status": "pending" },
+    "patient_identity": { "status": "pending" },
+    "e2e_synthetic": { "status": "pending" },
+    "security_license": { "status": "pending" },
+    "desktop_restore_upgrade": { "status": "pending" },
+    "code_signing": { "status": "pending" }
+  }
+}

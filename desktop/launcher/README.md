@@ -1,5 +1,15 @@
 # 康复管理系统 Tauri v2 启动器
 
+## L3 工作室授权/首次激活（P0、本地开发，生产 NO-GO）
+
+新增独立 Rust `src-tauri/src/license.rs` 与 Tauri 的工作室授权面板；为每台新安装生成私有 Ed25519 密钥和永久安装 UUID，支持在线申请/在线签名挑战续租、离线所有者签发 `.rehab-license` 导入、已签名 RHR1 撤销状态查询、最长 72 小时许可、到期告警，以及新机器请求所有者审核换机。**发行商可信公钥只能预置于已签名安装包，不会信任客户导入的临时公钥或公开 `/issuers` 目录**。当前随仓库的 `src-tauri/resources/license/trusted-issuers.json` 为空，以确保没有真实发行商运营密钥时不能激活。
+
+正式发行版必须使用 `--features license-required`；这会在启动器和 Java 服务两端验证许可。Rust 生成不含安装私钥的只读 Java 激活清单；`TenantLicenseBootImporter` 启动时再验 RHL1/RHR1，旧 Token、无权租户不能借助 UI 控件绕过后端许可。当前兼容/开发模式默认关闭强制校验，以免未迁移的真实工作室被错误锁死。
+
+**受控发行校验**：仓库根执行 `node desktop/scripts/check-l3-release.mjs`。它要求真实 owner HTTPS 域名/签名公钥、已编号哈希许可迁移，以及所有 Windows/macOS 打包都启用强制授权；当前预期失败。原有 `prepackage-readiness.mjs` 发布门禁额外保留。更多细节和剩余临床恢复操作见 `docs/releases/TENANT_LICENSE_L3_DESKTOP_ACTIVATION_20261010.md`。
+
+强制授权构建在具备真实管理员重认证和独立审计之前，**从后端拒绝**旧版全店覆盖导入、整店迁出、修改管理员、全量删除。仍保留原有加密备份机制。请勿在 L5 的可合法迁出/恢复流程和安全批准完成前发版。
+
 该目录只实现本机 Docker Compose 服务管理，不重复实现 Vue 康复业务页面。Rust 后端负责
 Docker 检测、运行资源校验、配置、端口、TLS、健康状态、备份、整店迁移、管理员账号设置、
 日志脱敏和单实例；WebView

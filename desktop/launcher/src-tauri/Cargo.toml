@@ -11,6 +11,12 @@ rust-version = "1.77.2"
 name = "rehab_management_launcher"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
+[features]
+default = []
+# Set this feature ONLY on signed, migration-ready release artifacts.
+# Legacy unlicensed installations must not be silently locked before L5 GO.
+license-required = []
+
 [[bin]]
 name = "rehab-management-launcher"
 path = "src/main.rs"
@@ -20,11 +26,13 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 age = "0.11"
+base64 = "0.22.1"
 bcrypt = "0.17"
 chrono = { version = "0.4", features = ["serde"] }
 directories = "6"
 fs2 = "0.4"
 rand = "0.9"
+ring = "0.17.14"
 rcgen = "0.14"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -35,6 +43,7 @@ tauri-plugin-dialog = "2"
 tauri-plugin-single-instance = "2"
 thiserror = "2"
 url = "2"
+uuid = { version = "1.24.0", features = ["v4"] }
 walkdir = "2"
 
 [dev-dependencies]

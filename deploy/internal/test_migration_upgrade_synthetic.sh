@@ -1,0 +1,202 @@
+#!/usr/bin/env bash
+# Isolated 001-019 bootstrap -> 020+ migration -> synthetic backup/restore smoke.
+# Never use any existing Docker Compose project, database, volume, or env file.
+set -Eeuo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# An explicitly selected sibling worktree can be tested without changing either
+# checkout or using any of its persistent Docker/SQL resources.
+PROJECT_ROOT="${REHAB_MIGRATION_SOURCE_ROOT:-$(cd "${SCRIPT_DIR}/../.." && pwd)}"
+BOOTSTRAP="${REHAB_SYNTHETIC_BOOTSTRAP:-${SCRIPT_DIR}/../../desktop/build/desktop-bootstrap.sql}"
+MANIFEST="${PROJECT_ROOT}/deploy/internal/migrations.manifest"
+IMAGE='mysql:8.4.10@sha256:8dbcf531a03aade657e181b9cf2f1d1803ce621a1d55610cb44cb531ab7d7db6'
+
+[[ -s "${BOOTSTRAP}" ]] || { echo 'FAIL: missing sanitized bootstrap SQL' >&2; exit 1; }
+command -v docker >/dev/null
+command -v openssl >/dev/null
+
+umask 077
+STAGE="$(mktemp -d "${TMPDIR:-/tmp}/rehab-upgrade-synthetic.XXXXXXXX")"
+PROJECT="rehab-synth-upgrade-$(openssl rand -hex 6)"
+ROOT="${STAGE}/project"
+mkdir -p "${ROOT}/deploy/internal"
+COMPOSE="${ROOT}/deploy/internal/docker-compose.yml"
+ENV_FILE="${ROOT}/deploy/internal/.env"
+COMPOSE_ARGS=(--project-name "${PROJECT}" --env-file "${ENV_FILE}" --file "${COMPOSE}")
+STARTED=0
+
+cleanup() {
+  if [[ "${STARTED}" == 1 ]]; then
+    # Only this newly created random project; NEVER use --volumes.
+    docker compose "${COMPOSE_ARGS[@]}" down >/dev/null 2>&1 || true
+  fi
+  case "${STAGE}" in
+    */rehab-upgrade-synthetic.*) rm -rf -- "${STAGE}" ;;
+    *) echo 'FAIL: unsafe staging cleanup path' >&2 ;;
+  esac
+}
+trap cleanup EXIT
+
+cp "${PROJECT_ROOT}/deploy/internal/migrate.sh" "${MANIFEST}" \
+  "${PROJECT_ROOT}/deploy/internal/init-schema-history.sql" "${ROOT}/deploy/internal/"
+if [[ -f "${PROJECT_ROOT}/deploy/internal/adopt_schema_guard.py" ]]; then
+  cp "${PROJECT_ROOT}/deploy/internal/adopt_schema_guard.py" "${ROOT}/deploy/internal/"
+fi
+while IFS='|' read -r version checksum relative_file description; do
+  case "${version}" in ''|'#'*) continue ;; esac
+  case "${relative_file}" in
+    sql/mysql/*.sql|deploy/internal/*.sql) ;;
+    *) echo 'FAIL: migration file outside allowlist' >&2; exit 1 ;;
+  esac
+  [[ "${relative_file}" != *'..'* ]] || exit 1
+  mkdir -p "${ROOT}/$(dirname "${relative_file}")"
+  cp "${PROJECT_ROOT}/${relative_file}" "${ROOT}/${relative_file}"
+done < "${MANIFEST}"
+
+printf 'MYSQL_ROOT_PASSWORD=%s\nMYSQL_DATABASE=ruoyi-vue-pro\n' \
+  "$(openssl rand -hex 32)" > "${ENV_FILE}"
+chmod 600 "${ENV_FILE}"
+cat > "${COMPOSE}" <<'YAML'
+services:
+  mysql:
+    image: mysql:8.4.10@sha256:8dbcf531a03aade657e181b9cf2f1d1803ce621a1d55610cb44cb531ab7d7db6
+    network_mode: none
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+    tmpfs:
+      - /var/lib/mysql:size=512m
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+YAML
+
+# Compose must have exactly one mysql service, no ports or Docker volumes.
+docker compose "${COMPOSE_ARGS[@]}" config --format json |
+  python3 -c 'import json,sys; c=json.load(sys.stdin); s=c["services"]; assert list(s)==["mysql"]; m=s["mysql"]; assert m.get("network_mode")=="none"; assert not m.get("ports") and not m.get("volumes") and not c.get("volumes"); assert any("/var/lib/mysql" in x and "size=512m" in x for x in m.get("tmpfs",[])); print("PASS: isolated Compose with tmpfs, no network/port/volume")'
+
+export COMPOSE_PROJECT_NAME="${PROJECT}"
+MIGRATOR="${ROOT}/deploy/internal/migrate.sh"
+ENV_FILE_OVERRIDE="${ENV_FILE}" sh "${MIGRATOR}" verify-files
+STARTED=1
+docker compose "${COMPOSE_ARGS[@]}" up --detach --no-build mysql >/dev/null
+CONTAINER="${PROJECT}-mysql-1"
+[[ "$(docker inspect "${CONTAINER}" --format '{{index .Config.Labels "com.docker.compose.project"}}')" == "${PROJECT}" ]] ||
+  { echo 'FAIL: mismatched container identity'; exit 1; }
+[[ "$(docker inspect "${CONTAINER}" --format '{{.HostConfig.NetworkMode}}')" == 'none' ]] ||
+  { echo 'FAIL: container has networking'; exit 1; }
+case "$(docker inspect "${CONTAINER}" --format '{{index .HostConfig.Tmpfs "/var/lib/mysql"}}')" in
+  *size=512m*) ;;
+  *) echo 'FAIL: MySQL data storage is not tmpfs'; exit 1 ;;
+esac
+
+SQL_READY=0
+for i in $(seq 1 90); do
+  # TCP deliberately excludes the temporary MySQL initialization server.
+  if docker compose "${COMPOSE_ARGS[@]}" exec -T mysql sh -c \
+    'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysql --protocol=tcp -h127.0.0.1 -uroot -N -e "SELECT 1"' \
+    2>/dev/null | grep -qx 1; then
+    SQL_READY=1
+    break
+  fi
+  sleep 1
+done
+[[ "${SQL_READY}" == 1 ]] || { echo 'FAIL: stable MySQL unavailable'; exit 1; }
+
+sql() {
+  docker compose "${COMPOSE_ARGS[@]}" exec -T mysql sh -c \
+    'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysql -uroot "$MYSQL_DATABASE" -N -B --execute "$1"' \
+    sql-verify "$1"
+}
+counts() {
+  sql "SELECT CONCAT((SELECT COUNT(*) FROM rehab_patient),'|',(SELECT COUNT(*) FROM internal_schema_history));"
+}
+
+docker compose "${COMPOSE_ARGS[@]}" exec -T mysql sh -c \
+  'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysql -uroot "$MYSQL_DATABASE" --binary-mode' < "${BOOTSTRAP}"
+[[ "$(counts)" == '0|19' ]] || { echo 'FAIL: expected empty patient registry and 001-019 ledger'; exit 1; }
+echo 'PASS: sanitized bootstrap restored (patients=0, ledger=19)'
+
+if ENV_FILE_OVERRIDE="${ENV_FILE}" sh "${MIGRATOR}" status > "${STAGE}/pending.log" 2>&1; then
+  echo 'FAIL: initial migration status should report pending versions'
+  exit 1
+fi
+last_version="$(awk -F'|' '$1 ~ /^[0-9][0-9][0-9]$/ { last=$1 } END { print last }' "${MANIFEST}")"
+case "${last_version}" in 023|025) ;; *) echo "FAIL: unsupported test manifest range ${last_version}"; exit 1 ;; esac
+last_count=$((10#${last_version}))
+incrementals="$(awk -F'|' '$1 ~ /^[0-9][0-9][0-9]$/ && ($1+0)>19 {print $1}' "${MANIFEST}")"
+for version in ${incrementals}; do
+  grep -q "^PENDING: ${version} " "${STAGE}/pending.log" ||
+    { echo "FAIL: migration ${version} not pending"; exit 1; }
+done
+[[ "$(grep -c '^PENDING:' "${STAGE}/pending.log")" == "$((last_count - 19))" ]] ||
+  { echo 'FAIL: unexpected pending migrations'; exit 1; }
+echo "PASS: 020-${last_version} pending after baseline"
+
+if [[ "${last_version}" == '025' ]]; then
+  # Do not modify immutable migration SQL: stage a pre-024 manifest only for
+  # this isolated disposable test fixture, then restore the original bytes.
+  cp "${ROOT}/deploy/internal/migrations.manifest" "${STAGE}/original.manifest"
+  sed '/^024|/d; /^025|/d' "${STAGE}/original.manifest" > "${ROOT}/deploy/internal/migrations.manifest"
+  ENV_FILE_OVERRIDE="${ENV_FILE}" sh "${MIGRATOR}" apply > "${STAGE}/earlier.log" 2>&1 ||
+    { tail -20 "${STAGE}/earlier.log"; exit 1; }
+  [[ "$(counts)" == '0|23' ]] || { echo 'FAIL: pre-024 ledger mismatch'; exit 1; }
+  cp "${STAGE}/original.manifest" "${ROOT}/deploy/internal/migrations.manifest"
+  ENV_FILE_OVERRIDE="${ENV_FILE}" sh "${MIGRATOR}" verify-files
+
+  # Deliberately create a conflicting synthetic table to assert that an
+  # interrupted 024 does not falsely write history; no patient data exists.
+  sql 'CREATE TABLE rehab_motion_assessment (id BIGINT PRIMARY KEY);'
+  if ENV_FILE_OVERRIDE="${ENV_FILE}" sh "${MIGRATOR}" apply > "${STAGE}/expected-failure.log" 2>&1; then
+    echo 'FAIL: 024 accepted a conflicting table'; exit 1
+  fi
+  [[ "$(counts)" == '0|23' ]] || { echo 'FAIL: conflicting 024 wrote migration ledger'; exit 1; }
+  [[ "$(sql "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name='rehab_motion_task';")" == 0 ]] ||
+    { echo 'FAIL: failed 024 created later motion tables'; exit 1; }
+  echo 'PASS: pre-existing table collision blocks 024, ledger remains at 23'
+  sql 'DROP TABLE rehab_motion_assessment;' # Disposable collision created above only.
+  ENV_FILE_OVERRIDE="${ENV_FILE}" sh "${MIGRATOR}" apply > "${STAGE}/later.log" 2>&1 ||
+    { tail -22 "${STAGE}/later.log"; exit 1; }
+  cat "${STAGE}/earlier.log" "${STAGE}/later.log" > "${STAGE}/applied.log"
+  [[ "$(sql "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name LIKE 'rehab_motion_%';")" == 11 ]] ||
+    { echo 'FAIL: 024 did not create 11 tenant motion tables'; exit 1; }
+  [[ "$(sql "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name LIKE 'rehab_motion_%' AND column_name IN ('creator','updater') AND is_nullable='YES';")" == 22 ]] ||
+    { echo 'FAIL: 025 audit columns were not made nullable'; exit 1; }
+  [[ "$(sql "SELECT COUNT(*) FROM system_menu WHERE id IN (9700,9710,9711,9712,9713,9714,9715,9716,9717);")" == 9 ]] ||
+    { echo 'FAIL: 024 menu entries missing'; exit 1; }
+  echo 'PASS: 024-025 created 11 tables, relaxed 22 audit fields, created 9 menus'
+else
+  ENV_FILE_OVERRIDE="${ENV_FILE}" sh "${MIGRATOR}" apply > "${STAGE}/applied.log" 2>&1 ||
+    { tail -20 "${STAGE}/applied.log"; exit 1; }
+fi
+for version in ${incrementals}; do
+  grep -q "^APPLIED: ${version} " "${STAGE}/applied.log" ||
+    { echo "FAIL: migration ${version} not applied"; exit 1; }
+done
+[[ "$(counts)" == "0|${last_count}" ]] || { echo 'FAIL: migration ledger/patient count mismatch'; exit 1; }
+ENV_FILE_OVERRIDE="${ENV_FILE}" sh "${MIGRATOR}" status > "${STAGE}/status-final.log"
+ENV_FILE_OVERRIDE="${ENV_FILE}" sh "${MIGRATOR}" apply > "${STAGE}/apply-repeat.log"
+! grep -q '^APPLIED:' "${STAGE}/apply-repeat.log" ||
+  { echo 'FAIL: migration re-executed on idempotent apply'; exit 1; }
+[[ "$(counts)" == "0|${last_count}" ]] || { echo 'FAIL: repeat apply changed ledger'; exit 1; }
+echo "PASS: actual migrate.sh applied 020-${last_version}; ${last_count} checksummed ledger rows; idempotent"
+
+# Synthetic-only backup/restore into a second database in the same tmpfs instance.
+docker compose "${COMPOSE_ARGS[@]}" exec -T mysql sh -c \
+  'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysqldump -uroot --no-tablespaces --single-transaction --column-statistics=0 --set-gtid-purged=OFF "$MYSQL_DATABASE"' \
+  > "${STAGE}/synthetic-backup.sql"
+[[ -s "${STAGE}/synthetic-backup.sql" ]] || { echo 'FAIL: empty synthetic backup'; exit 1; }
+RESTORE_DB="rehab_synthetic_restored_$(openssl rand -hex 5)"
+docker compose "${COMPOSE_ARGS[@]}" exec -T mysql sh -c \
+  'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysql -uroot --execute "$1"' \
+  restore-verify "CREATE DATABASE \`${RESTORE_DB}\` CHARACTER SET utf8mb4;"
+docker compose "${COMPOSE_ARGS[@]}" exec -T mysql sh -c \
+  'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysql -uroot "$1" --binary-mode' \
+  restore-verify "${RESTORE_DB}" < "${STAGE}/synthetic-backup.sql"
+RESTORED="$(docker compose "${COMPOSE_ARGS[@]}" exec -T mysql sh -c \
+  'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysql -uroot "$1" -N -B --execute "$2"' \
+  restore-verify "${RESTORE_DB}" \
+  "SELECT CONCAT((SELECT COUNT(*) FROM rehab_patient),'|',(SELECT COUNT(*) FROM internal_schema_history));")"
+[[ "${RESTORED}" == "0|${last_count}" ]] || { echo 'FAIL: synthetic backup/restore count mismatch'; exit 1; }
+echo "PASS: synthetic post-migration backup/restore (patients=0, ledger=${last_count})"
+echo 'PASS: full isolated migration and backup/restore suite complete'

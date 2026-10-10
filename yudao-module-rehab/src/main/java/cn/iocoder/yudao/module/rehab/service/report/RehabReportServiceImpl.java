@@ -790,6 +790,9 @@ public class RehabReportServiceImpl implements RehabReportService {
         payload.put("sections", sections);
         payload.put("evidenceRefs", new ArrayList<>(rawModules.keySet()));
         payload.put("contentPolicy", "raw-data-only");
+        // 不将 V4.1 原始数据报告误当作已完成 B 版临床审核和证据锁定的正式报告。
+        payload.put("adolescentProductionQuality", AdolescentReportQualityPolicy.audit(
+                patientPayload, assessmentPayload, rawModules));
         return payload;
     }
 
@@ -921,6 +924,7 @@ public class RehabReportServiceImpl implements RehabReportService {
                 .append("h1{font-size:24px;margin:0 0 8px;}h2{font-size:18px;margin-top:20px;border-bottom:2px solid #2b2b2b;padding-bottom:6px;}")
                 .append("pre{white-space:pre-wrap;background:#f2f2f2;padding:12px;border:1px solid #d8d8d8;margin:0;min-height:22px;}")
                 .append(".meta{color:#555;font-size:13px;margin-bottom:16px;}")
+                .append(".draft-notice{border:1px solid #d4ba83;background:#fff8e9;padding:12px;margin-bottom:16px;color:#654a20;}")
                 .append("</style></head><body>");
         html.append("<h1>").append(BRANDED_REPORT_TITLE).append("</h1>")
                 .append("<div class=\"meta\">报告编号：")
@@ -929,12 +933,19 @@ public class RehabReportServiceImpl implements RehabReportService {
                 .append(escapeHtml(payload.get("generatedAt")))
                 .append("</div>");
 
+        if ("raw-data-only".equals(payload.get("contentPolicy"))) {
+            html.append("<div class=\"draft-notice\">原始资料整理版：未完成青少年 B 版临床证据审核、冲突确认与治疗师结论，不可直接作为专业评估终稿。</div>");
+        }
+
         List<Map<String, Object>> sections = (List<Map<String, Object>>) payload.get("sections");
         if (sections != null) {
             for (Map<String, Object> section : sections) {
                 html.append("<h2>").append(section.get("index")).append(". ")
                         .append(escapeHtml(section.get("title"))).append("</h2>")
-                        .append("<pre>").append(escapeHtml(section.get("content")))
+                        .append("<pre>").append(StrUtil.isBlank(String.valueOf(
+                                section.get("content") == null ? "" : section.get("content")))
+                                ? "未形成有效或已审核的本章内容；须补充检查，不得据此判定正常。"
+                                : escapeHtml(section.get("content")))
                         .append("</pre>");
             }
         }

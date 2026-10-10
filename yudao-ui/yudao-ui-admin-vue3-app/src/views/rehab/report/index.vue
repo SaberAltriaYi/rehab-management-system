@@ -1,10 +1,20 @@
 <template>
   <ContentWrap>
+    <div class="report-hero">
+      <div>
+        <p class="report-eyebrow">CLINICAL DOCUMENTS / 报告工作台</p>
+        <h2>康复评估报告</h2>
+        <p>按患者整理报告、追溯版本和复核记录。报告状态不等同于临床签署。</p>
+      </div>
+      <el-button :loading="loading" aria-label="刷新报告患者列表" @click="getList">
+        <Icon icon="ep:refresh" class="mr-4px" />刷新列表
+      </el-button>
+    </div>
     <el-form
       ref="queryFormRef"
       :model="queryParams"
       :inline="true"
-      class="-mb-15px"
+      class="report-filter -mb-15px"
       label-width="90px"
     >
       <el-form-item label="患者" prop="keyword">
@@ -12,19 +22,19 @@
           v-model="queryParams.keyword"
           placeholder="姓名/患者编号"
           clearable
-          class="!w-220px"
+          class="report-filter-control"
           @keyup.enter="handleQuery"
         />
       </el-form-item>
       <el-form-item label="报告类型" prop="reportType">
-        <el-select v-model="queryParams.reportType" clearable class="!w-150px">
+        <el-select v-model="queryParams.reportType" clearable class="report-filter-control">
           <el-option label="综合评估" value="comprehensive" />
           <el-option label="随访评估" value="followup" />
           <el-option label="结案评估" value="discharge" />
         </el-select>
       </el-form-item>
       <el-form-item label="报告状态" prop="reportStatus">
-        <el-select v-model="queryParams.reportStatus" clearable class="!w-140px">
+        <el-select v-model="queryParams.reportStatus" clearable class="report-filter-control">
           <el-option label="草稿" value="draft" />
           <el-option label="已复核" value="reviewed" />
           <el-option label="已审批" value="approved" />
@@ -33,7 +43,7 @@
         </el-select>
       </el-form-item>
       <el-form-item label="生成方式" prop="generationMode">
-        <el-select v-model="queryParams.generationMode" clearable class="!w-150px">
+        <el-select v-model="queryParams.generationMode" clearable class="report-filter-control">
           <el-option label="系统生成" value="auto" />
           <el-option v-if="AI_ENABLED" label="AI 辅助" value="ai_assisted" />
           <el-option label="人工调整" value="manual_adjusted" />
@@ -46,7 +56,7 @@
           type="datetimerange"
           start-placeholder="开始"
           end-placeholder="结束"
-          class="!w-300px"
+          class="report-filter-control report-date-editor"
         />
       </el-form-item>
       <el-form-item>
@@ -57,9 +67,31 @@
   </ContentWrap>
 
   <ContentWrap>
+    <div class="report-overview" role="region" aria-label="当前页报告工作概况">
+      <div class="report-metric">
+        <span>当前页患者</span>
+        <strong>{{ patientList.length }}</strong>
+      </div>
+      <div class="report-metric">
+        <span>当前页评估记录</span>
+        <strong>{{ currentPageAssessmentCount }}</strong>
+      </div>
+      <div class="report-metric">
+        <span>当前页报告</span>
+        <strong>{{ currentPageReportCount }}</strong>
+      </div>
+    </div>
+    <p class="report-metric-note">以上三项只统计当前页；共有 {{ total }} 位患者符合筛选条件。</p>
     <el-alert
       title="报告中心按患者归档。点击患者后，可在该患者名下选择具体评估报告。"
       type="info"
+      :closable="false"
+      class="mb-16px"
+      show-icon
+    />
+    <el-alert
+      title="报告质量提醒：现行 V4.1 自动报告以原始数据整理为主，并非青少年 B 版治疗师正式报告。正式交付前须核查原始来源、疼痛与红旗、冲突和缺失项，完成临床推理、复评 KPI 及人工审核。"
+      type="warning"
       :closable="false"
       class="mb-16px"
       show-icon
@@ -72,6 +104,11 @@
       row-key="patientId"
       @row-click="handlePatientClick"
     >
+      <template #empty>
+        <el-empty description="当前筛选条件下暂无报告归档记录">
+          <el-button @click="resetQuery">清除筛选条件</el-button>
+        </el-empty>
+      </template>
       <el-table-column label="患者编号" prop="patientNo" min-width="160" />
       <el-table-column label="患者姓名" prop="patientName" min-width="150" />
       <el-table-column label="评估数量" prop="assessmentCount" min-width="110" align="center" />
@@ -96,6 +133,7 @@
     </el-table>
 
     <Pagination
+      v-if="total > 0"
       :total="total"
       v-model:page="queryParams.pageNo"
       v-model:limit="queryParams.pageSize"
@@ -110,9 +148,13 @@
         ? `${selectedPatient.patientName}（${selectedPatient.patientNo}）的评估报告`
         : '患者评估报告'
     "
-    width="88%"
+    width="min(1180px, 96%)"
   >
-    <el-table v-loading="reportLoading" :data="reportList" stripe>
+    <p class="report-dialog-note">此处显示所选患者的报告版本与流转状态。预览、审批和锁版操作须遵循授权及人工审核流程。</p>
+    <el-table v-loading="reportLoading" :data="reportList" stripe class="report-desktop-table">
+      <template #empty>
+        <el-empty description="该患者暂无符合条件的报告" />
+      </template>
       <el-table-column label="评估编号" prop="assessmentNo" min-width="150" />
       <el-table-column label="报告编号" prop="reportNo" min-width="170" />
       <el-table-column label="疗程编号" prop="episodeNo" min-width="150" />
@@ -208,7 +250,50 @@
       </el-table-column>
     </el-table>
 
+    <div v-loading="reportLoading" class="report-mobile-list" role="region" aria-label="该患者的评估报告">
+      <el-empty v-if="!reportLoading && reportList.length === 0" description="该患者暂无符合条件的报告" />
+      <article v-for="row in reportList" :key="row.id" class="report-mobile-card">
+        <div class="report-mobile-heading">
+          <strong>{{ row.reportNo || '报告 #' + row.id }}</strong>
+          <el-tag :type="reportStatusType(row.reportStatus)">{{ reportStatusLabel(row.reportStatus) }}</el-tag>
+        </div>
+        <dl class="report-mobile-metadata">
+          <div><dt>评估</dt><dd>{{ row.assessmentNo || row.assessmentId || '未填写' }}</dd></div>
+          <div><dt>疗程</dt><dd>{{ row.episodeNo || row.episodeId || '未填写' }}</dd></div>
+          <div><dt>版本</dt><dd>V{{ row.reportVersion || 1 }}</dd></div>
+          <div><dt>生成方式</dt><dd>{{ generationModeLabel(row.generationMode) }}</dd></div>
+        </dl>
+        <div class="report-mobile-actions" aria-label="报告操作">
+          <el-button
+            v-if="row.reportStatus === 'draft'"
+            link type="primary" v-hasPermi="['rehab:report:review']" @click="handleReview(row)"
+          >复核</el-button>
+          <el-button
+            v-if="row.reportStatus === 'reviewed'"
+            link type="success" v-hasPermi="['rehab:report:approve']" @click="handleApprove(row)"
+          >审批</el-button>
+          <el-button
+            v-if="row.reportStatus === 'approved' || row.reportStatus === 'exported'"
+            link type="warning" v-hasPermi="['rehab:report:lock']" @click="handleLock(row)"
+          >锁版</el-button>
+          <el-button
+            v-if="row.reportStatus === 'locked'"
+            link type="warning" v-hasPermi="['rehab:report:unlock']" @click="handleUnlock(row)"
+          >解锁</el-button>
+          <el-button link type="primary" v-hasPermi="['rehab:report:preview']" @click="handlePreview(row)">预览</el-button>
+          <el-button link type="primary" v-hasPermi="['rehab:report:export']" @click="handleExportDocx(row)">DOCX</el-button>
+          <el-button link type="primary" v-hasPermi="['rehab:report:export']" @click="handleExportPdf(row)">PDF</el-button>
+          <el-button link type="primary" @click="openAssessment(row)">查看评估</el-button>
+          <el-button v-if="AI_ENABLED" link type="primary" v-hasPermi="['rehab:ai:generate']" @click="handleAiSummary(row)">AI 摘要</el-button>
+          <el-button link type="primary" @click="handleVersion(row)">版本</el-button>
+          <el-button link type="primary" @click="handleAudit(row)">审计</el-button>
+        </div>
+      </article>
+    </div>
+
     <Pagination
+      v-if="reportTotal > reportQuery.pageSize"
+      class="report-pagination"
       :total="reportTotal"
       v-model:page="reportQuery.pageNo"
       v-model:limit="reportQuery.pageSize"
@@ -216,7 +301,7 @@
     />
   </Dialog>
 
-  <Dialog v-model="previewVisible" title="报告预览" width="70%">
+  <Dialog v-model="previewVisible" title="报告预览（已过滤不安全 HTML）" width="min(1000px, 96%)">
     <div class="preview-wrap" v-html="previewHtml"></div>
   </Dialog>
 
@@ -253,6 +338,7 @@
 </template>
 
 <script lang="ts" setup>
+import DOMPurify from 'dompurify'
 import download from '@/utils/download'
 import { dateFormatter } from '@/utils/formatTime'
 import { generateReportSummary, RehabAiGenerateRespVO } from '@/api/rehab/ai'
@@ -279,6 +365,12 @@ const { push } = useRouter()
 const loading = ref(false)
 const total = ref(0)
 const patientList = ref<RehabReportPatientRespVO[]>([])
+const currentPageAssessmentCount = computed(() =>
+  patientList.value.reduce((total, patient) => total + Number(patient.assessmentCount ?? 0), 0)
+)
+const currentPageReportCount = computed(() =>
+  patientList.value.reduce((total, patient) => total + Number(patient.reportCount ?? 0), 0)
+)
 const queryFormRef = ref()
 
 const patientReportsVisible = ref(false)
@@ -362,7 +454,16 @@ const refreshReportData = async () => {
 
 const handlePreview = async (row: any) => {
   const data = await previewRehabReport(row.id)
-  previewHtml.value = data.html || '<p>暂无可预览内容</p>'
+  // Defense-in-depth: reports may include imported narrative text. Never
+  // insert server-provided HTML into v-html before sanitizing it.
+  previewHtml.value = DOMPurify.sanitize(
+    typeof data?.html === 'string' ? data.html : '<p>暂无可预览内容</p>',
+    {
+      USE_PROFILES: { html: true },
+      FORBID_TAGS: ['style', 'iframe', 'object', 'embed', 'form', 'meta', 'link'],
+      FORBID_ATTR: ['style', 'srcset']
+    }
+  )
   previewVisible.value = true
 }
 
@@ -455,6 +556,86 @@ onMounted(getList)
 </script>
 
 <style scoped>
+.report-filter-control { width: 170px; }
+.report-date-editor { width: 300px; }
+.report-mobile-list { display: none; }
+.report-pagination { max-width: 100%; overflow-x: auto; }
+.report-mobile-card {
+  border: 1px solid var(--el-border-color-light);
+  border-radius: 10px;
+  padding: 14px;
+  background: var(--el-fill-color-lighter);
+}
+.report-mobile-card + .report-mobile-card { margin-top: 12px; }
+.report-mobile-heading { display: flex; justify-content: space-between; align-items: start; gap: 10px; }
+.report-mobile-heading strong { overflow-wrap: anywhere; min-width: 0; }
+.report-mobile-metadata { margin: 12px 0; }
+.report-mobile-metadata > div { display: flex; gap: 10px; padding: 4px 0; }
+.report-mobile-metadata dt { width: 62px; flex-shrink: 0; color: var(--el-text-color-secondary); }
+.report-mobile-metadata dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.report-mobile-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  border-top: 1px solid var(--el-border-color-light);
+  padding-top: 10px;
+}
+.report-mobile-actions :deep(.el-button + .el-button) { margin-left: 0; }
+.report-hero {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 20px;
+  margin-bottom: 20px;
+}
+.report-eyebrow {
+  margin: 0 0 6px;
+  color: var(--el-color-primary);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .08em;
+}
+.report-hero h2 {
+  margin: 0 0 6px;
+  color: var(--el-text-color-primary);
+  font-size: 22px;
+  font-weight: 650;
+}
+.report-hero p:last-child, .report-dialog-note {
+  margin: 0;
+  color: var(--el-text-color-secondary);
+  font-size: 13px;
+  line-height: 1.7;
+}
+.report-overview {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+.report-metric {
+  padding: 15px 18px;
+  background: var(--el-fill-color-lighter);
+  border: 1px solid var(--el-border-color-light);
+  border-radius: 12px;
+}
+.report-metric span {
+  display: block;
+  color: var(--el-text-color-secondary);
+  font-size: 13px;
+}
+.report-metric strong {
+  display: block;
+  margin-top: 8px;
+  font-size: 25px;
+  font-variant-numeric: tabular-nums;
+}
+.report-metric-note {
+  margin: 9px 0 18px;
+  color: var(--el-text-color-placeholder);
+  font-size: 12px;
+}
+.report-dialog-note { margin-bottom: 14px; }
 .patient-table :deep(.el-table__row) {
   cursor: pointer;
 }
@@ -462,12 +643,40 @@ onMounted(getList)
 .report-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 2px 0;
+  align-items: center;
+  gap: 6px 12px;
+}
+.report-actions :deep(.el-button + .el-button) {
+  margin-left: 0;
 }
 
 .preview-wrap {
   max-height: 70vh;
   overflow: auto;
   border: 1px solid var(--el-border-color);
+  border-radius: 8px;
+  padding: 16px;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 760px) {
+  .report-hero { flex-direction: column; align-items: flex-start; }
+  .report-filter :deep(.el-form-item) {
+    display: flex;
+    align-items: stretch;
+    flex-direction: column;
+    width: 100%;
+    margin-right: 0;
+  }
+  .report-filter :deep(.el-form-item__label) { width: auto !important; justify-content: flex-start; }
+  .report-filter :deep(.el-form-item__content) { min-width: 0; width: 100%; }
+  .report-filter-control, .report-date-editor { width: 100% !important; max-width: 100%; min-width: 0; }
+  .report-desktop-table { display: none; }
+  .report-mobile-list { display: block; }
+  .report-overview { grid-template-columns: 1fr; gap: 8px; }
+  .report-metric { padding: 12px 14px; }
+  .report-metric strong { font-size: 21px; }
+  .report-actions { gap: 8px; }
+  .preview-wrap { padding: 10px; }
 }
 </style>

@@ -7,6 +7,7 @@ use crate::docker::{
     wait_for_healthy_default, DockerContext,
 };
 use crate::error::{LauncherError, LauncherResult};
+use crate::license::{LicenseManager, LicenseOverview};
 use crate::model::{
     default_service_states, LauncherOverview, LauncherSettings, DELETE_CONFIRMATION, VOLUME_NAMES,
 };
@@ -64,6 +65,73 @@ impl LauncherService {
         load_settings(&self.paths)
     }
 
+    fn licensing(&self) -> LicenseManager {
+        LicenseManager::new(&self.paths, &self.resource_dir)
+    }
+
+    fn configure_license_environment(&self) -> LauncherResult<()> {
+        let env_path = self.paths.env_path();
+        let current = fs::read_to_string(&env_path)?;
+        let mut content = current.lines()
+            .filter(|line| !line.starts_with("REHAB_LICENSE_"))
+            .collect::<Vec<_>>().join("\n");
+        if let Ok(values) = self.licensing().runtime_environment() {
+            content.push('\n');
+            content.push_str(&values);
+        } else if cfg!(feature = "license-required") {
+            return Err(LauncherError::InvalidConfig(
+                "正式授权版本缺少发行商可信公钥，禁止启动".into()));
+        }
+        crate::config::write_private(&env_path, format!("{content}\n").as_bytes())
+    }
+
+    pub fn license_overview(&self) -> LicenseOverview { self.licensing().overview() }
+
+    pub fn begin_license_application(&mut self, organization: String)
+        -> LauncherResult<LicenseOverview> {
+        self.licensing().begin_application(organization)?;
+        Ok(self.license_overview())
+    }
+
+    pub fn submit_license_application(&mut self) -> LauncherResult<LicenseOverview> {
+        self.licensing().submit_application()?;
+        Ok(self.license_overview())
+    }
+
+    pub fn renew_license_online(&mut self) -> LauncherResult<LicenseOverview> {
+        let manager = self.licensing();
+        manager.sync_online()?;
+        if cfg!(feature = "license-required") {
+            manager.prepare_runtime_handoff()?;
+        }
+        Ok(self.license_overview())
+    }
+
+    pub fn check_license_online(&mut self) -> LauncherResult<LicenseOverview> {
+        self.licensing().sync_status()?;
+        Ok(self.license_overview())
+    }
+
+    pub fn import_offline_license(&mut self, path: &Path) -> LauncherResult<LicenseOverview> {
+        if path.extension().and_then(|extension| extension.to_str()) != Some("rehab-license") {
+            return Err(LauncherError::InvalidConfig(
+                "只允许导入 .rehab-license 签名许可证文件".into()));
+        }
+        let bytes = fs::read(path)?;
+        let manager = self.licensing();
+        manager.import_offline_bytes(&bytes)?;
+        if cfg!(feature = "license-required") {
+            manager.prepare_runtime_handoff()?;
+        }
+        Ok(self.license_overview())
+    }
+
+    pub fn prepare_license_replacement(&mut self, tenant_id: String,
+                                       previous_installation_id: String, organization: String)
+        -> LauncherResult<String> {
+        self.licensing().prepare_replacement(tenant_id, previous_installation_id, organization)
+    }
+
     pub fn save_settings(&mut self, settings: LauncherSettings) -> LauncherResult<()> {
         let existing = self.docker_context();
         if let Ok(context) = existing {
@@ -79,6 +147,7 @@ impl LauncherService {
         save_settings(&self.paths, &settings)?;
         let secrets = read_environment_secrets(&self.paths.env_path())?;
         crate::config::write_environment(&self.paths, &settings, &secrets)?;
+        self.configure_license_environment()?;
         Ok(())
     }
 
@@ -91,6 +160,7 @@ impl LauncherService {
         overview.last_error = self.last_error.clone();
         overview.operation = self.operation.clone();
         overview.last_backup_at = latest_backup_time(&self.paths.backups_dir);
+        overview.license = Some(self.licensing().overview());
         match self.docker_context() {
             Ok(context) => {
                 overview.docker_state = "healthy".to_owned();
@@ -98,7 +168,9 @@ impl LauncherService {
                 match read_service_states(self.runner.as_ref(), &context) {
                     Ok(states) => {
                         overview.ready = states.len() == 4
-                            && states.iter().all(|state| state.state == "healthy");
+                            && states.iter().all(|state| state.state == "healthy")
+                            && (!cfg!(feature = "license-required")
+                                || self.licensing().is_active());
                         overview.services = states;
                     }
                     Err(error) => {
@@ -126,6 +198,15 @@ impl LauncherService {
     }
 
     fn start_inner(&mut self) -> LauncherResult<LauncherOverview> {
+        if cfg!(feature = "license-required") {
+            let manager = self.licensing();
+            if !manager.is_active() {
+                return Err(LauncherError::InvalidConfig(
+                    "尚未取得有效工作室许可证，不启动受保护业务服务".into()));
+            }
+            manager.prepare_runtime_handoff()?;
+        }
+        self.configure_license_environment()?;
         self.install_runtime()?;
         let context = self.docker_context()?;
         let current = read_service_states(self.runner.as_ref(), &context).unwrap_or_default();
@@ -158,6 +239,14 @@ impl LauncherService {
     pub fn restart(&mut self) -> LauncherResult<LauncherOverview> {
         self.operation = Some("正在重启服务（保留所有数据卷）".to_owned());
         let result = (|| {
+            if cfg!(feature = "license-required") {
+                let manager = self.licensing();
+                if !manager.is_active() {
+                    return Err(LauncherError::InvalidConfig(
+                        "授权无效，禁止重新启动受保护业务服务".into()));
+                }
+                manager.prepare_runtime_handoff()?;
+            }
             let context = self.docker_context()?;
             run_compose(self.runner.as_ref(), &context, &["restart"])?;
             wait_for_healthy_default(self.runner.as_ref(), &context)?;
@@ -232,6 +321,12 @@ impl LauncherService {
         destination: &Path,
         password: &str,
     ) -> LauncherResult<String> {
+        // L5 must provide a separately authenticated owner-of-clinical-data
+        // recovery/export path. Launcher window access is not sufficient.
+        if cfg!(feature = "license-required") {
+            return Err(LauncherError::InvalidConfig(
+                "正式授权版暂不允许缺少独立管理员重新认证的整店数据迁出".into()));
+        }
         self.operation = Some("正在导出整店加密迁移包（数据库、账号权限和附件）".to_owned());
         let result = (|| {
             validate_transfer_password(password)?;
@@ -265,6 +360,10 @@ impl LauncherService {
         password: &str,
         confirmation: &str,
     ) -> LauncherResult<LauncherOverview> {
+        if cfg!(feature = "license-required") {
+            return Err(LauncherError::InvalidConfig(
+                "正式授权模式暂不允许缺少签名租户绑定的旧版整店覆盖迁移".into()));
+        }
         if confirmation.trim() != IMPORT_CONFIRMATION {
             return Err(LauncherError::InvalidConfig(
                 "覆盖导入确认文字不匹配，未修改任何数据".to_owned(),
@@ -297,6 +396,10 @@ impl LauncherService {
         username: &str,
         password: &str,
     ) -> LauncherResult<LauncherOverview> {
+        if cfg!(feature = "license-required") {
+            return Err(LauncherError::InvalidConfig(
+                "正式授权版管理员账号变更需要独立重新认证及审计，当前发行未获准启用".into()));
+        }
         self.operation = Some("正在更新内置超级管理员账号和密码".to_owned());
         let result = (|| {
             let sql = build_admin_update_sql(username, password)?;
@@ -660,6 +763,10 @@ impl LauncherService {
     }
 
     pub fn delete_all_data(&mut self, confirmation: &str) -> LauncherResult<LauncherOverview> {
+        if cfg!(feature = "license-required") {
+            return Err(LauncherError::InvalidConfig(
+                "正式授权版禁止无双重重新认证的全量数据删除；请使用审核恢复流程".into()));
+        }
         if confirmation.trim() != DELETE_CONFIRMATION {
             return Err(LauncherError::DeleteConfirmationMismatch);
         }
@@ -981,5 +1088,23 @@ mod tests {
     fn import_confirmation_is_exact() {
         assert_eq!(IMPORT_CONFIRMATION, "覆盖导入全部数据");
         assert_ne!(IMPORT_CONFIRMATION, "覆盖导入数据");
+    }
+
+    #[cfg(feature = "license-required")]
+    #[test]
+    fn enforced_release_blocks_business_start_and_dangerous_actions_without_issuer() {
+        let dir = tempdir().unwrap();
+        let paths = AppPaths::from_data_dir(dir.path().join("synthetic-app"));
+        let mut service = LauncherService::new(paths, dir.path().join("resources")).unwrap();
+        // All of these denials occur BEFORE Docker commands are executed.
+        assert!(service.start_inner().is_err());
+        assert!(service.restart().is_err());
+        assert!(service.update_admin_credentials("admin", "SafePassword123").is_err());
+        assert!(service.delete_all_data(DELETE_CONFIRMATION).is_err());
+        assert!(service.export_full_transfer(
+            &dir.path().join("synthetic.rehab-transfer"), "SyntheticPassphrase123").is_err());
+        assert!(service.import_full_transfer(
+            &dir.path().join("synthetic.rehab-transfer"),
+            "SyntheticPassphrase123", IMPORT_CONFIRMATION).is_err());
     }
 }

@@ -1,0 +1,21 @@
+{
+  "mode": "tailscale-private-serve",
+  "publicInternet": false,
+  "organizationMfaEnforced": true,
+  "requireDeviceApproval": true,
+  "requireDevicePosture": true,
+  "revokeLostDevices": true,
+  "explicitStaffAcl": true,
+  "patientDataToOwnerControlPlane": false,
+  "requireJavaTenantRbac": true,
+  "requireSignedStudioLicense": true,
+  "auditGateways": true,
+  "shortBrowserSessions": true,
+  "bindAddress": "127.0.0.1",
+  "localHttpsPort": 8443,
+  "allowedRemoteGroups": ["group:rehab-staff"],
+  "ownerGatewaySharedWithPatient": false,
+  "exportDatabasePort": false,
+  "exportRedisPort": false,
+  "allowUnauthenticatedFallback": false
+}

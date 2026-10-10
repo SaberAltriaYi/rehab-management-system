@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use crate::license::LicenseOverview;
 
 pub const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
 pub const APP_IDENTIFIER: &str = "com.saberaltriayi.rehab";
@@ -54,6 +55,8 @@ pub struct LauncherOverview {
     pub operation: Option<String>,
     pub ready: bool,
     pub first_login_password: Option<String>,
+    pub license: Option<LicenseOverview>,
+    pub release_requires_license: bool,
 }
 
 impl LauncherOverview {
@@ -70,6 +73,8 @@ impl LauncherOverview {
             operation: None,
             ready: false,
             first_login_password: None,
+            license: None,
+            release_requires_license: cfg!(feature = "license-required"),
         }
     }
 }

@@ -1,6 +1,7 @@
 mod config;
 mod docker;
 mod error;
+mod license;
 mod model;
 mod runner;
 mod runtime;
@@ -9,6 +10,7 @@ mod single_instance;
 mod transfer;
 
 use config::AppPaths;
+use license::LicenseOverview;
 use model::{LauncherOverview, LauncherSettings};
 use service::LauncherService;
 use std::sync::Mutex;
@@ -34,6 +36,55 @@ fn get_settings(state: State<'_, LauncherState>) -> Result<LauncherSettings, Str
         .map_err(|_| "启动器状态锁异常".to_owned())?
         .settings()
         .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn get_license_overview(state: State<'_, LauncherState>) -> Result<LicenseOverview, String> {
+    Ok(state.0.lock().map_err(|_| "启动器状态锁异常".to_owned())?.license_overview())
+}
+
+#[tauri::command]
+fn begin_license_application(
+    state: State<'_, LauncherState>, organization: String
+) -> Result<LicenseOverview, String> {
+    state.0.lock().map_err(|_| "启动器状态锁异常".to_owned())?
+        .begin_license_application(organization).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn submit_license_application(state: State<'_, LauncherState>) -> Result<LicenseOverview, String> {
+    state.0.lock().map_err(|_| "启动器状态锁异常".to_owned())?
+        .submit_license_application().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn renew_license_online(state: State<'_, LauncherState>) -> Result<LicenseOverview, String> {
+    state.0.lock().map_err(|_| "启动器状态锁异常".to_owned())?
+        .renew_license_online().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn check_license_online(state: State<'_, LauncherState>) -> Result<LicenseOverview, String> {
+    state.0.lock().map_err(|_| "启动器状态锁异常".to_owned())?
+        .check_license_online().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn import_offline_license(
+    state: State<'_, LauncherState>, path: String
+) -> Result<LicenseOverview, String> {
+    state.0.lock().map_err(|_| "启动器状态锁异常".to_owned())?
+        .import_offline_license(std::path::Path::new(&path)).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn prepare_license_replacement(
+    state: State<'_, LauncherState>,
+    tenant_id: String, previous_installation_id: String, organization: String
+) -> Result<String, String> {
+    state.0.lock().map_err(|_| "启动器状态锁异常".to_owned())?
+        .prepare_license_replacement(tenant_id, previous_installation_id, organization)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -239,6 +290,13 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             get_overview,
+            get_license_overview,
+            begin_license_application,
+            submit_license_application,
+            renew_license_online,
+            check_license_online,
+            import_offline_license,
+            prepare_license_replacement,
             get_settings,
             save_settings,
             start_services,

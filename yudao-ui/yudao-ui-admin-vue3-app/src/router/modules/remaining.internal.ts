@@ -98,6 +98,26 @@ const remainingRouter: AppRouteRecordRaw[] = [
     ]
   },
   {
+    path: '/studio',
+    component: Layout,
+    name: 'StudioLicenseLayout',
+    meta: { hidden: true },
+    children: [
+      {
+        path: 'license',
+        component: () => import('@/views/system/studioLicense/index.vue'),
+        name: 'StudioLicenseAndStaff',
+        meta: {
+          title: '工作室员工与许可证',
+          icon: 'ep:office-building',
+          noCache: true,
+          canTo: true,
+          hidden: true
+        }
+      }
+    ]
+  },
+  {
     path: '/rehab',
     component: Layout,
     name: 'rehab',

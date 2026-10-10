@@ -20,6 +20,7 @@ const image = 'mysql:8.4.10@sha256:8dbcf531a03aade657e181b9cf2f1d1803ce621a1d556
 const container = `rehab-desktop-bootstrap-${process.pid}-${randomBytes(6).toString('hex')}`
 const rootPassword = randomBytes(32).toString('base64url')
 const database = 'ruoyi-vue-pro'
+let containerStarted = false
 // A fresh install baselines only immutable migrations 001-019. Later
 // additive migrations must not be marked as applied until actually executed.
 const expectedSchemaHistoryCount = 19
@@ -75,8 +76,22 @@ function run(args, options = {}) {
 function removeContainer() {
   spawnSync(docker, ['rm', '--force', container], {
     cwd: projectRoot,
-    stdio: 'ignore'
+    stdio: 'ignore',
+    timeout: 10_000
   })
+}
+
+function assertDockerDaemonReady() {
+  // Probe before any container is created. A stale Docker Desktop Unix socket
+  // can accept connections while the daemon never responds, hanging the build.
+  const probe = spawnSync(docker, ['version', '--format', '{{.Server.Version}}'], {
+    cwd: projectRoot,
+    encoding: 'utf8',
+    timeout: 12_000
+  })
+  if (probe.error || probe.status !== 0 || !String(probe.stdout || '').trim()) {
+    throw new Error('DOCKER_DAEMON_UNAVAILABLE: Docker 服务未就绪，未执行任何初始化 SQL；请先恢复 Docker Desktop')
+  }
 }
 
 function waitForMySql() {
@@ -208,6 +223,7 @@ try {
   // A failed generation must not leave the previous default snapshot available
   // for a later desktop package. Explicit --output paths are caller-managed.
   if (output === defaultOutput) rmSync(output, { force: true })
+  assertDockerDaemonReady()
   run([
     'run',
     '--detach',
@@ -223,6 +239,7 @@ try {
     '--collation-server=utf8mb4_unicode_ci',
     '--default-time-zone=+08:00'
   ])
+  containerStarted = true
   waitForMySql()
   for (const relativePath of initializationScripts) applySql(relativePath)
 
@@ -256,5 +273,5 @@ try {
   process.stdout.write(`已生成脱敏数据库快照：${basename(output)}\n`)
 } finally {
   rmSync(temporaryOutput, { force: true })
-  removeContainer()
+  if (containerStarted) removeContainer()
 }

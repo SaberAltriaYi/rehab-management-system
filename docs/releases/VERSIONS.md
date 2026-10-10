@@ -17,7 +17,18 @@ git switch --detach <标签>
 | 局域网一键部署 RC | `lan-v1.1.0-rc.1`（规范名）/ `rehab-lan-v1.1.0-rc1`（已发布旧名） | e4b3ee0 | 2026-07-30 | `rehab-management-rehab-lan-v1.1.0-rc1.tar.gz`<br>SHA-256 `fa59d39b270dc17836fc6bd23a706e6eeb18291075331b603c35bfdf9c49d1c4` |
 | 局域网 v1.0.1 | 暂无（对应提交待确认） | 待确认 | 2026-07-31 | `rehab-management-rehab-lan-v1.0.1-20260731.tar.gz`<br>SHA-256 `2e9019b62a7b4a6aaad3318ba7f17de510529180050906dadf644f42d88e7ca8` |
 | 软著基线 | `copyright-v1.0.0` | 799c116 | 2026-07-31 | 见 `docs/software-copyright/v1.0/` |
-| 桌面预览 1–4 | `desktop-v1.0.0-preview.1` … `.4` | — | 2026-07-31 至 2026-09-24 | 见 GitHub Releases（preview.4 为 Draft） |
+| 桌面预览 1–4 | `desktop-v1.0.0-preview.1` … `.4` | — | 2026-07-31 至 2026-09-24 | 见 GitHub Releases（preview.4 为 Draft；preview.1 安装包已撤下，见下） |
+| L0–L6 授权/零信任研发候选（未发行） | **暂不创建发行标签** | `master@3d778538a3` 为研发前基线；实际提交待确认 | 2026-10-10 | 不等于既有 v1.0.0 安装包；需新版本、签名和全部安全门禁才能正式发行 |
+
+### 最早桌面预览版撤包记录（2026-10-08）
+
+`desktop-v1.0.0-preview.1` 于 2026-07-31 首次公开发布。2026-10-08 根据项目负责人要求，仅从该 GitHub Release 删除以下附件：
+
+- `rehab-management-system_1.0.0_macos-universal_unsigned.dmg`（157,903,942 bytes）
+- `rehab-management-system_1.0.0_windows-x64_unsigned-setup.exe`（148,923,580 bytes）
+- `SHA256SUMS.txt`（关联安装包已撤下，故校验清单一并撤下）
+
+已确认发布记录和两个 `BUILD-INFO-*.txt` 仍保留；Git 标签/提交、`preview.2`、`preview.3`、`preview.4` 与本地历史归档没有删除。`README.md` 继续链接 `preview.3` 供可信内部测试；所有预览版均不得视作已签名、已公证的正式发行版本。
 
 ## 历史归档标签（`archive/YYYY-MM-DD/用途`）
 

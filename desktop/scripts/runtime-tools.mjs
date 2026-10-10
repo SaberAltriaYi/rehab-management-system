@@ -3,6 +3,7 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { verifyFrontendReceipt } from './frontend-receipt.mjs'
 import {
+  chmodSync,
   cpSync,
   existsSync,
   lstatSync,
@@ -61,11 +62,45 @@ export function listFiles(root) {
   return result
 }
 
+// Frontend output is public content served by Nginx's unprivileged worker.
+// A locked-down build umask (e.g. 077) must not turn copied assets into 0600
+// files / 0700 directories. Never change the original dist-internal inputs.
+function visitPublicWeb(root, callback) {
+  function visit(path) {
+    const stat = lstatSync(path)
+    if (stat.isSymbolicLink()) throw new Error(`运行资源不允许前端符号链接：${path}`)
+    if (stat.isDirectory()) {
+      callback(path, true, stat)
+      for (const entry of readdirSync(path)) visit(join(path, entry))
+    } else if (stat.isFile()) {
+      callback(path, false, stat)
+    } else {
+      throw new Error(`运行资源不允许前端特殊文件：${path}`)
+    }
+  }
+  visit(root)
+}
+
+function normalizePublicWebPermissions(root) {
+  visitPublicWeb(root, (path, directory) => chmodSync(path, directory ? 0o755 : 0o644))
+}
+
+function verifyPublicWebPermissions(root) {
+  if (process.platform === 'win32') return // Windows ACLs do not map to POSIX file modes.
+  visitPublicWeb(root, (path, directory, stat) => {
+    const expected = directory ? 0o755 : 0o644
+    if ((stat.mode & 0o777) !== expected) {
+      throw new Error(`管理端静态资源权限异常（Nginx 不可读取）：${relative(root, path)}`)
+    }
+  })
+}
+
 export function validateRuntime(root) {
   for (const required of REQUIRED_FILES) {
     if (!existsSync(join(root, required))) throw new Error(`运行资源缺少：${required}`)
   }
   const files = listFiles(root)
+  verifyPublicWebPermissions(join(root, 'admin/web'))
   for (const absolute of files) {
     const normalized = relative(root, absolute).split(sep)
     if (normalized.some((part) => forbiddenNames.has(part))) {
@@ -175,6 +210,7 @@ export function buildRuntime({ projectRoot, outputRoot, commitSha }) {
       join(staging, 'admin/web'),
       { recursive: true }
     )
+    normalizePublicWebPermissions(join(staging, 'admin/web'))
     mkdirSync(join(staging, 'sql'), { recursive: true })
     cpSync(
       resolve(projectRoot, 'desktop/build/desktop-bootstrap.sql'),

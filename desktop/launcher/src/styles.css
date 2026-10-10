@@ -65,6 +65,7 @@ button.danger {
 .hero,
 .docker-panel,
 .details,
+.license-panel,
 .error,
 .first-login,
 .danger-zone,
@@ -150,6 +151,54 @@ h1 {
 
 .service-name {
   font-weight: 700;
+}
+
+.license-panel {
+  margin-top: 16px;
+  padding: 20px;
+}
+
+.license-panel > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.license-state {
+  border-radius: 999px;
+  padding: 6px 12px;
+  background: #e5efe9;
+  color: #246c5b;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.license-panel > p {
+  margin: 10px 0;
+  line-height: 1.55;
+}
+
+.license-panel .license-hint {
+  color: #667d75;
+  font-size: 13px;
+}
+
+.license-fields {
+  margin-top: 14px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 24px;
+}
+
+.license-fields > div {
+  grid-template-columns: 88px minmax(0, 1fr);
+  font-size: 13px;
+}
+
+.license-actions button {
+  flex: 1;
+  min-width: 156px;
 }
 
 .status {

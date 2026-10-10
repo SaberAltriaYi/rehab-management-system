@@ -2,6 +2,15 @@
   <doc-alert title="用户体系" url="https://doc.iocoder.cn/user-center/" />
   <doc-alert title="三方登陆" url="https://doc.iocoder.cn/social-user/" />
   <doc-alert title="Excel 导入导出" url="https://doc.iocoder.cn/excel-import-and-export/" />
+  <el-alert
+    title="工作室签名授权与员工席位" type="info" :closable="false" class="mb-4">
+    <template #default>
+      <span>许可证只由软件所有者签发；员工创建和启用同时受到服务端租户权限与签名席位上限约束。</span>
+      <el-button
+        v-if="checkPermi(['system:user:query'])" link type="primary"
+        @click="router.push('/studio/license')">查看工作室许可与席位</el-button>
+    </template>
+  </el-alert>
 
   <el-row :gutter="20">
     <!-- 左侧部门树 -->
@@ -224,6 +233,7 @@ import DeptTree from './DeptTree.vue'
 defineOptions({ name: 'SystemUser' })
 
 const message = useMessage() // 消息弹窗
+const router = useRouter()
 const { t } = useI18n() // 国际化
 
 const loading = ref(true) // 列表的加载中

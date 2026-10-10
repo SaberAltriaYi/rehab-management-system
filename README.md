@@ -2,7 +2,9 @@
 
 简称：**康复管理系统**
 
-版本：**V1.0 / 1.0.0**
+历史桌面基线：**V1.0 / 1.0.0**
+
+**2026-10-10 L0–L6 安全研发候选（尚未正式发行）：**本工作树在旧版 1.0.0 上增加软件所有者授权、工作室/员工席位、桌面激活及私有零信任远程接入安全预检。**旧版桌面安装包不包含这些能力**；现有 P0 14 项门禁与授权发行 3 项阻断尚未解除，不能把本次源码构建理解为新一代正式商业安装包。完整阶段测试、未完成生产验收与原因分别参见 [L5 交接](docs/releases/TENANT_LICENSE_L5_E2E_RELEASE_GATES_20261010.md)、[L6 私有远程访问](desktop/remote-access/README.md) 和 [历史版本清单](docs/releases/VERSIONS.md)。
 
 这是一个面向运动康复工作室内部使用的本地管理系统，覆盖患者建档、康复周期、评估、报告、
 训练计划、训练执行、进度追踪、风险提醒、随访和复评等业务。
@@ -10,14 +12,19 @@
 项目基于芋道 `ruoyi-vue-pro` 二次开发。康复业务、桌面启动器、内部部署、安全加固和发布流程
 由本项目补充；上游作者、版权信息及 MIT License 保持不变。
 
+**项目当前待办、运动学引擎本地/云端职责及 OpenCap → OpenSim 分阶段集成建议**：
+[康复管理系统待完成工作与 OpenSim 集成路线图（2026-10-08）](docs/rehab-completion-and-opensim-plan-2026-10-08.md)。
+
+青少年专业评估报告生产边界与 B 版待建清单：[青少年 B 版报告契约](docs/report/adolescent-b-v1-contract.md)。当前 V4.1 自动报告仍为**原始资料汇总**，不能直接替代治疗师完成的正式 B 版报告。
+
 > 本系统用于康复评估和业务记录，不替代医疗诊断。当前版本默认关闭 AI、商城、支付、IoT、
 > BPM 等未交付模块，不包含遥测、广告、第三方统计或患者数据云上传。
 
 ## 下载桌面安装包
 
-桌面测试版发布页：
+**历史桌面测试版**发布页（仅用于既有旧版本追溯，不是此次 L6 构建）：
 
-[下载康复管理系统 V1.0 桌面预发布版 preview.3](https://github.com/SaberAltriaYi/rehab-management-system/releases/tag/desktop-v1.0.0-preview.3)
+[历史预览版 preview.3 — 未包含 L0–L6 授权安全功能](https://github.com/SaberAltriaYi/rehab-management-system/releases/tag/desktop-v1.0.0-preview.3)
 
 | 平台 | 安装包 | 支持范围 |
 | --- | --- | --- |
@@ -29,12 +36,18 @@
 
 ### 当前预发布版说明
 
-当前安装包尚未完成 Windows Authenticode 签名和 Apple Developer ID 公证，因此文件名带
+上述**历史**安装包尚未完成 Windows Authenticode 签名和 Apple Developer ID 公证，因此文件名带
 `_unsigned`，Windows SmartScreen 或 macOS Gatekeeper 可能显示安全提醒。它们只用于可信
 工作室内部测试，不建议作为公开生产发行包传播。
 
 下载后请同时下载发布页中的 `SHA256SUMS.txt` 并校验文件。不要使用来源不明或校验不一致的
 安装包。
+
+### L6 新版本与安全发行状态
+
+为了区分历史版本，本轮使用独立的 L6 源码研发候选，不复用或覆盖原有 preview.1–preview.4 Git 标签。**尚未创建新的正式测试版 Release 或公开可安装附件**；在所有 P0、所有者发行公钥/HTTPS、许可证 SQL 正式迁移、Windows 代码签名、macOS Developer ID 公证、浏览器/设备 MFA 和合法临床数据恢复等安全条件满足前，继续保持 NO-GO。
+
+新版工作室远程访问计划采用 **私有 tailnet、组织 SSO MFA、设备准入和最小 ACL**，不得使用 Funnel，也不得公开暴露 MySQL/Redis/Java/许可证中心。当前交付的是本地 fail-closed 校验代码与测试，**不是实际配置完成的安全远程网关**。详情见 [L6 接入说明](desktop/remote-access/README.md)。
 
 ## iOS、Android 与微信小程序
 

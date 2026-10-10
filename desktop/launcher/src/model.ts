@@ -19,6 +19,60 @@ export interface LauncherOverview {
   operation: string | null
   ready: boolean
   firstLoginPassword?: string | null
+  license?: LicenseOverview | null
+  releaseRequiresLicense?: boolean
+}
+
+export type LicenseStatus =
+  | 'UNLICENSED' | 'PENDING' | 'ACTIVE' | 'GRACE'
+  | 'EXPIRED' | 'SUSPENDED' | 'REVOKED' | 'REPLACED' | 'INVALID'
+
+export interface LicenseOverview {
+  status: LicenseStatus
+  detail: string
+  tenantId: string | null
+  installationId: string | null
+  organization: string | null
+  applicationId: string | null
+  expiry: string | null
+  seatLimit: number | null
+  modules: string[]
+  pendingReplacement: boolean
+  publisherConfigured: boolean
+  localVerificationOnly: boolean
+}
+
+export function licenseLabel(status: LicenseStatus): string {
+  const labels: Record<LicenseStatus, string> = {
+    UNLICENSED: '尚未授权',
+    PENDING: '等待审批',
+    ACTIVE: '签名许可有效',
+    GRACE: '离线有效期内',
+    EXPIRED: '许可证已到期',
+    SUSPENDED: '许可证已暂停',
+    REVOKED: '许可证已撤销',
+    REPLACED: '安装实例已更换',
+    INVALID: '许可证无效'
+  }
+  return labels[status]
+}
+
+export function licenseAllowsBusiness(license: LicenseOverview | null | undefined): boolean {
+  return license?.status === 'ACTIVE' || license?.status === 'GRACE'
+}
+
+export function licenseExpiryNotice(
+  license: LicenseOverview | null | undefined, nowMs = Date.now()
+): string | null {
+  if (!license?.expiry || !licenseAllowsBusiness(license)) return null
+  const end = Date.parse(license.expiry)
+  if (!Number.isFinite(end)) return '授权到期时间格式异常，请重新核验许可证'
+  const remainingMs = end - nowMs
+  if (remainingMs <= 0) return '许可证已到期，须获得所有者重新授权'
+  if (remainingMs > 7 * 24 * 60 * 60 * 1000) return null
+  const hours = Math.ceil(remainingMs / (60 * 60 * 1000))
+  return hours <= 24 ? `授权约 ${hours} 小时后到期，请及时续签`
+    : `授权约 ${Math.ceil(hours / 24)} 天后到期，请及时续签`
 }
 
 export interface LauncherSettings {
@@ -44,7 +98,9 @@ export const EMPTY_OVERVIEW: LauncherOverview = {
   lastError: null,
   operation: null,
   ready: false,
-  firstLoginPassword: null
+  firstLoginPassword: null,
+  license: null,
+  releaseRequiresLicense: false
 }
 
 export function redactDiagnosticText(value: string): string {

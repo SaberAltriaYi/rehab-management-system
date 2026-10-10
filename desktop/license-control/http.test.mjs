@@ -1,0 +1,291 @@
+import assert from 'node:assert/strict'
+import { after, before, test } from 'node:test'
+import { generateKeyPairSync, randomBytes, randomUUID, sign, verify, createPublicKey } from 'node:crypto'
+import { mkdtempSync, rmSync, readFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { execFileSync } from 'node:child_process'
+import https from 'node:https'
+import { OwnerLicenseStore } from './store.mjs'
+import { OwnerLicensingService } from './service.mjs'
+import { SecretVault, totpAt } from './security.mjs'
+import { createOwnerControlServer } from './http.mjs'
+import { enrollmentMessage, renewalMessage } from '../scripts/tenant-license-owner-core.mjs'
+import { verifyTenantLicenseLease } from '../scripts/tenant-license-lease.mjs'
+
+const DEVICE = generateKeyPairSync('ed25519')
+const TENANT = randomUUID()
+const INSTALL = randomUUID()
+const ADMIN_PASSWORD = 'Synthetic-Only-Owner-Password-123!'
+let temp, store, service, server, url, mfaSeed, sessionToken
+const now = () => Date.now()
+before(async () => {
+  temp = mkdtempSync(join(tmpdir(), 'rehab-owner-http-test-'))
+  store = new OwnerLicenseStore(join(temp, 'owner.sqlite'))
+  service = new OwnerLicensingService(store, new SecretVault(randomBytes(32)))
+  mfaSeed = (await service.provisionOwner({
+    username: 'owneradmin', password: ADMIN_PASSWORD, nowMs: now()
+  })).mfaSecret
+  server = createOwnerControlServer(service, {
+    allowInsecureLoopbackForTests: true,
+    permittedBrowserOrigin: 'https://owner.example.invalid'
+  })
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
+  url = `http://127.0.0.1:${server.address().port}`
+})
+after(async () => {
+  if (server?.listening) await new Promise(resolve => server.close(resolve))
+  store?.close()
+  if (temp) rmSync(temp, { recursive: true, force: true })
+})
+async function api(path, { method = 'GET', body, token, headers = {} } = {}) {
+  const res = await fetch(url + path, {
+    method,
+    headers: {
+      ...(body === undefined ? {} : { 'content-type': 'application/json' }),
+      ...(token ? { authorization: `Bearer ${token}` } : {}),
+      ...headers
+    },
+    ...(body === undefined ? {} : {
+      body: typeof body === 'string' ? body : JSON.stringify(body)
+    })
+  })
+  return { status: res.status, body: await res.json(), headers: res.headers }
+}
+test('owner console assets are same-origin, CSP-hardened and contain no secrets', async () => {
+  const html = await fetch(url + '/owner/console')
+  assert.equal(html.status, 200)
+  assert.match(html.headers.get('content-security-policy'), /default-src 'none'/)
+  assert.match(html.headers.get('content-security-policy'), /connect-src 'self'/)
+  assert.equal(html.headers.get('cache-control'), 'no-store')
+  const body = await html.text()
+  assert.match(body, /软件所有者授权管理台/)
+  assert.match(body, /name="unlimited" type="checkbox" checked/,
+    'Default license must explicitly sign unlimited staff seats')
+  assert.match(body, /id="rotate"[^>]*disabled/, 'UI must not rotate an undistributed signer')
+  assert.doesNotMatch(body, /<script(?![^>]*src=)/)
+  for (const asset of ['/owner/console/app.mjs', '/owner/console/policy.mjs',
+    '/owner/console/styles.css']) {
+    const result = await fetch(url + asset)
+    assert.equal(result.status, 200, asset)
+    assert.equal(result.headers.get('x-content-type-options'), 'nosniff')
+    if (asset.endsWith('/app.mjs')) {
+      const browserScript = await result.text()
+      assert.doesNotMatch(browserScript, /api\('\/owner\/v1\/signing-keys\/rotate'/)
+      assert.doesNotMatch(browserScript, /\b(?:localStorage|sessionStorage)\s*[.\[]/)
+    }
+  }
+  assert.equal((await api('/owner/console/hack.js')).status, 404)
+  assert.equal((await api('/owner/console', { method: 'POST', body: {} })).status, 405)
+  assert.equal((await api('/owner/console/app.mjs', {
+    headers: { origin: 'https://evil.example.invalid' }
+  })).status, 403)
+  assert.equal((await api('/owner/v1/audit')).status, 401)
+})
+test('HTTP API is inaccessible as an owner without TOTP session', async () => {
+  const denied = await api('/owner/v1/applications')
+  assert.equal(denied.status, 401)
+  assert.equal(denied.body.error, 'OWNER_UNAUTHORIZED')
+  const login = await api('/owner/v1/login', {
+    method: 'POST', body: {
+      username: 'owneradmin', password: ADMIN_PASSWORD,
+      totp: totpAt(mfaSeed, Math.floor(now() / 30_000))
+    }
+  })
+  assert.equal(login.status, 200, JSON.stringify(login.body))
+  sessionToken = login.body.token
+  assert.match(sessionToken, /^[A-Za-z0-9_-]{43}$/)
+  assert.equal(login.headers.get('cache-control'), 'no-store')
+  assert.equal((await api('/owner/v1/applications', { token: sessionToken })).status, 200)
+})
+test('CORS, unknown fields, payload length and alternate HTTP content types fail closed', async () => {
+  assert.equal((await api('/owner/v1/applications', {
+    token: sessionToken, headers: { origin: 'https://evil.example.invalid' }
+  })).status, 403)
+  assert.equal((await api('/owner/v1/applications', {
+    token: sessionToken, headers: { origin: 'https://owner.example.invalid' }
+  })).status, 200)
+  const unknown = await api('/owner/v1/signing-keys/rotate', {
+    method: 'POST', token: sessionToken, body: { admin: true }
+  })
+  assert.equal(unknown.status, 400)
+  assert.equal(unknown.body.error, 'UNRECOGNIZED_INPUT_FIELD')
+  const invalidMedia = await api('/owner/v1/signing-keys/rotate', {
+    method: 'POST', token: sessionToken,
+    body: '{}', headers: { 'content-type': 'text/plain' }
+  })
+  assert.equal(invalidMedia.status, 400)
+  const big = await api('/owner/v1/signing-keys/rotate', {
+    method: 'POST', token: sessionToken, body: { x: 'x'.repeat(17_000) }
+  })
+  assert.equal(big.status, 400)
+  assert.equal(big.body.error, 'BODY_TOO_LARGE')
+})
+test('owner controls cryptographic signer, pending studio cannot renew', async () => {
+  const rotate = await api('/owner/v1/signing-keys/rotate', {
+    method: 'POST', token: sessionToken, body: {}
+  })
+  assert.equal(rotate.status, 200)
+  assert.match(rotate.body.kid, /^owner-/)
+  const app = await api('/license/v1/applications', {
+    method: 'POST', body: {
+      tenantId: TENANT, installationId: INSTALL,
+      installationPublicKeyPem: DEVICE.publicKey.export({ format: 'pem', type: 'spki' }),
+      possessionSignature: sign(null, enrollmentMessage(TENANT, INSTALL),
+        DEVICE.privateKey).toString('base64url'),
+      organization: '合成网络测试工作室'
+    }
+  })
+  assert.equal(app.status, 201, JSON.stringify(app.body))
+  const unlicensed = await api('/license/v1/challenges', {
+    method: 'POST', body: { tenantId: TENANT, installationId: INSTALL }
+  })
+  assert.equal(unlicensed.status, 409)
+  const pending = await api('/owner/v1/applications', { token: sessionToken })
+  assert.equal(pending.body.applications[0].status, 'PENDING')
+  const unauthApproval = await api('/owner/v1/applications/' + app.body.applicationId + '/approve', {
+    method: 'POST', body: {
+      policy: { expiresAtMs: now() + 86_400_000, seatLimit: 6,
+        maxInstallations: 1, modules: ['rehab', 'report'] }
+    }
+  })
+  assert.equal(unauthApproval.status, 401)
+  const approved = await api('/owner/v1/applications/' + app.body.applicationId + '/approve', {
+    method: 'POST', token: sessionToken, body: {
+      reason: 'Synthetic approval',
+      policy: { expiresAtMs: now() + 86_400_000, seatLimit: 6,
+        maxInstallations: 1, modules: ['rehab', 'report'] }
+    }
+  })
+  assert.equal(approved.status, 200, JSON.stringify(approved.body))
+})
+test('real loopback HTTP sequence: owner approval -> challenge -> signed issue -> verification', async () => {
+  const challenge = await api('/license/v1/challenges', {
+    method: 'POST', body: { tenantId: TENANT, installationId: INSTALL }
+  })
+  assert.equal(challenge.status, 200)
+  const online = await api('/license/v1/leases/online', {
+    method: 'POST', body: {
+      tenantId: TENANT, installationId: INSTALL, nonce: challenge.body.nonce,
+      possessionSignature: sign(null,
+        renewalMessage(challenge.body.nonce, TENANT, INSTALL),
+        DEVICE.privateKey).toString('base64url')
+    }
+  })
+  assert.equal(online.status, 200, JSON.stringify(online.body))
+  const issuer = await api('/license/v1/issuers')
+  assert.equal(issuer.status, 200)
+  const signed = verifyTenantLicenseLease(online.body.token, {
+    tenantId: TENANT, installationId: INSTALL, nowMs: now(),
+    minimumRevocationEpoch: 0, lastTrustedTimeMs: now(),
+    trustedKeys: new Map(issuer.body.issuers.map(x => [x.kid, createPublicKey(x.publicKeyPem)]))
+  })
+  assert.equal(signed.seatLimit, 6)
+  assert.equal(signed.mode, 'online')
+  const snapshot = online.body.statusProof.split('.')
+  assert.equal(snapshot[0], 'RHR1')
+  assert.equal(snapshot.length, 4)
+  const ownerKey = issuer.body.issuers.find(x => x.kid === snapshot[1])
+  assert.ok(ownerKey)
+  assert.equal(verify(null, Buffer.from(snapshot.slice(0, 3).join('.')),
+    createPublicKey(ownerKey.publicKeyPem),
+    Buffer.from(snapshot[3], 'base64url')), true)
+  assert.equal(JSON.parse(Buffer.from(snapshot[2], 'base64url').toString()).status, 'ACTIVE')
+  const replay = await api('/license/v1/leases/online', {
+    method: 'POST', body: {
+      tenantId: TENANT, installationId: INSTALL, nonce: challenge.body.nonce,
+      possessionSignature: sign(null,
+        renewalMessage(challenge.body.nonce, TENANT, INSTALL),
+        DEVICE.privateKey).toString('base64url')
+    }
+  })
+  assert.equal(replay.status, 400)
+  assert.equal(replay.body.error, 'INVALID_CHALLENGE')
+})
+test('owner can sign offline file, revoke studio and inspect private audit (not public)', async () => {
+  const offline = await api('/owner/v1/leases/offline', {
+    method: 'POST', token: sessionToken, body: { tenantId: TENANT, installationId: INSTALL }
+  })
+  assert.equal(offline.status, 200)
+  const readBefore = await api('/owner/v1/tenants/' + TENANT, { token: sessionToken })
+  assert.equal(readBefore.body.tenant.status, 'ACTIVE')
+  const revoked = await api('/owner/v1/tenants/' + TENANT + '/status', {
+    method: 'POST', token: sessionToken, body: { status: 'REVOKED' }
+  })
+  assert.equal(revoked.status, 200)
+  const signedRevocation = await api('/license/v1/status', {
+    method: 'POST', body: { tenantId: TENANT, installationId: INSTALL }
+  })
+  assert.equal(signedRevocation.status, 200)
+  const signedParts = signedRevocation.body.statusProof.split('.')
+  const signedState = JSON.parse(Buffer.from(signedParts[2], 'base64url').toString())
+  assert.equal(signedState.status, 'REVOKED')
+  assert.ok(signedState.revocationEpoch >= 1)
+  const signer = service.trustedIssuerKeys().find(x => x.kid === signedParts[1])
+  assert.equal(verify(null, Buffer.from(signedParts.slice(0, 3).join('.')),
+    createPublicKey(signer.publicKeyPem),
+    Buffer.from(signedParts[3], 'base64url')), true)
+  const denied = await api('/license/v1/challenges', {
+    method: 'POST', body: { tenantId: TENANT, installationId: INSTALL }
+  })
+  assert.equal(denied.status, 409)
+  assert.equal((await api('/owner/v1/audit')).status, 401)
+  const audit = await api('/owner/v1/audit', { token: sessionToken })
+  assert.equal(audit.status, 200)
+  assert.ok(audit.body.audit.some(x => x.action === 'TENANT_REVOKED'))
+  assert.ok(store.verifyAuditChain())
+})
+test('checkpoint API is owner-only, emergency key revocation removes issuer immediately', async () => {
+  assert.equal((await api('/owner/v1/audit/checkpoint', { method: 'POST', body: {} })).status, 401)
+  const checkpoint = await api('/owner/v1/audit/checkpoint', {
+    method: 'POST', token: sessionToken, body: {}
+  })
+  assert.equal(checkpoint.status, 200)
+  assert.equal(checkpoint.body.checkpoint.split('.').length, 4)
+  const publicKeys = await api('/license/v1/issuers')
+  assert.equal(publicKeys.body.issuers.length, 1)
+  const revokedKey = await api('/owner/v1/signing-keys/' + publicKeys.body.issuers[0].kid +
+    '/emergency-revoke', {
+    method: 'POST', token: sessionToken, body: {}
+  })
+  assert.equal(revokedKey.status, 200)
+  assert.equal(revokedKey.body.status, 'RETIRED')
+  assert.deepEqual((await api('/license/v1/issuers')).body.issuers, [])
+  assert.equal(store.verifyAuditChain(), true)
+})
+test('owner logout invalidates bearer', async () => {
+  const end = await api('/owner/v1/logout', { method: 'POST', token: sessionToken, body: {} })
+  assert.equal(end.status, 200)
+  assert.equal((await api('/owner/v1/audit', { token: sessionToken })).status, 401)
+})
+test('actual TLS listener authenticates a pinned self-signed test certificate', async () => {
+  const cert = join(temp, 'synthetic-server.crt')
+  const key = join(temp, 'synthetic-server.key')
+  execFileSync('openssl', [
+    'req', '-x509', '-newkey', 'ed25519', '-nodes',
+    '-keyout', key, '-out', cert, '-days', '1', '-subj', '/CN=localhost',
+    '-addext', 'subjectAltName=IP:127.0.0.1,DNS:localhost'
+  ], { stdio: 'ignore' })
+  const secureServer = createOwnerControlServer(service, {
+    tlsOptions: {
+      cert: readFileSync(cert), key: readFileSync(key), minVersion: 'TLSv1.2'
+    }
+  })
+  await new Promise(resolve => secureServer.listen(0, '127.0.0.1', resolve))
+  try {
+    const response = await new Promise((resolve, reject) => {
+      https.get({
+        hostname: '127.0.0.1', port: secureServer.address().port, path: '/health',
+        ca: readFileSync(cert), rejectUnauthorized: true
+      }, res => {
+        let body = ''
+        res.on('data', c => { body += c })
+        res.on('end', () => resolve({ status: res.statusCode, json: JSON.parse(body) }))
+      }).on('error', reject)
+    })
+    assert.equal(response.status, 200)
+    assert.equal(response.json.status, 'ok')
+  } finally {
+    await new Promise(resolve => secureServer.close(resolve))
+  }
+})

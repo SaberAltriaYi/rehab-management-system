@@ -23,6 +23,9 @@ import cn.iocoder.yudao.module.system.dal.mysql.oauth2.OAuth2AccessTokenMapper;
 import cn.iocoder.yudao.module.system.dal.mysql.oauth2.OAuth2RefreshTokenMapper;
 import cn.iocoder.yudao.module.system.dal.redis.oauth2.OAuth2AccessTokenRedisDAO;
 import cn.iocoder.yudao.module.system.service.user.AdminUserService;
+import cn.iocoder.yudao.module.system.framework.license.TenantLicenseGuard;
+import cn.iocoder.yudao.framework.common.enums.CommonStatusEnum;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -57,10 +60,15 @@ public class OAuth2TokenServiceImpl implements OAuth2TokenService {
     @Resource
     @Lazy // 懒加载，避免循环依赖
     private AdminUserService adminUserService;
+    @Autowired(required = false)
+    private TenantLicenseGuard tenantLicenseGuard;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public OAuth2AccessTokenDO createAccessToken(Long userId, Integer userType, String clientId, List<String> scopes) {
+        if (tenantLicenseGuard != null) {
+            tenantLicenseGuard.requireTenant(TenantContextHolder.getTenantId());
+        }
         OAuth2ClientDO clientDO = oauth2ClientService.validOAuthClientFromCache(clientId);
         // 创建刷新令牌
         OAuth2RefreshTokenDO refreshTokenDO = createOAuth2RefreshToken(userId, userType, clientDO, scopes);
@@ -75,6 +83,10 @@ public class OAuth2TokenServiceImpl implements OAuth2TokenService {
         OAuth2RefreshTokenDO refreshTokenDO = oauth2RefreshTokenMapper.selectByRefreshToken(refreshToken);
         if (refreshTokenDO == null) {
             throw exception0(GlobalErrorCodeConstants.BAD_REQUEST.getCode(), "无效的刷新令牌");
+        }
+        // Refresh tokens cannot revive expired / revoked tenant permissions.
+        if (tenantLicenseGuard != null) {
+            tenantLicenseGuard.requireTenant(refreshTokenDO.getTenantId());
         }
 
         // 校验 Client 匹配
@@ -136,6 +148,16 @@ public class OAuth2TokenServiceImpl implements OAuth2TokenService {
         if (DateUtils.isExpired(accessTokenDO.getExpiresTime())) {
             throw exception0(GlobalErrorCodeConstants.UNAUTHORIZED.getCode(), "访问令牌已过期");
         }
+        if (tenantLicenseGuard != null && tenantLicenseGuard.isEnforced()) {
+            tenantLicenseGuard.requireTenant(accessTokenDO.getTenantId());
+            if (UserTypeEnum.ADMIN.getValue().equals(accessTokenDO.getUserType())) {
+                AdminUserDO user = TenantUtils.execute(accessTokenDO.getTenantId(),
+                        () -> adminUserService.getUser(accessTokenDO.getUserId()));
+                if (user == null || !CommonStatusEnum.isEnable(user.getStatus())) {
+                    throw exception0(GlobalErrorCodeConstants.UNAUTHORIZED.getCode(), "管理员账号已停用");
+                }
+            }
+        }
         return accessTokenDO;
     }
 
@@ -188,6 +210,9 @@ public class OAuth2TokenServiceImpl implements OAuth2TokenService {
             tenantId = TenantContextHolder.getTenantId();
         }
         accessTokenDO.setTenantId(tenantId);
+        if (tenantLicenseGuard != null) {
+            tenantLicenseGuard.requireTenant(tenantId);
+        }
         oauth2AccessTokenMapper.insert(accessTokenDO);
         // 记录到 Redis 中
         oauth2AccessTokenRedisDAO.set(accessTokenDO);

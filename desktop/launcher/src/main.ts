@@ -10,6 +10,9 @@ import {
   importConfirmationMatches,
   isValidAdminCredentialInput,
   isValidTransferPassword,
+  licenseLabel,
+  licenseAllowsBusiness,
+  licenseExpiryNotice,
   serviceBadgeClass
 } from './model'
 
@@ -27,6 +30,7 @@ let settings: LauncherSettings = {
 let busy = false
 let logText = ''
 let selectedImportPath = ''
+let licenseError = ''
 
 function escapeHtml(value: string): string {
   return value
@@ -71,8 +75,43 @@ function render(): void {
         ${overview.operation ? `<p class="operation">${escapeHtml(overview.operation)}</p>` : ''}
       </section>
 
-      ${overview.lastError ? `<aside class="error"><strong>最近错误</strong><p>${escapeHtml(overview.lastError)}</p><small>可查看日志或复制诊断信息后按提示修复。日志目录：${escapeHtml(`${overview.dataDirectory}/logs`)}</small></aside>` : ''}
+      ${overview.lastError || licenseError ? `<aside class="error"><strong>最近错误</strong><p>${escapeHtml(overview.lastError || licenseError)}</p><small>请检查所有者审批、可信公钥、网络或签名许可；勿发送安装私钥。</small></aside>` : ''}
       ${overview.firstLoginPassword ? `<aside class="first-login"><strong>首次登录：租户“工作室内部”，账号 admin</strong><code>${escapeHtml(overview.firstLoginPassword)}</code><p>请先保存临时密码并登录后立即修改。此密码不会写入日志或诊断信息。</p><button data-action="ack-password" class="secondary">我已保存，停止显示</button></aside>` : ''}
+
+      <section class="license-panel">
+        <header>
+          <strong>工作室授权与激活</strong>
+          <span class="license-state">${overview.license ? escapeHtml(licenseLabel(overview.license.status)) : '尚未检测'}</span>
+        </header>
+        <p>${escapeHtml(overview.license?.detail ?? '读取安装许可中')}</p>
+        ${licenseExpiryNotice(overview.license) ?
+          `<p class="warning-text">${escapeHtml(licenseExpiryNotice(overview.license) ?? '')}</p>` : ''}
+        <p class="license-hint">${overview.releaseRequiresLicense
+          ? '正式强制授权构建：业务服务还必须验证相同签名许可证；未激活不得启动。'
+          : '当前为开发/兼容构建，未启用正式业务授权强制门禁；本机校验通过不代表生产服务已获准使用。'}</p>
+        ${!overview.license?.publisherConfigured
+          ? '<p class="warning-text">本安装包尚未预置所有者可信公钥或授权端点；请使用软件所有者提供的正式签名发行包。不得导入未知第三方公钥。</p>'
+          : ''}
+        <dl class="license-fields">
+          <div><dt>工作室</dt><dd>${escapeHtml(overview.license?.organization ?? '未登记')}</dd></div>
+          <div><dt>租户编号</dt><dd>${escapeHtml(overview.license?.tenantId ?? '未生成')}</dd></div>
+          <div><dt>本机实例</dt><dd>${escapeHtml(overview.license?.installationId ?? '未生成')}</dd></div>
+          <div><dt>申请编号</dt><dd>${escapeHtml(overview.license?.applicationId ?? '未提交')}</dd></div>
+          <div><dt>授权截止</dt><dd>${escapeHtml(formatBackupTime(overview.license?.expiry ?? null))}</dd></div>
+          <div><dt>员工席位</dt><dd>${overview.license?.status === 'ACTIVE' || overview.license?.status === 'GRACE'
+            ? overview.license.seatLimit === null ? '按许可：无限' : String(overview.license.seatLimit)
+            : '未授权'}</dd></div>
+        </dl>
+        <div class="actions license-actions">
+          <button data-action="license-begin" ${busy || !!overview.license?.tenantId || !overview.license?.publisherConfigured ? 'disabled' : ''}>首次登记安装身份</button>
+          <button data-action="license-submit" ${busy || !overview.license?.tenantId || !!overview.license?.applicationId || !!overview.license?.pendingReplacement ? 'disabled' : ''}>在线提交授权申请</button>
+          <button data-action="license-renew" ${busy || !overview.license?.tenantId ? 'disabled' : ''}>在线获取或续签</button>
+          <button data-action="license-check" ${busy || !overview.license?.tenantId ? 'disabled' : ''}>刷新撤销状态</button>
+          <button data-action="license-import" ${busy || !overview.license?.tenantId ? 'disabled' : ''}>导入离线许可证</button>
+          <button data-action="license-replace" ${busy || !!overview.license?.tenantId || !overview.license?.publisherConfigured ? 'disabled' : ''}>新设备换机申请</button>
+        </div>
+        <p class="license-hint">离线许可证必须由软件所有者签发，最长有效 72 小时。换机需要所有者人工确认，复制文件或自行重建私钥无法转移授权。</p>
+      </section>
 
       <section class="services">${serviceCards}</section>
 
@@ -88,15 +127,15 @@ function render(): void {
         <button data-action="start" ${busy ? 'disabled' : ''}>启动服务</button>
         <button data-action="stop" class="secondary" ${busy ? 'disabled' : ''}>停止服务</button>
         <button data-action="restart" class="secondary" ${busy ? 'disabled' : ''}>重启服务</button>
-        <button data-action="open" class="accent" ${busy || !overview.ready ? 'disabled' : ''}>打开康复管理系统</button>
-        <button data-action="open-admin" class="accent" ${busy || !overview.ready ? 'disabled' : ''}>进入后台管理</button>
+        <button data-action="open" class="accent" ${busy || !overview.ready || (overview.releaseRequiresLicense && !licenseAllowsBusiness(overview.license)) ? 'disabled' : ''}>打开康复管理系统</button>
+        <button data-action="open-admin" class="accent" ${busy || !overview.ready || (overview.releaseRequiresLicense && !licenseAllowsBusiness(overview.license)) ? 'disabled' : ''}>进入后台管理</button>
       </section>
 
       <section class="actions utility-actions">
         <button data-action="backup" ${busy || !overview.ready ? 'disabled' : ''}>创建备份</button>
-        <button data-action="export-data" ${busy || !overview.ready ? 'disabled' : ''}>一键导出整店数据</button>
-        <button data-action="import-data" ${busy || !overview.ready ? 'disabled' : ''}>一键导入整店数据</button>
-        <button data-action="admin-settings" ${busy || !overview.ready ? 'disabled' : ''}>管理员账号设置</button>
+        <button data-action="export-data" ${busy || !overview.ready || overview.releaseRequiresLicense ? 'disabled' : ''}>一键导出整店数据</button>
+        <button data-action="import-data" ${busy || !overview.ready || overview.releaseRequiresLicense ? 'disabled' : ''}>一键导入整店数据</button>
+        <button data-action="admin-settings" ${busy || !overview.ready || overview.releaseRequiresLicense ? 'disabled' : ''}>管理员账号设置</button>
         <button data-action="logs">查看日志</button>
         <button data-action="directory">打开数据目录</button>
         <button data-action="diagnostics">复制诊断信息</button>
@@ -107,11 +146,31 @@ function render(): void {
         <summary>危险操作</summary>
         <p>卸载程序默认保留数据。只有输入“删除所有本地数据”并再次确认，才会删除固定的 Docker 数据卷和应用数据。</p>
         <input id="delete-confirmation" autocomplete="off" placeholder="输入：删除所有本地数据" />
-        <button data-action="delete" class="danger">删除所有本地数据</button>
+        <button data-action="delete" class="danger" ${overview.releaseRequiresLicense ? 'disabled' : ''}>删除所有本地数据</button>
       </details>
 
       ${logText ? `<section class="logs"><header><strong>脱敏日志</strong><button data-action="close-logs">关闭</button></header><pre>${escapeHtml(logText)}</pre></section>` : ''}
     </section>
+
+    <dialog id="license-begin-dialog">
+      <form method="dialog" id="license-begin-form">
+        <h2>登记工作室安装身份</h2>
+        <p>将创建不可随意重置的本机 Ed25519 密钥和安装编号。不上传患者信息，提交后需软件所有者审批。</p>
+        <label>工作室名称<input name="organization" maxlength="120" minlength="2" autocomplete="organization" required /></label>
+        <menu><button value="cancel" class="secondary">取消</button><button value="default" data-action="license-confirm-begin">生成安装身份</button></menu>
+      </form>
+    </dialog>
+
+    <dialog id="license-replace-dialog">
+      <form method="dialog" id="license-replace-form">
+        <h2>在新设备上申请换机</h2>
+        <p>必须填写已获批准的原工作室和旧实例 UUID。新设备生成独立密钥后，请将请求材料安全交给所有者审核；本步骤不会自动激活。</p>
+        <label>原工作室租户 UUID<input name="tenantId" required placeholder="xxxxxxxx-xxxx-4xxx-8xxx-xxxxxxxxxxxx" /></label>
+        <label>原安装实例 UUID<input name="previousInstallationId" required /></label>
+        <label>工作室名称<input name="organization" maxlength="120" minlength="2" required /></label>
+        <menu><button value="cancel" class="secondary">取消</button><button value="default" data-action="license-confirm-replace">生成待审批请求</button></menu>
+      </form>
+    </dialog>
 
     <dialog id="settings-dialog">
       <form method="dialog" id="settings-form">
@@ -215,12 +274,93 @@ async function runAndRefresh(command: string, args?: Record<string, unknown>): P
   await refresh()
 }
 
+async function runLicenseCommand(command: string, args?: Record<string, unknown>): Promise<void> {
+  busy = true
+  overview.operation = '正在安全验证工作室授权状态…'
+  render()
+  try {
+    await invoke(command, args)
+    licenseError = ''
+  } catch (error) {
+    licenseError = String(error)
+  } finally {
+    busy = false
+    await refresh()
+  }
+}
+
 function bindActions(): void {
   document.querySelectorAll<HTMLButtonElement>('[data-action]').forEach((button) => {
     button.addEventListener('click', async (event) => {
       const action = (event.currentTarget as HTMLButtonElement).dataset.action
       if (!action) return
       switch (action) {
+        case 'license-begin':
+          document.querySelector<HTMLDialogElement>('#license-begin-dialog')?.showModal()
+          break
+        case 'license-confirm-begin': {
+          event.preventDefault()
+          const field = document.querySelector<HTMLInputElement>('#license-begin-form input[name=organization]')
+          const organization = field?.value.trim() ?? ''
+          if (organization.length < 2 || organization.length > 120) {
+            window.alert('工作室名称须为 2–120 个字符')
+            return
+          }
+          if (!window.confirm('确认生成本机安装密钥和不可随意重置的安装编号？')) return
+          document.querySelector<HTMLDialogElement>('#license-begin-dialog')?.close()
+          await runLicenseCommand('begin_license_application', { organization })
+          break
+        }
+        case 'license-submit':
+          await runLicenseCommand('submit_license_application')
+          break
+        case 'license-renew':
+          await runLicenseCommand('renew_license_online')
+          break
+        case 'license-check':
+          await runLicenseCommand('check_license_online')
+          break
+        case 'license-import': {
+          const path = await open({
+            multiple: false, directory: false,
+            filters: [{ name: '所有者签名离线许可证', extensions: ['rehab-license'] }]
+          })
+          if (typeof path === 'string') await runLicenseCommand('import_offline_license', { path })
+          break
+        }
+        case 'license-replace':
+          document.querySelector<HTMLDialogElement>('#license-replace-dialog')?.showModal()
+          break
+        case 'license-confirm-replace': {
+          event.preventDefault()
+          const form = document.querySelector<HTMLFormElement>('#license-replace-form')
+          if (!form) return
+          const data = new FormData(form)
+          const tenantId = String(data.get('tenantId') ?? '').trim()
+          const previousInstallationId = String(data.get('previousInstallationId') ?? '').trim()
+          const organization = String(data.get('organization') ?? '').trim()
+          if (!/^[0-9a-f-]{36}$/.test(tenantId) ||
+              !/^[0-9a-f-]{36}$/.test(previousInstallationId) || organization.length < 2) {
+            window.alert('请输入有效的工作室和原设备 UUID、工作室名称')
+            return
+          }
+          if (!window.confirm('将在这台新设备上生成独立的安装密钥；审核前无法使用旧许可证。继续？')) return
+          document.querySelector<HTMLDialogElement>('#license-replace-dialog')?.close()
+          try {
+            busy = true
+            const request = await invoke<string>('prepare_license_replacement', {
+              tenantId, previousInstallationId, organization
+            })
+            await navigator.clipboard.writeText(request)
+            window.alert('换机请求已复制。请通过安全渠道交给软件所有者完成二次审批，不要提供本机私钥。')
+          } catch (error) {
+            licenseError = String(error)
+          } finally {
+            busy = false
+            await refresh()
+          }
+          break
+        }
         case 'start':
           await runAndRefresh('start_services')
           break

@@ -30,12 +30,15 @@ import cn.iocoder.yudao.module.system.service.dept.PostService;
 import cn.iocoder.yudao.module.system.service.oauth2.OAuth2TokenService;
 import cn.iocoder.yudao.module.system.service.permission.PermissionService;
 import cn.iocoder.yudao.module.system.service.tenant.TenantService;
+import cn.iocoder.yudao.module.system.framework.license.TenantLicenseGuard;
+import cn.iocoder.yudao.framework.tenant.core.context.TenantContextHolder;
 import com.google.common.annotations.VisibleForTesting;
 import com.mzt.logapi.context.LogRecordContext;
 import com.mzt.logapi.service.impl.DiffParseFunction;
 import com.mzt.logapi.starter.annotation.LogRecord;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Lazy;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -89,18 +92,31 @@ public class AdminUserServiceImpl implements AdminUserService {
     @Resource
     private ConfigApi configApi;
 
+    @Autowired(required = false)
+    private TenantLicenseGuard tenantLicenseGuard;
+
+    private void reserveActiveStaffSeat(boolean addingSeat) {
+        if (tenantLicenseGuard != null && tenantLicenseGuard.isEnforced()) {
+            tenantLicenseGuard.reserveSeat(TenantContextHolder.getTenantId(), addingSeat);
+        }
+    }
+
     @Override
     @Transactional(rollbackFor = Exception.class)
     @LogRecord(type = SYSTEM_USER_TYPE, subType = SYSTEM_USER_CREATE_SUB_TYPE, bizNo = "{{#user.id}}",
             success = SYSTEM_USER_CREATE_SUCCESS)
     public Long createUser(UserSaveReqVO createReqVO) {
         // 1.1 校验账户配合
-        tenantService.handleTenantInfo(tenant -> {
-            long count = userMapper.selectCount();
-            if (count >= tenant.getAccountCount()) {
-                throw exception(USER_COUNT_MAX, tenant.getAccountCount());
-            }
-        });
+        if (tenantLicenseGuard != null && tenantLicenseGuard.isEnforced()) {
+            reserveActiveStaffSeat(true); // locks tenant seat row until commit
+        } else {
+            tenantService.handleTenantInfo(tenant -> {
+                long count = userMapper.selectCount();
+                if (count >= tenant.getAccountCount()) {
+                    throw exception(USER_COUNT_MAX, tenant.getAccountCount());
+                }
+            });
+        }
         // 1.2 校验正确性
         validateUserForCreateOrUpdate(null, createReqVO.getUsername(),
                 createReqVO.getMobile(), createReqVO.getEmail(), createReqVO.getDeptId(), createReqVO.getPostIds());
@@ -121,18 +137,23 @@ public class AdminUserServiceImpl implements AdminUserService {
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public Long registerUser(AuthRegisterReqVO registerReqVO) {
         // 1.1 校验是否开启注册
         if (ObjUtil.notEqual(configApi.getConfigValueByKey(USER_REGISTER_ENABLED_KEY), "true")) {
             throw exception(USER_REGISTER_DISABLED);
         }
         // 1.2 校验账户配合
-        tenantService.handleTenantInfo(tenant -> {
-            long count = userMapper.selectCount();
-            if (count >= tenant.getAccountCount()) {
-                throw exception(USER_COUNT_MAX, tenant.getAccountCount());
-            }
-        });
+        if (tenantLicenseGuard != null && tenantLicenseGuard.isEnforced()) {
+            reserveActiveStaffSeat(true);
+        } else {
+            tenantService.handleTenantInfo(tenant -> {
+                long count = userMapper.selectCount();
+                if (count >= tenant.getAccountCount()) {
+                    throw exception(USER_COUNT_MAX, tenant.getAccountCount());
+                }
+            });
+        }
         // 1.3 校验正确性
         validateUserForCreateOrUpdate(null, registerReqVO.getUsername(), null, null, null, null);
 
@@ -226,9 +247,13 @@ public class AdminUserServiceImpl implements AdminUserService {
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public void updateUserStatus(Long id, Integer status) {
         // 校验用户存在
-        validateUserExists(id);
+        AdminUserDO existingUser = validateUserExists(id);
+        // Re-enable consumes a seat. Disabled or already enabled user does not.
+        reserveActiveStaffSeat(CommonStatusEnum.isEnable(status)
+                && !CommonStatusEnum.isEnable(existingUser.getStatus()));
         // 更新状态
         AdminUserDO updateObj = new AdminUserDO();
         updateObj.setId(id);
@@ -512,7 +537,13 @@ public class AdminUserServiceImpl implements AdminUserService {
             // 2.2.1 判断如果不存在，在进行插入
             AdminUserDO existUser = userMapper.selectByUsername(importUser.getUsername());
             if (existUser == null) {
+                // Nullable import status falls back to active by default, so
+                // it must never bypass the staff seat reservation.
+                boolean activeOnInsert = !CommonStatusEnum.isDisable(importUser.getStatus());
+                reserveActiveStaffSeat(activeOnInsert);
                 userMapper.insert(BeanUtils.toBean(importUser, AdminUserDO.class)
+                        .setStatus(activeOnInsert ? CommonStatusEnum.ENABLE.getStatus()
+                                : CommonStatusEnum.DISABLE.getStatus())
                         .setPassword(encodePassword(initPassword)).setPostIds(new HashSet<>())); // 设置默认密码及空岗位编号数组
                 respVO.getCreateUsernames().add(importUser.getUsername());
                 return;
@@ -524,6 +555,8 @@ public class AdminUserServiceImpl implements AdminUserService {
             }
             AdminUserDO updateUser = BeanUtils.toBean(importUser, AdminUserDO.class);
             updateUser.setId(existUser.getId());
+            reserveActiveStaffSeat(CommonStatusEnum.isEnable(updateUser.getStatus())
+                    && !CommonStatusEnum.isEnable(existUser.getStatus()));
             userMapper.updateById(updateUser);
             respVO.getUpdateUsernames().add(importUser.getUsername());
         });

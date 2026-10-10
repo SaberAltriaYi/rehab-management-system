@@ -29,7 +29,8 @@
     "active": true,
     "targets": "all",
     "resources": [
-      "resources/runtime/**/*"
+      "resources/runtime/**/*",
+      "resources/license/trusted-issuers.json"
     ],
     "category": "Medical",
     "shortDescription": "康复业务本地安全运行与服务管理",

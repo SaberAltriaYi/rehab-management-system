@@ -71,9 +71,13 @@ services:
       REHAB_STORAGE_PATH: /app/data/rehab
       OPENAI_ENABLE_AI_ANALYSIS: "false"
       SERVER_SERVLET_SESSION_PERSISTENT: "false"
+      YUDAO_LICENSE_ENFORCE: ${REHAB_LICENSE_ENFORCE:-false}
+      YUDAO_LICENSE_TRUSTED_PUBLIC_KEYS: ${REHAB_LICENSE_TRUSTED_PUBLIC_KEYS:-}
+      YUDAO_LICENSE_OWNER_STATUS_URL: ${REHAB_LICENSE_OWNER_STATUS_URL:-}
     volumes:
       - rehab-data:/app/data/rehab
       - server-logs:/app/logs
+      - ${REHAB_LICENSE_RUNTIME_DIR:-./license-runtime}:/app/license:ro
     depends_on:
       mysql:
         condition: service_healthy
