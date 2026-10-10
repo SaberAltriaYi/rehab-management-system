@@ -151,8 +151,10 @@ counts="$(
     --execute \
     "SELECT CONCAT((SELECT COUNT(*) FROM rehab_patient),'|',(SELECT COUNT(*) FROM internal_schema_history));"
 )"
-if [[ "${counts}" != "0|19" ]]; then
-  echo "ERROR: expected patient|migration count 0|19, got ${counts}" >&2
+# 全新桌面快照 = 001-019 基线 + 实际执行并登记的 020+ 增量迁移，数量以发布清单为准。
+expected_migrations="$(grep -c '^[0-9][0-9][0-9]|' "${PROJECT_ROOT}/deploy/internal/migrations.manifest")"
+if [[ "${counts}" != "0|${expected_migrations}" ]]; then
+  echo "ERROR: expected patient|migration count 0|${expected_migrations}, got ${counts}" >&2
   exit 1
 fi
 
