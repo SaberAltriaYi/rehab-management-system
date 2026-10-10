@@ -30,6 +30,14 @@ test('policy must demand SSO MFA, device, RBAC and no clinical leakage', () => {
     ['exportDatabasePort', true], ['exportRedisPort', true],
     ['allowUnauthenticatedFallback', true]
   ]) assert.equal(validateL6Policy({ ...secure, [key]: value }).ready, false, key)
+  for (const critical of [
+    'publicInternet', 'ownerGatewaySharedWithPatient',
+    'exportDatabasePort', 'exportRedisPort', 'allowUnauthenticatedFallback'
+  ]) {
+    const copy = { ...secure }
+    delete copy[critical]
+    assert.equal(validateL6Policy(copy).ready, false, critical + ' missing')
+  }
 })
 test('tailnet health and permitted IPv4 range required', () => {
   const state = { BackendState: 'Running', Self: { Online: true },

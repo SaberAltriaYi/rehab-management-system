@@ -11,7 +11,7 @@ export function validateL6Policy(input) {
     return { ready: false, blockers: ['REMOTE_POLICY_MISSING'] }
   }
   const blockers = []
-  if (input.mode !== 'tailscale-private-serve' || input.publicInternet === true) {
+  if (input.mode !== 'tailscale-private-serve' || input.publicInternet !== false) {
     blockers.push('PUBLIC_GATEWAY_PROHIBITED')
   }
   if (input.organizationMfaEnforced !== true ||
@@ -33,8 +33,8 @@ export function validateL6Policy(input) {
       input.allowedRemoteGroups.some(g => !/^group:[a-z0-9_-]{2,40}$/.test(g))) {
     blockers.push('STAFF_GROUPS_MISSING')
   }
-  if (input.ownerGatewaySharedWithPatient === true || input.exportDatabasePort === true ||
-      input.exportRedisPort === true || input.allowUnauthenticatedFallback === true) {
+  if (input.ownerGatewaySharedWithPatient !== false || input.exportDatabasePort !== false ||
+      input.exportRedisPort !== false || input.allowUnauthenticatedFallback !== false) {
     blockers.push('UNSAFE_AUTHORIZATION_BYPASS')
   }
   return { ready: blockers.length === 0, blockers }

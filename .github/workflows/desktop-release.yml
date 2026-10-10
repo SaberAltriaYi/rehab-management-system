@@ -106,6 +106,9 @@ jobs:
       - name: Test runtime tooling
         run: node --test desktop/scripts/*.test.mjs
 
+      - name: Test L6 fail-closed private remote-access policy
+        run: node --test desktop/remote-access/*.test.mjs
+
       # L3 official packaging fails closed until publisher trust roots
       # and a numbered, hash-verified license migration are integrated.
       - name: Enforce L3 commercial licensing release requirements
