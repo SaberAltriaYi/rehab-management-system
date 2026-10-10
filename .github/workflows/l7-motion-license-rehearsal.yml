@@ -1,0 +1,82 @@
+name: L7 isolated motion + license integration rehearsal (NO-GO)
+
+on:
+  pull_request:
+    branches:
+      - feature/l0-l6-security-source-candidate-20261010
+    paths:
+      - '.github/workflows/l7-motion-license-rehearsal.yml'
+      - 'docs/releases/L7_MOTION_LICENSE_INTEGRATION_REHEARSAL_20261010.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: l7-rehearsal-\${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  merge-and-synthetic:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    env:
+      OPENAI_ENABLE_AI_ANALYSIS: 'false'
+      REHAB_LICENSE_ENFORCE: 'false'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify starting branch is isolated candidate (never master)
+        run: |
+          set -euo pipefail
+          git log -1 --format='%H %s'
+          test "$(git rev-parse origin/feature/l0-l6-security-source-candidate-20261010)" != "$(git rev-parse origin/master)"
+          test -f desktop/license-control/service.mjs
+          test -f desktop/remote-access/policy.mjs
+      - name: Rehearse git integration in disposable Actions workspace only
+        run: |
+          set -euo pipefail
+          git config user.name 'L7 Synthetic Integration Runner'
+          git config user.email 'l7-rehearsal@users.noreply.github.com'
+          git fetch --no-tags origin refs/heads/feature/motion-assessment:refs/remotes/origin/feature/motion-assessment
+          if ! git merge --no-commit --no-ff origin/feature/motion-assessment; then
+            echo 'MOTION_LICENSE_INTEGRATION_CONFLICT=1'
+            git diff --name-only --diff-filter=U
+            exit 1
+          fi
+          test -f yudao-module-rehab/src/main/java/cn/iocoder/yudao/module/rehab/controller/admin/motion/RehabMotionController.java
+          test -f desktop/license-control/service.mjs
+          test -f desktop/launcher/src-tauri/src/license.rs
+          test -f sql/mysql/rehab-motion-assessment-v1.sql
+          echo "ISOLATED_MOTION_LICENSE_MERGE_PRECHECK=PASS"
+          git diff --check
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate combined motion migration, service and signed issuer contracts
+        run: |
+          set -euo pipefail
+          python3 -m unittest discover -s deploy/internal -p 'test_*.py'
+          node --test desktop/scripts/runtime-tools.test.mjs
+          node --test desktop/remote-access/*.test.mjs
+          node --test desktop/license-control/*.test.mjs
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+      - name: Compile motion Java and shared licensing code from the same synthetic source tree
+        run: |
+          set -euo pipefail
+          mvn -B -ntp -pl yudao-module-rehab,yudao-module-system -am -DskipTests compile
+      - name: Negative release guard - no valid signer or commercial release permission
+        run: |
+          set +e
+          node desktop/scripts/check-l3-release.mjs > /tmp/l7-no-go.json
+          code=$?
+          set -e
+          test "$code" -ne 0
+          node -e 'let x=require("/tmp/l7-no-go.json");if(x.ready || !x.blockers.includes("PUBLISHER_ROOTS_MISSING"))process.exit(1)'
+          echo "PRODUCTION_RELEASE_REMAINS_BLOCKED=1"
