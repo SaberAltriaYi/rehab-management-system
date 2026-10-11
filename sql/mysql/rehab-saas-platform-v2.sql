@@ -41,8 +41,23 @@ CREATE TABLE IF NOT EXISTS tenant_usage (
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-ALTER TABLE system_tenant ADD COLUMN IF NOT EXISTS registration_status ENUM('pending','active','suspended','expired','deleted') NOT NULL DEFAULT 'active';
-ALTER TABLE system_tenant ADD COLUMN IF NOT EXISTS registration_source VARCHAR(32) NOT NULL DEFAULT 'platform';
+-- MySQL 8.4 has no ADD COLUMN IF NOT EXISTS; inspect metadata before DDL.
+SET @saas_ddl = IF(
+  (SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=DATABASE()
+   AND table_name='system_tenant' AND column_name='registration_status') = 0,
+  'ALTER TABLE system_tenant ADD COLUMN registration_status ENUM(''pending'',''active'',''suspended'',''expired'',''deleted'') NOT NULL DEFAULT ''active''',
+  'SELECT 1');
+PREPARE saas_statement FROM @saas_ddl;
+EXECUTE saas_statement;
+DEALLOCATE PREPARE saas_statement;
+SET @saas_ddl = IF(
+  (SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=DATABASE()
+   AND table_name='system_tenant' AND column_name='registration_source') = 0,
+  'ALTER TABLE system_tenant ADD COLUMN registration_source VARCHAR(32) NOT NULL DEFAULT ''platform''',
+  'SELECT 1');
+PREPARE saas_statement FROM @saas_ddl;
+EXECUTE saas_statement;
+DEALLOCATE PREPARE saas_statement;
 
 INSERT INTO saas_plans (name,max_users,max_patients,motion_quota,storage_quota)
 VALUES ('synthetic-beta',10,100,1000,1073741824)
