@@ -207,6 +207,13 @@ mod tests {
             b"synthetic secret",
         )
         .unwrap();
+        // Do not let the invoking shell's umask decide the test fixture's
+        // secret mode: verify the copy preserves an explicitly private file.
+        fs::set_permissions(
+            source.path().join("secrets/backup.passphrase"),
+            fs::Permissions::from_mode(0o600),
+        )
+        .unwrap();
         fs::set_permissions(
             source.path().join("admin/web"),
             fs::Permissions::from_mode(0o700),

@@ -120,7 +120,7 @@ fn partial_ddl_then_explicit_restore_on_real_synthetic_docker() {
     };
     write_environment(&paths, &LauncherSettings::default(), &secrets).unwrap();
 
-    // Reuse packaged 001-019 and 020..025 checksums, but deliberately make
+    // Reuse packaged 001-019 and 020..026 checksums, but deliberately make
     // 021 invalid with its own matching checksum, in this private copy ONLY.
     let migration_dir = paths.runtime_dir.join(crate::migrations::MIGRATIONS_DIR);
     fs::create_dir_all(&migration_dir).unwrap();
@@ -140,7 +140,7 @@ fn partial_ddl_then_explicit_restore_on_real_synthetic_docker() {
         .join("\n")
         + "\n";
     fs::write(paths.runtime_dir.join(MANIFEST_RELATIVE), updated).unwrap();
-    for version in ["020", "022", "023", "024", "025"] {
+    for version in ["020", "022", "023", "024", "025", "026"] {
         fs::copy(
             runtime.join(format!("sql/migrations/{version}.sql")),
             migration_dir.join(format!("{version}.sql")),
@@ -238,7 +238,7 @@ fn partial_ddl_then_explicit_restore_on_real_synthetic_docker() {
     assert!(sql_age.exists() && attachment_age.exists());
     println!("PASS: explicit synthetic recovery restored ledger 19, original SQL row, and 4 healthy services");
 
-    // From the recovered 19-version snapshot run all six ORIGINAL packaged
+    // From the recovered 19-version snapshot run all seven ORIGINAL packaged
     // migrations via the real launcher method, not a shell imitation.
     fs::write(
         paths.runtime_dir.join(MANIFEST_RELATIVE),
@@ -252,15 +252,18 @@ fn partial_ddl_then_explicit_restore_on_real_synthetic_docker() {
     .unwrap();
     let count = service
         .upgrade_database(&ctx)
-        .expect("real six-migration launcher upgrade");
-    assert_eq!(count, 6);
+        .expect("real seven-migration launcher upgrade");
+    assert_eq!(count, 7);
     assert_eq!(
         service
             .mysql_query(&ctx, "SELECT COUNT(*) FROM internal_schema_history;")
             .unwrap()
             .trim(),
-        "25"
+        "26"
     );
+    assert_eq!(
+        service.mysql_query(&ctx, "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name='rehab_tenant_license_binding';")
+            .unwrap().trim(), "1");
     assert_eq!(
         service.mysql_query(&ctx, "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name LIKE 'rehab_motion_%';")
             .unwrap().trim(), "11");
@@ -286,5 +289,5 @@ fn partial_ddl_then_explicit_restore_on_real_synthetic_docker() {
         2,
         "separate encrypted backup manifests required before each DDL attempt"
     );
-    println!("PASS: real launcher completed packaged 020-025, ledger 25, 11 motion tables and healthy services");
+    println!("PASS: real launcher completed packaged 020-026, ledger 26, motion/license tables and healthy services");
 }

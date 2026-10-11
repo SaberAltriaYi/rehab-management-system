@@ -10,10 +10,13 @@ import { fileURLToPath } from 'node:url'
 const scriptDir = dirname(fileURLToPath(import.meta.url))
 const projectRoot = resolve(scriptDir, '../..')
 const defaultOutput = resolve(projectRoot, 'desktop/build/desktop-bootstrap.sql')
-const output =
-  process.argv[2] === '--output' && process.argv[3]
-    ? resolve(process.argv[3])
-    : defaultOutput
+const cli = process.argv.slice(2)
+const hasOutput = cli[0] === '--output' && Boolean(cli[1])
+const baselineOnly = hasOutput && cli.length === 3 && cli[2] === '--baseline-only'
+if (!((cli.length === 0) || (hasOutput && cli.length === 2) || baselineOnly)) {
+  throw new Error('用法：build-sanitized-bootstrap.mjs [--output <path> [--baseline-only]]')
+}
+const output = hasOutput ? resolve(cli[1]) : defaultOutput
 const temporaryOutput = `${output}.${process.pid}.${randomBytes(6).toString('hex')}.tmp`
 const docker = process.env.DOCKER_CLI_PATH || 'docker'
 const image = 'mysql:8.4.10@sha256:8dbcf531a03aade657e181b9cf2f1d1803ce621a1d55610cb44cb531ab7d7db6'
@@ -60,7 +63,10 @@ for (const row of incrementalMigrations) {
   const actual = createHash('sha256').update(readFileSync(path)).digest('hex')
   if (actual !== row.checksum) throw new Error(`增量迁移校验和漂移：${row.relativePath}`)
 }
-const expectedSchemaHistoryCount = manifestRows.length
+// A private 001-019 fixture is required to test *real* 020+ upgrades. Never
+// ship it as the current desktop bootstrap or replace the default output.
+const selectedMigrations = baselineOnly ? [] : incrementalMigrations
+const expectedSchemaHistoryCount = baselineVersionCount + selectedMigrations.length
 
 
 const initializationScripts = [
@@ -315,7 +321,7 @@ try {
   containerStarted = true
   waitForMySql()
   for (const relativePath of initializationScripts) applySql(relativePath)
-  for (const row of incrementalMigrations) applyIncrementalMigration(row)
+  for (const row of selectedMigrations) applyIncrementalMigration(row)
   applySql(sanitizeScript)
 
   const dump = run([
@@ -341,7 +347,7 @@ try {
   mkdirSync(dirname(output), { recursive: true })
   writeFileSync(
     temporaryOutput,
-    `-- 康复管理系统 V1.0 桌面端脱敏初始化快照\n-- 构建输入：初始化基线 001-019 + 已实际执行并登记的增量迁移 020-${manifestRows[manifestRows.length - 1].version}；不包含患者、演示账号或云端密钥\n${dump}`,
+    `-- 康复管理系统 V1.0 桌面端脱敏初始化快照\n${baselineOnly ? '-- 构建输入：固定迁移账本 001-019；合成升级测试专用，不得作为当前桌面安装包' : `-- 构建输入：初始化基线 001-019 + 已实际执行并登记的增量迁移 020-${manifestRows[manifestRows.length - 1].version}；不包含患者、演示账号或云端密钥`}\n${dump}`,
     { mode: 0o644 }
   )
   renameSync(temporaryOutput, output)
