@@ -12,8 +12,17 @@ COMPOSE_ARGS=(--project-name "${PROJECT_NAME}" --file "${COMPOSE_FILE}" --file "
 COMPOSE_STARTED=0
 
 export BIND_ADDRESS=127.0.0.1
-export APP_PORT=18080
-export TLS_PORT=18443
+# Never reuse a currently occupied clinic/lab port. CI may explicitly select
+# a dedicated loopback pair without altering any existing deployment.
+export APP_PORT="${REHAB_E2E_APP_PORT:-18080}"
+export TLS_PORT="${REHAB_E2E_TLS_PORT:-18443}"
+for port in "${APP_PORT}" "${TLS_PORT}"; do
+  case "${port}" in ''|*[!0-9]*) echo 'ERROR: E2E ports must be numeric' >&2; exit 1 ;; esac
+  [[ "${port}" -ge 1024 && "${port}" -le 65535 ]] || {
+    echo 'ERROR: E2E port outside unprivileged TCP range' >&2; exit 1;
+  }
+done
+[[ "${APP_PORT}" != "${TLS_PORT}" ]] || { echo 'ERROR: E2E ports must differ' >&2; exit 1; }
 export DB_PASSWORD="$(openssl rand -hex 24)"
 export MYSQL_ROOT_PASSWORD="$(openssl rand -hex 24)"
 export REDIS_PASSWORD="$(openssl rand -hex 24)"
