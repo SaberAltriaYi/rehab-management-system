@@ -28,7 +28,7 @@ use chrono::{DateTime, Utc};
 use sha2::{Digest, Sha256};
 use std::ffi::OsString;
 use std::fs::{self, OpenOptions};
-use std::io::{self, Write};
+use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Instant;
@@ -498,6 +498,9 @@ impl LauncherService {
             .collect::<Vec<_>>()
             .join(",");
         let backup = self.create_backup_inner(context)?;
+        // Verify both encrypted artifacts before non-transactional DDL begins.
+        // This does not claim that a complete restore has been tested.
+        verify_backup_before_migration(&backup)?;
         let _ = append_launcher_log(
             &self.paths.logs_dir,
             &format!(
@@ -1034,7 +1037,55 @@ fn encrypted_path(source: &Path) -> PathBuf {
 }
 
 fn sha256_file(path: &Path) -> LauncherResult<String> {
-    Ok(format!("{:x}", Sha256::digest(fs::read(path)?)))
+    // Ciphertext backups can be large: hash with bounded memory.
+    let mut input = io::BufReader::new(fs::File::open(path)?);
+    let mut hasher = Sha256::new();
+    let mut buffer = [0u8; 64 * 1024];
+    loop {
+        let bytes = input.read(&mut buffer)?;
+        if bytes == 0 {
+            break;
+        }
+        hasher.update(&buffer[..bytes]);
+    }
+    Ok(format!("{:x}", hasher.finalize()))
+}
+
+/// Checks the on-disk ciphertext and manifest, not decryptability or restore.
+fn verify_backup_before_migration(manifest_path: &Path) -> LauncherResult<()> {
+    let manifest: serde_json::Value = serde_json::from_slice(&fs::read(manifest_path)?)?;
+    let directory = manifest_path
+        .parent()
+        .ok_or_else(|| LauncherError::RuntimeInvalid("备份清单缺少所属目录".to_owned()))?;
+    for (filename_key, checksum_key) in [
+        ("database", "databaseSha256"),
+        ("attachments", "attachmentsSha256"),
+    ] {
+        let filename = manifest[filename_key].as_str().unwrap_or("");
+        let checksum = manifest[checksum_key].as_str().unwrap_or("");
+        let name = Path::new(filename);
+        if !filename.starts_with("rehab-")
+            || !filename.ends_with(".age")
+            || name.components().count() != 1
+            || checksum.len() != 64
+            || !checksum.bytes().all(|c| c.is_ascii_hexdigit())
+        {
+            return Err(LauncherError::RuntimeInvalid(format!(
+                "升级前加密备份清单字段 {filename_key} 无效；未执行迁移"
+            )));
+        }
+        let encrypted = directory.join(name);
+        let meta = fs::symlink_metadata(&encrypted)?;
+        if !meta.file_type().is_file()
+            || meta.len() == 0
+            || sha256_file(&encrypted)? != checksum.to_ascii_lowercase()
+        {
+            return Err(LauncherError::RuntimeInvalid(format!(
+                "升级前加密备份 {filename_key} 完整性校验失败；未执行迁移"
+            )));
+        }
+    }
+    Ok(())
 }
 
 fn append_launcher_log(logs_dir: &Path, message: &str) -> LauncherResult<()> {
@@ -1209,6 +1260,37 @@ mod tests {
         assert!(!safe_archive_entry("../secrets/config.env"));
         assert!(!safe_archive_entry("/etc/passwd"));
         assert!(!safe_archive_entry("reports/../../tls/server.key"));
+    }
+
+    #[test]
+    fn pre_upgrade_backup_verification_detects_tampering_and_unsafe_paths() {
+        let dir = tempdir().unwrap();
+        let sql = dir.path().join("rehab-test.sql.age");
+        let attachments = dir.path().join("rehab-test-attachments.tar.gz.age");
+        fs::write(&sql, b"synthetic encrypted sql fixture").unwrap();
+        fs::write(&attachments, b"synthetic encrypted attachment fixture").unwrap();
+        let manifest_path = dir.path().join("rehab-test.json");
+        let manifest = serde_json::json!({
+            "database": "rehab-test.sql.age",
+            "databaseSha256": sha256_file(&sql).unwrap(),
+            "attachments": "rehab-test-attachments.tar.gz.age",
+            "attachmentsSha256": sha256_file(&attachments).unwrap()
+        });
+        fs::write(&manifest_path, manifest.to_string()).unwrap();
+        verify_backup_before_migration(&manifest_path).unwrap();
+        fs::write(&attachments, b"tampered ciphertext").unwrap();
+        assert!(verify_backup_before_migration(&manifest_path)
+            .unwrap_err()
+            .to_string()
+            .contains("完整性校验失败"));
+        fs::write(&attachments, b"synthetic encrypted attachment fixture").unwrap();
+        let mut unsafe_manifest = manifest.clone();
+        unsafe_manifest["database"] = serde_json::json!("../rehab-test.sql.age");
+        fs::write(&manifest_path, unsafe_manifest.to_string()).unwrap();
+        assert!(verify_backup_before_migration(&manifest_path)
+            .unwrap_err()
+            .to_string()
+            .contains("清单字段"));
     }
 
     mod upgrade {
@@ -1425,6 +1507,62 @@ mod tests {
         }
 
         #[test]
+        fn failure_after_first_migration_preserves_backup_and_never_registers_second() {
+            // Test the non-transactional DDL case: one migration has committed
+            // before the next fails. The launcher must retain the encrypted
+            // pre-upgrade backup, register only 020, and stop before restart.
+            let mut outputs = vec![
+                ok("1\n"),
+                ok(&history_text(&baseline_history())),
+                ok(HEALTHY),
+                ok("-- synthetic mysqldump"),
+                ok("synthetic attachments"),
+            ];
+            // For successful 020: docker cp, mysql execute, ledger write, rm.
+            outputs.extend([ok(""), ok(""), ok(""), ok("")]);
+            // For failed 021: docker cp succeeds, mysql DDL fails.
+            outputs.extend([
+                ok(""),
+                failed("ERROR 1050 (42S01): Table 'b' already exists"),
+            ]);
+            let fixture = Fixture::new(
+                &[
+                    ("020", "CREATE TABLE a(id INT);"),
+                    ("021", "CREATE TABLE b(id INT);"),
+                    ("022", "CREATE TABLE c(id INT);"),
+                ],
+                outputs,
+            );
+            let error = fixture.run().unwrap_err().to_string();
+            assert!(
+                error.contains("021") && error.contains("账本未登记"),
+                "{error}"
+            );
+            let calls = fixture.calls();
+            assert!(calls.iter().any(|call| call.contains("VALUES ('020'")));
+            assert!(!calls.iter().any(|call| call.contains("VALUES ('021'")));
+            assert!(!calls.iter().any(|call| call.contains("VALUES ('022'")));
+            assert!(!calls.iter().any(|call| call.contains("restart server")));
+            assert!(!calls.iter().any(|call| call.contains("--volumes")));
+            let files = fs::read_dir(&fixture.service.paths.backups_dir)
+                .unwrap()
+                .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+                .collect::<Vec<_>>();
+            assert!(
+                files.iter().any(|name| name.ends_with(".sql.age")),
+                "encrypted pre-upgrade SQL backup must survive: {files:?}"
+            );
+            assert!(
+                files
+                    .iter()
+                    .any(|name| name.ends_with("-attachments.tar.gz.age")),
+                "encrypted attachments backup must survive: {files:?}"
+            );
+            assert!(files.iter().any(|name| name.ends_with(".json")));
+            assert!(!files.iter().any(|name| name.ends_with(".sql")));
+        }
+
+        #[test]
         fn tampered_runtime_script_is_rejected_before_backup() {
             let fixture = Fixture::new(
                 &[("020", "CREATE TABLE a(id INT);")],
@@ -1439,6 +1577,40 @@ mod tests {
             fs::write(script, "DROP TABLE rehab_patient;").unwrap();
             assert!(fixture.run().unwrap_err().to_string().contains("校验失败"));
             assert_eq!(fixture.calls().len(), 2);
+        }
+
+        #[test]
+        fn unconfirmed_full_import_does_not_touch_docker_or_existing_backups() {
+            let mut fixture = Fixture::new(&[("020", "CREATE TABLE synthetic(id INT);")], vec![]);
+            let existing = fixture
+                .service
+                .paths
+                .backups_dir
+                .join("existing-backup.sql.age");
+            fs::create_dir_all(&fixture.service.paths.backups_dir).unwrap();
+            fs::write(&existing, b"synthetic encrypted backup sentinel").unwrap();
+            let error = fixture
+                .service
+                .import_full_transfer(
+                    Path::new("/does-not-exist/synthetic-transfer.age"),
+                    "synthetic-only-password",
+                    "覆盖导入数据",
+                )
+                .unwrap_err()
+                .to_string();
+            if cfg!(feature = "license-required") {
+                assert!(error.contains("正式授权模式暂不允许缺少签名租户绑定"), "{error}");
+            } else {
+                assert!(error.contains("确认文字不匹配"), "{error}");
+            }
+            assert!(
+                fixture.calls().is_empty(),
+                "refused import must make no Docker calls"
+            );
+            assert_eq!(
+                fs::read(existing).unwrap(),
+                b"synthetic encrypted backup sentinel"
+            );
         }
     }
 
@@ -1466,3 +1638,8 @@ mod tests {
             "SyntheticPassphrase123", IMPORT_CONFIRMATION).is_err());
     }
 }
+
+// Ignored unless explicitly invoked by an isolated, synthetic Docker harness.
+#[cfg(test)]
+#[path = "service_live_synthetic.rs"]
+mod live_synthetic;

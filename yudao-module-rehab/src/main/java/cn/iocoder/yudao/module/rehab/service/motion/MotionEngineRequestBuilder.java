@@ -125,6 +125,25 @@ public final class MotionEngineRequestBuilder {
         return errors;
     }
 
+    /**
+     * 校验一次临床字段更新（有效性、人工判定/测量）。映射字段（测试、侧别、条件、序号）沿用已保存的 Trial；
+     * 漏掉条件会让俯卧撑/旋转稳定性等分级测试永远无法记录疼痛（隔离联调发现）。
+     */
+    public static List<String> validateClinicalUpdate(RehabMotionTrialDO saved, Boolean valid, String invalidReason,
+                                                      String criteriaJson, String valuesJson) {
+        RehabMotionTrialDO probe = new RehabMotionTrialDO();
+        probe.setTrialKey(saved.getTrialKey());
+        probe.setTestCode(saved.getTestCode());
+        probe.setSide(saved.getSide());
+        probe.setConditionCode(saved.getConditionCode());
+        probe.setAttemptNo(saved.getAttemptNo());
+        probe.setValid(valid);
+        probe.setInvalidReason(invalidReason);
+        probe.setManualCriteriaJson(criteriaJson);
+        probe.setManualValuesJson(valuesJson);
+        return validateTrials(Collections.singletonList(probe), null);
+    }
+
     private static void checkCriteria(String key, Map<String, Object> map, List<String> errors) {
         if (map.size() > 64) {
             errors.add(key + ": 人工判定项过多");
@@ -319,7 +338,10 @@ public final class MotionEngineRequestBuilder {
             req.put("clearing_tests", clearing);
         }
         Object ybtTrials = manual.get("ybt_trials");
-        if (ybtTrials != null || a.getLimbLengthLeftCm() != null || a.getLimbLengthRightCm() != null) {
+        // 只有选择了 YBT、映射了 YBT 试次或录入了 YBT 距离时才请求 YBT 评分；
+        // 仅填写下肢长度不应让未选择的 YBT 生成待审核评分（否则会阻塞签署）。
+        boolean ybtSelected = StrUtil.split(StrUtil.nullToEmpty(a.getProtocolFamilies()), ',').contains("YBT_LQ");
+        if (ybtTrials != null || ybtSelected || hasTest(trials, "YBT_LQ")) {
             Map<String, Object> ybt = new LinkedHashMap<String, Object>();
             Map<String, Object> limb = new LinkedHashMap<String, Object>();
             limb.put("left", toDouble(a.getLimbLengthLeftCm()));

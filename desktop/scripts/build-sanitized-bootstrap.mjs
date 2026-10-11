@@ -295,6 +295,14 @@ try {
     '--rm',
     '--name',
     container,
+    // Disposable synthetic bootstrap: never create an anonymous Docker data
+    // volume or allow the SQL bootstrap to reach the outside network.
+    '--network',
+    'none',
+    '--tmpfs',
+    '/var/lib/mysql:rw,size=512m',
+    '--tmpfs',
+    '/tmp:rw,size=128m',
     '--env',
     `MYSQL_ROOT_PASSWORD=${rootPassword}`,
     '--env',

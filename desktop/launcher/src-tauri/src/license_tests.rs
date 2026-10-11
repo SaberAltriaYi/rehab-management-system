@@ -31,6 +31,41 @@ fn fixture() -> (tempfile::TempDir, AppPaths, LicenseManager, Ed25519KeyPair) {
     let manager = LicenseManager::new(&paths, &resource);
     (folder, paths, manager, owner)
 }
+#[test]
+fn actual_macos_app_bundle_resource_layout_loads_pinned_issuer() {
+    let (dir, _, manager, _) = fixture();
+    let root = dir.path().join("Contents/Resources");
+    fs::create_dir_all(root.join("resources/license")).unwrap();
+    fs::copy(dir.path().join("resources/license/trusted-issuers.json"),
+        root.join("resources/license/trusted-issuers.json")).unwrap();
+    let bundled = TrustedOwner::from_bundled_resources(&root).unwrap();
+    assert!(bundled.publisher_ready());
+    assert_eq!(bundled.java_pinned_keyring(),
+        manager.owner().unwrap().java_pinned_keyring());
+    assert!(bundled.endpoint("/license/v1/applications").unwrap()
+        .starts_with("https://owner.example.invalid/"));
+}
+
+#[test]
+fn ambiguously_duplicated_or_symlinked_bundle_roots_fail_closed() {
+    let (dir, _, _, _) = fixture();
+    let root = dir.path().join("Contents/Resources");
+    fs::create_dir_all(root.join("resources/license")).unwrap();
+    fs::create_dir_all(root.join("license")).unwrap();
+    let source = dir.path().join("resources/license/trusted-issuers.json");
+    fs::copy(&source, root.join("resources/license/trusted-issuers.json")).unwrap();
+    fs::copy(&source, root.join("license/trusted-issuers.json")).unwrap();
+    assert!(TrustedOwner::from_bundled_resources(&root).is_err());
+    fs::remove_file(root.join("license/trusted-issuers.json")).unwrap();
+    #[cfg(unix)] {
+        std::os::unix::fs::symlink(&source,
+            root.join("license/trusted-issuers.json")).unwrap();
+        assert!(TrustedOwner::from_bundled_resources(&root).is_err());
+        fs::remove_file(root.join("license/trusted-issuers.json")).unwrap();
+    }
+    assert!(TrustedOwner::from_bundled_resources(&root).unwrap().publisher_ready());
+}
+
 fn signed_file(owner: &Ed25519KeyPair, id: &LocalInstallation,
                status: &str, epoch: u64, expires: i64) -> SignedActivationFile {
     let t = now();

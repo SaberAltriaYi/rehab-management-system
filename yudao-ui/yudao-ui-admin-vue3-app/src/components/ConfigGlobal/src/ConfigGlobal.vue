@@ -29,7 +29,10 @@ const { width } = useWindowSize()
 watch(
   () => width.value,
   (width: number) => {
-    if (width < 768) {
+    // At 768px the 200px sidebar leaves insufficient room for the navbar
+    // breadcrumb and controls (verified in real Chrome tablet screenshots).
+    // Treat compact tablets as mobile so the navigation becomes a drawer.
+    if (width < 960) {
       !appStore.getMobile ? appStore.setMobile(true) : undefined
       setCssVar('--left-menu-min-width', '0')
       appStore.setCollapse(true)

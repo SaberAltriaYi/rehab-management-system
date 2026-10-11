@@ -31,6 +31,7 @@ pub fn ensure_runtime(source: &Path, paths: &AppPaths) -> LauncherResult<()> {
     let installed_marker = paths.runtime_dir.join(".installed");
     if installed_marker.exists() {
         verify_runtime(&paths.runtime_dir)?;
+        // Verify the public copy stays readable without widening private runtime files.
         normalize_public_web_permissions(&paths.runtime_dir)?;
         return Ok(());
     }
@@ -188,5 +189,50 @@ mod tests {
             .unwrap().permissions().mode() & 0o777, 0o644);
         assert_eq!(fs::metadata(target.join("private-secret"))
             .unwrap().permissions().mode() & 0o777, 0o600);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn extracted_runtime_web_is_readable_without_changing_source_or_secrets() {
+        use std::os::unix::fs::PermissionsExt;
+        let source = tempdir().unwrap();
+        let destination = tempdir().unwrap();
+        let web = source.path().join("admin/web/assets");
+        fs::create_dir_all(&web).unwrap();
+        fs::create_dir_all(source.path().join("secrets")).unwrap();
+        fs::write(source.path().join("admin/web/index.html"), b"synthetic web").unwrap();
+        fs::write(web.join("main.js"), b"synthetic script").unwrap();
+        fs::write(
+            source.path().join("secrets/backup.passphrase"),
+            b"synthetic secret",
+        )
+        .unwrap();
+        fs::set_permissions(
+            source.path().join("admin/web"),
+            fs::Permissions::from_mode(0o700),
+        )
+        .unwrap();
+        fs::set_permissions(&web, fs::Permissions::from_mode(0o700)).unwrap();
+        fs::set_permissions(
+            source.path().join("admin/web/index.html"),
+            fs::Permissions::from_mode(0o600),
+        )
+        .unwrap();
+        fs::set_permissions(web.join("main.js"), fs::Permissions::from_mode(0o600)).unwrap();
+
+        let installed = destination.path().join("runtime-copy");
+        copy_tree(source.path(), &installed).unwrap();
+        normalize_public_web_permissions(&installed).unwrap();
+        let mode = |path: &Path| fs::metadata(path).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode(&installed.join("admin/web")), 0o755);
+        assert_eq!(mode(&installed.join("admin/web/assets")), 0o755);
+        assert_eq!(mode(&installed.join("admin/web/index.html")), 0o644);
+        assert_eq!(mode(&installed.join("admin/web/assets/main.js")), 0o644);
+        assert_eq!(mode(&installed.join("secrets/backup.passphrase")), 0o600);
+        assert_eq!(mode(&source.path().join("admin/web/index.html")), 0o600);
+        assert_eq!(
+            fs::read(installed.join("admin/web/index.html")).unwrap(),
+            b"synthetic web"
+        );
     }
 }

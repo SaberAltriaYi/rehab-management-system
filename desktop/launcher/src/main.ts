@@ -13,6 +13,7 @@ import {
   licenseLabel,
   licenseAllowsBusiness,
   licenseExpiryNotice,
+  licenseNeedsOnlineRenewal,
   serviceBadgeClass
 } from './model'
 
@@ -97,7 +98,8 @@ function render(): void {
           <div><dt>租户编号</dt><dd>${escapeHtml(overview.license?.tenantId ?? '未生成')}</dd></div>
           <div><dt>本机实例</dt><dd>${escapeHtml(overview.license?.installationId ?? '未生成')}</dd></div>
           <div><dt>申请编号</dt><dd>${escapeHtml(overview.license?.applicationId ?? '未提交')}</dd></div>
-          <div><dt>授权截止</dt><dd>${escapeHtml(formatBackupTime(overview.license?.expiry ?? null))}</dd></div>
+          <div><dt>本次签名租约截至（最长72小时）</dt><dd>${escapeHtml(formatBackupTime(overview.license?.expiry ?? null))}</dd></div>
+          <div><dt>工作室合同到期</dt><dd>${escapeHtml(formatBackupTime(overview.license?.entitlementExpiry ?? null))}</dd></div>
           <div><dt>员工席位</dt><dd>${overview.license?.status === 'ACTIVE' || overview.license?.status === 'GRACE'
             ? overview.license.seatLimit === null ? '按许可：无限' : String(overview.license.seatLimit)
             : '未授权'}</dd></div>
@@ -540,3 +542,26 @@ void refresh()
 window.setInterval(() => {
   if (!busy) void refresh()
 }, 5000)
+
+// An online studio can continue using its longer signed contract by obtaining
+// a new <=72h lease BEFORE the old one expires. Never rewrite lease claims,
+// permit unpinned issuers, or override revocation. Retry at most hourly.
+let nextAutomaticRenewalAttempt = 0
+async function renewNearExpiry(): Promise<void> {
+  const at = Date.now()
+  if (busy || at < nextAutomaticRenewalAttempt ||
+      !licenseNeedsOnlineRenewal(overview.license, at)) return
+  nextAutomaticRenewalAttempt = at + 60 * 60 * 1000
+  busy = true
+  try {
+    await invoke('renew_license_online')
+    licenseError = ''
+    await refresh()
+  } catch {
+    // Keep the previously signed grace status. Never imply renewal succeeded
+    // or spam a temporary offline Owner service.
+  } finally {
+    busy = false
+  }
+}
+window.setInterval(() => { void renewNearExpiry() }, 5 * 60 * 1000)

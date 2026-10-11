@@ -8,6 +8,7 @@ The integration tests create uniquely named synthetic databases in that containe
 never open its application database, and remove only their own test databases.
 """
 import hashlib
+import adopt_schema_guard
 import json
 import os
 import re
@@ -27,7 +28,8 @@ class GuardFixture:
         self.root = Path(self.temp.name)
         self.deploy = self.root / 'deploy/internal'
         self.deploy.mkdir(parents=True)
-        for name in ('migrate.sh', 'migrations.manifest', 'init-schema-history.sql'):
+        for name in ('migrate.sh', 'migrations.manifest', 'init-schema-history.sql',
+                     'adopt_schema_guard.py'):
             shutil.copyfile(ROOT / 'deploy/internal' / name, self.deploy / name)
         self.rows = []
         for line in (self.deploy / 'migrations.manifest').read_text().splitlines():
@@ -392,14 +394,20 @@ sql = sys.stdin.read()
 with open(os.environ['GUARD_LOG'], 'a') as out:
     out.write(sql + '\n')
 state = json.load(open(os.environ['GUARD_STATE']))
-if 'information_schema.tables' in sql:
+if sql.startswith('SELECT JSON_OBJECT') and 'information_schema.tables' in sql:
+    table = re.search(r"table_name = '([A-Za-z0-9_]+)'", sql).group(1)
+    print(json.dumps(state['schema'].get(table, {}).get('options')))
+elif 'information_schema.tables' in sql:
     print(1)
 elif sql.strip() == 'SELECT version, checksum FROM internal_schema_history ORDER BY version;':
     for version, checksum in state['rows']:
         print(version + '\t' + checksum)
 elif 'information_schema.columns' in sql:
     table = re.search(r"table_name = '([A-Za-z0-9_]+)'", sql).group(1)
-    print(state['columns'].get(table, ''))
+    print(json.dumps(state['schema'].get(table, {}).get('columns', [])))
+elif 'information_schema.statistics' in sql:
+    table = re.search(r"table_name = '([A-Za-z0-9_]+)'", sql).group(1)
+    print(json.dumps(state['schema'].get(table, {}).get('indexes', [])))
 elif sql.startswith('INSERT INTO internal_schema_history'):
     pass
 else:
@@ -409,23 +417,33 @@ else:
 
 
 def parse_create_tables(path):
-    tables, current = {}, None
-    for line in path.read_text().splitlines():
-        match = re.match(r'^CREATE TABLE `([A-Za-z0-9_]+)` \($', line)
-        if match:
-            current = match.group(1)
-            tables[current] = []
-        elif current and line.startswith(')'):
-            current = None
-        elif current:
-            column = re.match(r'^  `([A-Za-z0-9_]+)`', line)
-            if column:
-                tables[current].append(column.group(1))
-    return {name: ','.join(columns) for name, columns in tables.items()}
+    tables = {}
+    for name, definition in adopt_schema_guard.parse_schema(path).items():
+        columns = []
+        for ordinal, item in enumerate(definition['columns'], 1):
+            extra = 'auto_increment' if item['auto'] else ''
+            if item['on_update']:
+                extra += ' on update CURRENT_TIMESTAMP'
+            columns.append({
+                'ordinal': ordinal, 'name': item['name'], 'type': item['type'],
+                'nullable': item['nullable'], 'default': item['default'], 'extra': extra,
+            })
+        indexes = []
+        for item in definition['indexes']:
+            for seq, column in enumerate(item['columns'], 1):
+                indexes.append({
+                    'name': item['name'], 'non_unique': 0 if item['unique'] else 1,
+                    'seq': seq, 'column': column, 'sub_part': None, 'index_type': 'BTREE',
+                })
+        tables[name] = {
+            'columns': columns, 'indexes': indexes,
+            'options': {'engine': 'InnoDB', 'collation': 'utf8mb4_unicode_ci'},
+        }
+    return tables
 
 
 class AdoptLegacyInitdbTests(unittest.TestCase):
-    """旧版 Compose 已直接建表但未登记：adopt 只在列结构完全一致时登记，绝不执行建表 SQL。"""
+    """Legacy initdb adopt compares full read-only metadata before ledger insert."""
 
     def setUp(self):
         self.fixture = GuardFixture()
@@ -436,7 +454,7 @@ class AdoptLegacyInitdbTests(unittest.TestCase):
 
     def state(self, missing, columns):
         rows = [[v, c] for v, c, _, _ in self.fixture.rows if v not in missing]
-        self.fixture.state.write_text(json.dumps({'ledger': True, 'rows': rows, 'columns': columns}))
+        self.fixture.state.write_text(json.dumps({'ledger': True, 'rows': rows, 'schema': columns}))
 
     def statements(self):
         return self.fixture.log.read_text() if self.fixture.log.exists() else ''
@@ -456,12 +474,47 @@ class AdoptLegacyInitdbTests(unittest.TestCase):
         version, _, path, _ = self.first
         columns = parse_create_tables(ROOT / path)
         table = sorted(columns)[0]
-        columns[table] = columns[table].rsplit(',', 1)[0]
+        columns[table]['columns'].pop()
         self.state(tuple(row[0] for row in self.incremental), columns)
         result = self.fixture.run('adopt', version, CONFIRM_ADOPT='ADOPT-REHAB-INITDB')
         self.assertNotEqual(result.returncode, 0)
         self.assertIn('列结构', result.stderr)
         self.assertNotIn('INSERT', self.statements())
+
+    def test_adopt_refuses_changed_type_default_or_nullability(self):
+        for field, invalid in (('type', 'varchar(90)'), ('default', 'forged'), ('nullable', 'YES')):
+            with self.subTest(field=field):
+                schema = parse_create_tables(ROOT / self.first[2])
+                name = next(iter(schema))
+                schema[name]['columns'][0][field] = invalid
+                self.state(tuple(row[0] for row in self.incremental), schema)
+                if self.fixture.log.exists():
+                    self.fixture.log.unlink()
+                result = self.fixture.run('adopt', self.first[0],
+                                          CONFIRM_ADOPT='ADOPT-REHAB-INITDB')
+                self.assertNotEqual(result.returncode, 0)
+                self.assertNotIn('INSERT', self.statements())
+
+    def test_adopt_refuses_missing_index_changed_uniqueness_and_engine(self):
+        for changed in ('missing_index', 'unique', 'engine', 'collation'):
+            with self.subTest(changed=changed):
+                schema = parse_create_tables(ROOT / self.first[2])
+                name = next(iter(schema))
+                if changed == 'missing_index':
+                    schema[name]['indexes'].pop()
+                elif changed == 'unique':
+                    schema[name]['indexes'][0]['non_unique'] = 1
+                elif changed == 'engine':
+                    schema[name]['options']['engine'] = 'MyISAM'
+                else:
+                    schema[name]['options']['collation'] = 'utf8mb4_general_ci'
+                self.state(tuple(row[0] for row in self.incremental), schema)
+                if self.fixture.log.exists():
+                    self.fixture.log.unlink()
+                result = self.fixture.run('adopt', self.first[0],
+                                          CONFIRM_ADOPT='ADOPT-REHAB-INITDB')
+                self.assertNotEqual(result.returncode, 0)
+                self.assertNotIn('INSERT', self.statements())
 
     def test_adopt_refuses_when_table_missing(self):
         version = self.first[0]
@@ -571,6 +624,34 @@ sys.exit(subprocess.run(command, input=sql, text=True).returncode)
             result = self.fixture.run(mode)
             self.assertEqual(result.returncode, 0, result.stderr)
         self.assert_sentinel()
+
+    def test_real_020_adopt_rejects_column_drift_before_accepting_correct_schema(self):
+        # Only run inside the explicitly designated disposable Docker MySQL.
+        version, checksum, script_path, _ = self.fixture.rows[19]
+        self.assertEqual('020', version)
+        self.sql('''CREATE TABLE internal_schema_history (
+            version VARCHAR(32) PRIMARY KEY,
+            checksum CHAR(64) NOT NULL,
+            script_path VARCHAR(255) NOT NULL DEFAULT '',
+            description VARCHAR(255) NOT NULL DEFAULT '',
+            installed_by VARCHAR(64) NOT NULL DEFAULT '',
+            baseline BIT(1) NOT NULL DEFAULT b'0',
+            execution_ms BIGINT NOT NULL DEFAULT 0
+        );''', True)
+        baseline = ','.join("('%s','%s')" % (v, sha) for v, sha, _, _
+                            in self.fixture.rows if int(v) <= 19)
+        self.sql('INSERT INTO internal_schema_history(version,checksum) VALUES ' + baseline + ';', True)
+        self.sql((ROOT / script_path).read_text(encoding='utf-8'), True)
+        self.sql('ALTER TABLE report_go_view_project MODIFY COLUMN name VARCHAR(90) NOT NULL;', True)
+        result = self.fixture.run('adopt', version, CONFIRM_ADOPT='ADOPT-REHAB-INITDB')
+        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual('0', self.sql("SELECT COUNT(*) FROM internal_schema_history WHERE version='020';", True))
+        self.sql('ALTER TABLE report_go_view_project MODIFY COLUMN name VARCHAR(255) NOT NULL;', True)
+        result = self.fixture.run('adopt', version, CONFIRM_ADOPT='ADOPT-REHAB-INITDB')
+        self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+        self.assertEqual('1', self.sql("SELECT COUNT(*) FROM internal_schema_history WHERE version='020';", True))
+        self.assertEqual('synthetic-do-not-delete',
+                         self.sql('SELECT marker FROM rehab_patient WHERE id=1;', True))
 
 
 class ShellPortabilityTests(unittest.TestCase):
