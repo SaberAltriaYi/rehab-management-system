@@ -118,7 +118,7 @@ services:
     depends_on:
       server: {condition: service_healthy}
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--ca-certificate=/etc/nginx/tls/ca.crt", "--spider", "https://localhost/healthz"]
+      test: ["CMD", "curl", "--fail", "--silent", "--cacert", "/etc/nginx/tls/ca.crt", "https://localhost/"]
       interval: 10s
       retries: 15
 volumes:
@@ -156,7 +156,7 @@ LOGIN
 unset OWNER_PASSWORD OWNER_HASH
 printf 'source_commit=%s\nproject=%s\nstatus=STARTING_NOT_VERIFIED\n' "$SHA" "$PROJECT" > "$STATE/installation.txt"
 "${COMPOSE[@]}" up --detach --wait --wait-timeout 360
-curl --fail --silent --show-error --cacert "$STATE/server.crt" "https://localhost:$TLS_PORT/healthz" >/dev/null
+curl --fail --silent --show-error --cacert "$STATE/server.crt" "https://localhost:$TLS_PORT/" >/dev/null
 printf 'status=LOCAL_HEALTHY_NOT_E2E_ACCEPTED\n' >> "$STATE/installation.txt"
 echo "Local synthetic installation healthy. Credentials are stored privately at $STATE/FIRST_LOGIN.txt (not printed)."
 echo "Owner console: https://localhost:$TLS_PORT/saas/platform"
