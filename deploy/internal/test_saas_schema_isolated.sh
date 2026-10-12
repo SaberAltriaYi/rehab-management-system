@@ -26,4 +26,10 @@ sql rehab_saas_synthetic < "$ROOT/sql/mysql/rehab-saas-platform-v2.sql"
 sql rehab_saas_synthetic < "$ROOT/sql/mysql/rehab-saas-platform-v2.sql"
 RESULT="$(sql rehab_saas_synthetic -e "SELECT COUNT(*) FROM system_tenant WHERE registration_status='active' AND registration_source='platform'; SELECT COUNT(*) FROM saas_plans WHERE name='synthetic-beta'; SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='rehab_saas_synthetic' AND table_name IN ('platform_admins','saas_plans','tenant_subscriptions','tenant_usage');")"
 test "$RESULT" = $'2\n1\n4'
+sql rehab_saas_synthetic < "$ROOT/sql/mysql/rehab-saas-onboarding-v2.sql"
+sql rehab_saas_synthetic < "$ROOT/sql/mysql/rehab-saas-onboarding-v2.sql"
+test "$(sql rehab_saas_synthetic -e "SELECT COUNT(*) FROM saas_registrations; SELECT COUNT(*) FROM saas_platform_audit;")" = $'0\n0'
+sql rehab_saas_synthetic -e "INSERT INTO saas_registrations(request_id,organization_name,contact_name,contact_email) VALUES ('91000100-0000-4000-8000-000000000001','synthetic-tenant','synthetic-contact','synthetic@example.invalid');"
+test "$(sql rehab_saas_synthetic -e "SELECT status FROM saas_registrations;")" = 'pending'
+echo 'PASS: 028 注册申请默认 pending、无预置账号、重复执行通过'
 echo 'PASS: MySQL 8.4 迁移首次执行、重复执行与原租户保留（仅合成数据）'

@@ -1,0 +1,12 @@
+# Merge after deploy/internal/docker-compose.yml. Use a NEW, isolated project name.
+# This is a development candidate, not a production-approved release.
+services:
+  server:
+    image: rehab-saas-server:2.0.0-beta.1
+    environment:
+      SPRING_PROFILES_ACTIVE: internal
+      YUDAO_DEPLOYMENT_MODE: saas
+      YUDAO_TENANT_ENABLE: "true"
+      YUDAO_LICENSE_ENFORCE: "false"
+  admin:
+    image: rehab-saas-admin:2.0.0-beta.1

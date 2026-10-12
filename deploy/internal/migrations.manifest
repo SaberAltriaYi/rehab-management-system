@@ -26,3 +26,4 @@
 025|ca388b3cf7cf5e08a0c590c4acc392e72f9fc17c48a106e070a5a15cc7cfbfb0|sql/mysql/rehab-motion-audit-columns-v1.sql|动作评估审计列允许后台任务写入
 026|488b7d7bf268f9f7cb5a582eaea7e832390fc9f3d1e28d9815e8f21e69398038|sql/mysql/rehab-tenant-license-v1.sql|签名工作室许可持久绑定及状态证明
 027|c7a519052782f152175fa5dc316f3086ed951d815b6d9f558cdf2397852da56b|sql/mysql/rehab-saas-platform-v2.sql|SaaS 多租户平台套餐、平台管理员与用量
+028|95f0cd0e550ee274e49b574ce2f196e024a35d5557d138591bbcc2ef84bb8755|sql/mysql/rehab-saas-onboarding-v2.sql|SaaS 机构注册申请及平台操作审计
