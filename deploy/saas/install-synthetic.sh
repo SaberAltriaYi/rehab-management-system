@@ -133,6 +133,7 @@ OWNER_HASH="$(printf '%s\n' "$OWNER_PASSWORD" | docker run --rm -i --entrypoint 
 [[ "$OWNER_HASH" =~ ^\$2[aby]\$[0-9]{2}\$[./A-Za-z0-9]{53}$ ]] || { echo 'BCrypt generation failed; no database started'; exit 1; }
 cat > "$STATE/owner.sql" <<SQL
 -- Fresh sanitized database only. This file is never used for upgrades.
+SET NAMES utf8mb4;
 START TRANSACTION;
 UPDATE system_users SET password='$OWNER_HASH',nickname='合成平台管理员' WHERE tenant_id=1 AND username='admin' AND password='!desktop-runtime-sets-password!' AND deleted=0;
 UPDATE system_tenant SET name='SaaS合成平台',registration_status='active',registration_source='synthetic-bootstrap' WHERE id=1;
