@@ -82,7 +82,6 @@
 </template>
 <script lang="ts" setup>
 import { ElLoading, ElMessage } from 'element-plus'
-import { resolveLoginTenant } from '@/utils/loginTenant'
 import LoginFormTitle from './LoginFormTitle.vue'
 import type { RouteLocationNormalizedLoaded } from 'vue-router'
 
@@ -147,7 +146,7 @@ const getTenantId = async () => {
     // A failed lookup must not reuse a previously selected organization.
     authUtil.removeTenantId()
     try {
-      const id = await resolveLoginTenant(loginData.loginForm.tenantName, LoginApi.getTenantIdByName)
+      const id = await LoginApi.getTenantIdByName(loginData.loginForm.tenantName)
       authUtil.setTenantId(id)
     } catch (error) {
       ElMessage.error(error instanceof Error ? error.message : '机构识别失败，请重试')

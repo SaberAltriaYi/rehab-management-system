@@ -29,5 +29,5 @@ test('installer declares UTF-8 before owner bootstrap writes', () => {
 })
 test('organization lookup uses encoded params instead of URL concatenation', () => {
   const api = readFileSync(new URL('../src/api/login/index.ts', import.meta.url), 'utf8')
-  assert.match(api, /url: '\/system\/tenant\/get-id-by-name', params: \{ name \}/)
+  assert.match(api, /url: '\/system\/tenant\/get-id-by-name', params: \{ name: normalized \}/)
 })
