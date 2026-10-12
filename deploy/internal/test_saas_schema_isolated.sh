@@ -33,3 +33,9 @@ sql rehab_saas_synthetic -e "INSERT INTO saas_registrations(request_id,organizat
 test "$(sql rehab_saas_synthetic -e "SELECT status FROM saas_registrations;")" = 'pending'
 echo 'PASS: 028 注册申请默认 pending、无预置账号、重复执行通过'
 echo 'PASS: MySQL 8.4 迁移首次执行、重复执行与原租户保留（仅合成数据）'
+
+sql rehab_saas_synthetic < "$ROOT/sql/mysql/rehab-saas-staff-invitations-v2.sql"
+sql rehab_saas_synthetic < "$ROOT/sql/mysql/rehab-saas-staff-invitations-v2.sql"
+sql rehab_saas_synthetic -e "INSERT INTO saas_staff_invitations(tenant_id,role_id,recipient_email,token_hash,invited_by,expires_at) VALUES(910001,1,'synthetic@example.invalid',REPEAT('a',64),1,TIMESTAMPADD(HOUR,72,CURRENT_TIMESTAMP));"
+test "$(sql rehab_saas_synthetic -e "SELECT status FROM saas_staff_invitations WHERE tenant_id=910001;")" = 'pending'
+echo 'PASS: 029 治疗师邀请表首次执行、重复执行及默认状态验证通过'
