@@ -9,6 +9,7 @@ on:
     tags:
       - "v*"
       - "desktop-v*"
+      - "!v2-saas-*" # SaaS tags must never publish Enterprise installers.
 
 permissions:
   contents: read

@@ -27,7 +27,7 @@ docker compose --project-name rehab-saas-synthetic-UNIQUE \
   -f deploy/internal/docker-compose.yml \
   -f deploy/saas/docker-compose.saas.yml config --quiet
 ```
-以上命令只验证 Compose 配置，不会安装或启动。完整首次账号加固和 SaaS bootstrap 尚未集成，不能直接把 config 成功视为可上线。
+以上命令只验证 Compose 配置，不会安装或启动。另有 `install-synthetic.sh` 开发安装脚本，仅接受新目录与全新独立合成环境，并生成私密首次账号文件；仍不能把 config 成功或健康检查成功视为可上线。
 不要输出完整 compose config 到日志，因为插值结果可能含密码。
 
 后端模式：yudao.deployment.mode=saas、yudao.tenant.enable=true、yudao.license.enforce=false。
@@ -36,15 +36,37 @@ SaaS 模式以服务器订阅门禁替代 Enterprise License 门禁，并非无�
 
 ## 页面与接口
 - /saas/register：机构入驻（公开、按 IP 限频；不收集密码或患者资料）。
-- /saas/platform：平台页面；服务器校验平台身份。当前 UI 支持审核、拒绝、暂停、套餐与用量查看。
+- /saas/platform：平台页面；服务器校验平台身份。UI 支持审核、拒绝、暂停、恢复/续期、创建套餐及用量查看。
 - /admin-api/system/saas/platform/renew：恢复/续期（tenantId、expires）。
 - /admin-api/system/saas/platform/plans POST：创建套餐（name、maxUsers、maxPatients、motionQuota、storageQuota）。
 审批需选择有效的业务权限套餐 packageId，不允许系统套餐 0；临时密码必须通过安全渠道交付。
 
 ## 发布阻断（不能绕过）
 - 审批中真实 TenantService / UserService 的混合事务完整回滚与并发行为尚未进行完整应用集成验证。
-- 全部业务入口的配额计数、邀请治疗师、患者身份验证与授权关联未完成。
+- 全业务配额写入仍未完成。治疗师一次性邀请已实现 API 与页面及 H2 事务测试，但真实应用/MySQL 并发完整闭环待验收；患者身份与授权关联仍未完成。
 - 原患者端有明确的安全拒绝门禁；本次没有移除。不能用患者编号+手机号冒充身份认证。
-- 桌面 SaaS OAuth 客户端、首次平台账号引导、完整安装脚本和新 DMG 尚未交付。
+- 桌面 SaaS OAuth、生产级首次平台账号引导及跨平台安装包尚未交付。合成环境安装脚本不等于生产安装器。
 - 云端域名、TLS、备份恢复、全链路合成验收仍需验证。
 支付不在本阶段范围内。
+
+## 2026-10-13 新增开发功能
+- `/saas/staff`：本机构管理员创建/撤销/查看治疗师邀请。需先配置 `rehab_therapist` 角色及其业务权限。
+- `/saas/join`：输入机构编号和一次性凭据接受邀请，不继承已有浏览器会话，也不自动登录。
+- migration 029 仅存储租户/用途域隔离的 256 位随机邀请凭据的 SHA-256 摘要；72 小时有效，单次使用。
+- 邀请领取锁定订阅及邀请行；邀请范围内账号配额按实际非删除账号数核验。其他创建入口尚未使用同一互斥锁，不能宣称全系统配额并发已保证。
+- 邀请不自动发送邮件，管理员必须通过可信渠道交付本人。不得把凭据放在 URL 查询参数或日志中。
+
+## 合成环境安装（开发验收，不是生产部署）
+先以 JDK 17 构建后端、提交已审查源码、再执行 `pnpm build:internal` 取得匹配该提交的前端凭据。
+```bash
+bash deploy/saas/install-synthetic.sh --synthetic-only /absolute/new/saas-synthetic-directory
+```
+脚本拒绝已有目录与脏工作树，使用独立随机 Compose project、随机端口、全新随机密钥、脱敏基线及仅绑定本机的 TLS。
+首次账号只写入该目录的 `FIRST_LOGIN.txt`（权限 0600），不输出到终端。整个目录包含密钥，禁止提交或打包公开。
+首次登录后修改密码。停止环境时使用该目录的 Compose project 执行 `stop`；不要对历史项目操作，也不要执行 `down -v`。
+健康检查通过不代表 P6 全业务闭环通过；此脚本不包含动作引擎或已认证患者门户，也不用于升级既有环境。
+
+## 线上与安装包资源门槛
+云端域名、独立云主机/账号、DNS/TLS 管理权限、备份目的地、告警接收人仍须核实后才可部署。
+2026-10-13 本机 `security find-identity -v -p codesigning` 返回 0 个有效身份；不可声称已生成签名/公证的 macOS 包。
+Windows 原生 runner、签名与安装/卸载验证仍未完成。历史 Enterprise workflow 排除 `v2-saas-*` 标签，避免误发旧版安装器。
