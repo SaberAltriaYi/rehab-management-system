@@ -14,6 +14,15 @@ def rehab_child_paths(text):
 
 
 class InternalRoutesTest(unittest.TestCase):
+    def test_saas_routes_are_gated_and_present_in_both_tables(self):
+        for name in ['remaining.ts', 'remaining.internal.ts']:
+            text = (APP / 'router/modules' / name).read_text()
+            self.assertIn("VITE_SAAS_ENABLE === 'true'", text)
+            self.assertIn("path: '/saas/register'", text)
+            self.assertIn("path: '/saas/platform'", text)
+            self.assertIn("@/views/saas/Register.vue", text)
+            self.assertIn("@/views/saas/Platform.vue", text)
+
     def test_router_uses_internal_route_table(self):
         self.assertIn("from './modules/remaining.internal'", (APP / 'router/index.ts').read_text())
 
