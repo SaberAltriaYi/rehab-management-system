@@ -11,6 +11,10 @@ const { t } = useI18n()
  */
 const remainingRouter: AppRouteRecordRaw[] = [
   ...(import.meta.env.VITE_SAAS_ENABLE === 'true' ? [
+    { path: '/saas/join', name: 'SaasJoin', component: () => import('@/views/saas/Join.vue'), meta: { hidden: true, noTagsView: true, title: '接受团队邀请' } },
+    { path: '/saas/staff', name: 'SaasStaff', component: Layout, meta: { hidden: true }, children: [
+      { path: '', name: 'SaasStaffInvitations', component: () => import('@/views/saas/Staff.vue'), meta: { title: '治疗师邀请', noCache: true } }
+    ] },
     { path: '/saas/register', name: 'SaasRegister', component: () => import('@/views/saas/Register.vue'), meta: { hidden: true, noTagsView: true, title: '机构入驻' } },
     { path: '/saas/platform', name: 'SaasPlatform', component: Layout, meta: { hidden: true }, children: [
       { path: '', name: 'SaasPlatformConsole', component: () => import('@/views/saas/Platform.vue'), meta: { title: '平台管理', noCache: true } }

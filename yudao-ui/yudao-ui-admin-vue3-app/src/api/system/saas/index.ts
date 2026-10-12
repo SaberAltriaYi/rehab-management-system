@@ -11,3 +11,22 @@ export const getPlans = () => request.get<Plan[]>({ url: root + '/platform/plans
 export const approve = (data: Approval) => request.post<number>({ url: root + '/platform/approve', data })
 export const reject = (id: number) => request.post({ url: root + '/platform/reject', params: { id } })
 export const suspend = (tenantId: number) => request.post({ url: root + '/platform/suspend', params: { tenantId } })
+
+export interface StaffInvitation { id: number; recipient_email: string; status: string; expires_at: string }
+export const createPlan = (data: { name: string; maxUsers: number; maxPatients: number; motionQuota: number; storageQuota: number }) => request.post<number>({ url: root + '/platform/plans', data })
+export const renew = (tenantId: number, expires: string) => request.post({ url: root + '/platform/renew', data: { tenantId, expires } })
+export const getStaffInvitations = (afterId = 0) => request.get<StaffInvitation[]>({ url: root + '/staff-invitations', params: { afterId } })
+export const issueStaffInvitation = (email: string) => request.post<{ id: number; tenantId: number; token: string }>({ url: root + '/staff-invitations', data: { email } })
+export const revokeStaffInvitation = (id: number) => request.post({ url: root + '/staff-invitations/revoke', params: { id } })
+// Deliberately do not inherit the browser's existing tenant/session or persist credentials.
+export async function acceptStaffInvitation(tenantId: number, data: { token: string; username: string; nickname: string; password: string }) {
+  const base = `${import.meta.env.VITE_BASE_URL || ''}${import.meta.env.VITE_API_URL || '/admin-api'}`
+  const response = await fetch(base + root + '/staff-invitations/accept', {
+    method: 'POST', credentials: 'omit', cache: 'no-store',
+    headers: { 'Content-Type': 'application/json', 'tenant-id': String(tenantId) }, body: JSON.stringify(data)
+  })
+  if (!response.ok) throw new Error('Enrollment failed')
+  const result = await response.json()
+  if (result.code !== 0) throw new Error('Enrollment failed')
+  return result.data as number
+}
