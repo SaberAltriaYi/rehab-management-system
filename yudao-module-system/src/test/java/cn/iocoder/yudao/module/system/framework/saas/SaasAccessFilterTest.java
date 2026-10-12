@@ -36,6 +36,23 @@ class SaasAccessFilterTest {
         denied("GET","/admin-api/system/saas/register",false);
         denied("POST","/admin-api/system/saas/register/extra",false);
     }
+    @Test void captchaIsAvailableBeforeTenantResolution() throws Exception {
+        when(tenants.requireCurrentTenant()).thenThrow(new IllegalStateException("no tenant"));
+        for(String action : new String[]{"get","check"}) {
+            FilterChain chain=mock(FilterChain.class);
+            MockHttpServletRequest req=new MockHttpServletRequest("POST","/admin-api/system/captcha/"+action);
+            MockHttpServletResponse res=new MockHttpServletResponse();
+            filter.doFilter(req,res,chain);
+            assertEquals(200,res.getStatus());verify(chain).doFilter(req,res);
+        }
+        verifyNoInteractions(tenants,platform);
+    }
+    @Test void captchaExceptionIsExactPostOnly() throws Exception {
+        denied("GET","/admin-api/system/captcha/get",false);
+        denied("POST","/admin-api/system/captcha/get/extra",false);
+        denied("POST","/admin-api/system/captcha/check/extra",false);
+        denied("POST","/app-api/system/captcha/get",false);
+    }
     private void denied(String method,String path,boolean controlPlane) throws Exception {
         reset(tenants,platform);
         if(controlPlane) when(platform.requireAdmin()).thenThrow(new IllegalStateException("denied"));

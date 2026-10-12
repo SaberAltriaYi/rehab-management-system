@@ -20,7 +20,14 @@ public class SaasAccessFilter extends OncePerRequestFilter {
             throws ServletException,IOException {
         String path=req.getRequestURI().substring(req.getContextPath().length());
         if (!path.startsWith("/admin-api/") && !path.startsWith("/app-api/")) { chain.doFilter(req,res); return; }
-        boolean publicRoute="OPTIONS".equals(req.getMethod())
+        // CAPTCHA is a pre-login challenge, not a tenant business operation.
+        // The login form may request it before resolving the organization. Only
+        // these exact POST endpoints bypass the subscription gate; their own
+        // challenge validation/rate limiting and all login gates remain intact.
+        boolean captchaRoute="POST".equals(req.getMethod())
+                && ("/admin-api/system/captcha/get".equals(path)
+                || "/admin-api/system/captcha/check".equals(path));
+        boolean publicRoute=captchaRoute || "OPTIONS".equals(req.getMethod())
                 || ("POST".equals(req.getMethod()) && "/admin-api/system/saas/register".equals(path))
                 || ("POST".equals(req.getMethod()) && "/admin-api/system/auth/logout".equals(path))
                 || ("GET".equals(req.getMethod()) && ("/admin-api/system/tenant/get-id-by-name".equals(path)
