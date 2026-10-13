@@ -43,8 +43,8 @@ pub fn ensure_runtime(source: &Path, paths: &AppPaths) -> LauncherResult<()> {
         fs::remove_dir_all(&staging)?;
     }
     copy_tree(source, &staging)?;
-    normalize_public_web_permissions(&staging)?;
     verify_runtime(&staging)?;
+    normalize_public_web_permissions(&staging)?;
     if paths.runtime_dir.exists() {
         fs::remove_dir_all(&paths.runtime_dir)?;
     }
