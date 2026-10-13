@@ -1,0 +1,19 @@
+FROM eclipse-temurin:17-jre-jammy@sha256:8993f1aed8b25fcea7a7047a7949c1866fa558fc6830d938c22c4f13b26be9d7
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl fonts-wqy-zenhei fonts-noto-cjk libreoffice-writer \
+    && rm -rf /var/lib/apt/lists/* \
+    && groupadd --system app \
+    && useradd --system --gid app --home-dir /app app \
+    && mkdir -p /app/data/rehab /app/logs \
+    && chown -R app:app /app
+
+WORKDIR /app
+COPY --chown=app:app yudao-server/target/yudao-server.jar /app/app.jar
+
+USER app
+ENV TZ=Asia/Shanghai
+ENV JAVA_OPTS="-Xms256m -Xmx768m -Djava.security.egd=file:/dev/./urandom -Dsun.io.useCanonCaches=false"
+
+EXPOSE 48080
+ENTRYPOINT ["sh", "-c", "exec java $JAVA_OPTS -jar /app/app.jar"]
