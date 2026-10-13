@@ -8,8 +8,6 @@ INSERT INTO saas_business_pages
 SELECT id FROM system_menu WHERE deleted=b'0' AND type=2
 AND @saas_business_opt_in=1 AND component IN (
   'bpm/category/index',
-  'bpm/task/todo/index',
-  'bpm/task/done/index',
   'report/goview/index',
   'rehab/motion/index',
   'erp/finance/account/index',
@@ -56,8 +54,7 @@ AND @saas_business_opt_in=1 AND component IN (
   'member/point/record/index',
   'member/signin/config/index',
   'member/signin/record/index',
-  'member/tag/index',
-  'member/user/index'
+  'member/tag/index'
 );
 CREATE TEMPORARY TABLE saas_business_ids (id BIGINT PRIMARY KEY);
 INSERT INTO saas_business_ids

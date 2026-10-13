@@ -2,8 +2,6 @@
   "profile": "rehab-business-integration",
   "pages": [
     "bpm/category/index",
-    "bpm/task/todo/index",
-    "bpm/task/done/index",
     "report/goview/index",
     "rehab/motion/index",
     "erp/finance/account/index",
@@ -50,8 +48,7 @@
     "member/point/record/index",
     "member/signin/config/index",
     "member/signin/record/index",
-    "member/tag/index",
-    "member/user/index"
+    "member/tag/index"
   ],
   "closed": {
     "crm/contract": "审批流程尚未配置和验收",
@@ -59,6 +56,8 @@
     "bpm/model": "流程设计器安全准入未完成",
     "report/jmreport": "第三方设计器与 SQL/HTTP 数据源继续关闭",
     "ai": "无已配置并验收的 AI 服务",
-    "pay, mall, mp, iot": "后端、外部服务与安全验收未就绪"
+    "pay, mall, mp, iot": "后端、外部服务与安全验收未就绪",
+    "bpm/task/todo, bpm/task/done": "内部版尚无 BpmProcessInstanceDetail 路由，不能仅凭空列表开放审批入口",
+    "member/user": "内部版尚无 MemberUserDetail 路由；上游详情依赖未加载的支付与商城接口"
   }
 }

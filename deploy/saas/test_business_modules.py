@@ -20,7 +20,7 @@ class BusinessModulesTest(unittest.TestCase):
         sql = (ROOT/'deploy/saas/enable-business-menus.sql').read_text()
         for page in json.loads((ROOT/'deploy/saas/business-modules.json').read_text())['pages']:
             self.assertIn("'"+page+"'", sql)
-        for blocked in ['bpm/model/index','crm/contract/index','crm/receivable/index','report/jmreport/index']:
+        for blocked in ['bpm/model/index','crm/contract/index','crm/receivable/index','report/jmreport/index','bpm/task/todo/index','bpm/task/done/index','member/user/index']:
             self.assertNotIn("'"+blocked+"'", sql)
     def test_build_profile_is_explicit(self):
         script = (ROOT/'deploy/internal/build-server-isolated.sh').read_text()
