@@ -70,3 +70,25 @@ bash deploy/saas/install-synthetic.sh --synthetic-only /absolute/new/saas-synthe
 云端域名、独立云主机/账号、DNS/TLS 管理权限、备份目的地、告警接收人仍须核实后才可部署。
 2026-10-13 本机 `security find-identity -v -p codesigning` 返回 0 个有效身份；不可声称已生成签名/公证的 macOS 包。
 Windows 原生 runner、签名与安装/卸载验证仍未完成。历史 Enterprise workflow 排除 `v2-saas-*` 标签，避免误发旧版安装器。
+
+## 统一 Engine 隔离安装（DEV）
+
+`install-synthetic.sh` 支持可选 `REHAB_ENGINE_IMAGE`，必须是
+`ghcr.io/saberaltriayi/rehab-engine-dev@sha256:<64位digest>`，不接受可变 tag。
+先由部署管理员认证 GHCR 并拉取对应镜像；SaaS 终端用户不需要镜像仓库凭据。
+
+```bash
+REHAB_ENGINE_IMAGE='ghcr.io/saberaltriayi/rehab-engine-dev@sha256:<实际核验的digest>' \
+  bash deploy/saas/install-synthetic.sh --synthetic-only /absolute/new/private-state
+```
+
+- 状态目录必须不存在；不会修改旧数据库、卷或旧端口。
+- 启用 Engine 时生成新服务令牌，私密写入 `.env`，不打印；Engine 无宿主机映射端口。
+- Engine 为非 root、只读文件系统、移除 capabilities、禁止提权；主服务通过内部 Bearer 通道调用。
+- Java 服务使用独立 SaaS JDK 17 容器定义，不修改 Enterprise 容器定义。
+- `version-lock.json` 记录主项目源码、实际服务镜像 ID、Engine digest，明确 `clinical_accepted=false`。
+- 未指定 Engine 时仍为原四服务模式；启用后为五服务模式。健康检查通过不代表完整临床流程验收。
+- 本地合成证书不应作为公网信任根；不得使用全局 TLS 忽略开关上线。
+
+容器发布流水线 `saas-ghcr-dev.yml` 保留完整所选后端测试、前端类型检查与生产依赖审计门禁。
+检查失败时不发布服务端／管理端镜像，不能用独立连接客户端成功来替代这些检查。

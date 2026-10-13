@@ -24,6 +24,13 @@
 
 DEV 包未进行发行者签名与 Apple 公证；请核验 SHA-256 并仅用于受控开发测试。SaaS 连接客户端要求有效 HTTPS，不提供全局忽略证书选项。Enterprise 缺少发行信任根、HTTPS 发行端点与签名资源时继续阻断正式发行，不能通过关闭安全检查来“完成打包”。
 
+### 已发布 DEV 与未完成项
+
+- [SaaS 连接客户端 2.0.0-dev.20261013](https://github.com/SaberAltriaYi/rehab-management-system/releases/tag/saas-client-v2.0.0-dev.20261013)：macOS arm64 / Windows x64，源码 `173413a15d`，双平台原生 CI `38343784932` 通过。
+- [统一评估工作台 0.2.0-dev.20261013](https://github.com/SaberAltriaYi/rehab-biomechanics-engine/releases/tag/studio-v0.2.0-dev.20261013)：源码 `b6da564eeb`，不是主项目服务器。
+- [Engine DEV 容器](https://github.com/users/SaberAltriaYi/packages/container/package/rehab-engine-dev)：源码 `03f6eda4d0`，amd64 / arm64；当前可见性为 **private**，部署管理员需仓库访问权限。
+- **主项目 Enterprise 新一体包、服务端/管理端 GHCR 镜像、统一隔离部署完整合成临床验收及正式临床发行不因上述包发布而视为完成。**
+
 ## 源码组织与版本纪律
 
 - 主项目维护 SaaS 业务、管理端、患者端、Enterprise 兼容代码及客户端。

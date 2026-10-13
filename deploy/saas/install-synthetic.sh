@@ -10,6 +10,10 @@ for cmd in docker openssl node python3 git; do command -v "$cmd" >/dev/null; don
 [[ -z "$(git -C "$ROOT" status --porcelain)" ]] || { echo 'Commit reviewed source before creating an attributable installation'; exit 1; }
 SHA="$(git -C "$ROOT" rev-parse HEAD)"
 node -e 'const fs=require("fs"); const r=JSON.parse(fs.readFileSync(process.argv[1])); if(r.commitSha!==process.argv[2]) process.exit(1)' "$ROOT/desktop/build/frontend-build-receipt.json" "$SHA"
+ENGINE_IMAGE="${REHAB_ENGINE_IMAGE:-}"
+if [[ -n "$ENGINE_IMAGE" && ! "$ENGINE_IMAGE" =~ ^ghcr\.io/saberaltriayi/rehab-engine-dev@sha256:[a-f0-9]{64}$ ]]; then
+  echo 'Engine requires the approved GHCR repository and immutable sha256 digest'; exit 2
+fi
 umask 077
 mkdir -m 700 "$STATE"
 PROJECT="rehab-saas-synthetic-$(openssl rand -hex 6)"
@@ -76,7 +80,7 @@ services:
     image: ${SERVER_IMAGE}
     build:
       context: ${ROOT}
-      dockerfile: deploy/internal/Dockerfile.server
+      dockerfile: deploy/saas/Dockerfile.server
     environment:
       TZ: Asia/Shanghai
       SPRING_PROFILES_ACTIVE: internal
@@ -127,6 +131,35 @@ volumes:
   server-logs:
 COMPOSE
 COMPOSE=(docker compose --env-file "$STATE/.env" --project-name "$PROJECT" -f "$STATE/compose.yml")
+if [[ -n "$ENGINE_IMAGE" ]]; then
+  MOTION_ENGINE_TOKEN="$(openssl rand -hex 32)"
+  printf 'ENGINE_IMAGE=%s\nMOTION_ENGINE_TOKEN=%s\n' "$ENGINE_IMAGE" "$MOTION_ENGINE_TOKEN" >> "$STATE/.env"
+  unset MOTION_ENGINE_TOKEN
+  cat > "$STATE/engine.yml" <<'ENGINE'
+services:
+  engine:
+    image: ${ENGINE_IMAGE}
+    entrypoint: ["python", "-m", "rehab_biomechanics.motion.service"]
+    command: ["--host", "0.0.0.0", "--port", "8790"]
+    environment:
+      MOTION_ENGINE_TOKEN: ${MOTION_ENGINE_TOKEN}
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs: ["/tmp:size=64m,mode=1777"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8790/internal/v1/health',timeout=3).read()"]
+      interval: 5s
+      retries: 20
+  server:
+    environment:
+      MOTION_ENGINE_URL: http://engine:8790
+      MOTION_ENGINE_TOKEN: ${MOTION_ENGINE_TOKEN}
+    depends_on:
+      engine: {condition: service_healthy}
+ENGINE
+  COMPOSE+=(-f "$STATE/engine.yml")
+fi
 "${COMPOSE[@]}" config --quiet
 "${COMPOSE[@]}" build server admin
 OWNER_HASH="$(printf '%s\n' "$OWNER_PASSWORD" | docker run --rm -i --entrypoint java "$SERVER_IMAGE" -Dloader.main=cn.iocoder.yudao.server.PasswordHashCli -cp /app/app.jar org.springframework.boot.loader.PropertiesLauncher | tail -1 | tr -d '\r\n')"
@@ -156,6 +189,13 @@ Do not upload this directory or credentials to source control or public hosting.
 LOGIN
 unset OWNER_PASSWORD OWNER_HASH
 printf 'source_commit=%s\nproject=%s\nstatus=STARTING_NOT_VERIFIED\n' "$SHA" "$PROJECT" > "$STATE/installation.txt"
+python3 - "$STATE" "$SHA" "$ENGINE_IMAGE" "$SERVER_IMAGE" "$ADMIN_IMAGE" <<'LOCK'
+import hashlib,json,subprocess,sys
+from pathlib import Path
+state=Path(sys.argv[1])
+images={name:json.loads(subprocess.check_output(['docker','image','inspect',name]))[0]['Id'] for name in sys.argv[4:]}
+(state/'version-lock.json').write_text(json.dumps({'source_commit':sys.argv[2],'engine_image':sys.argv[3] or None,'images':images,'synthetic_only':True,'clinical_accepted':False},indent=2)+'\n')
+LOCK
 "${COMPOSE[@]}" up --detach --wait --wait-timeout 360
 curl --fail --silent --show-error --cacert "$STATE/server.crt" "https://localhost:$TLS_PORT/" >/dev/null
 printf 'status=LOCAL_HEALTHY_NOT_E2E_ACCEPTED\n' >> "$STATE/installation.txt"
