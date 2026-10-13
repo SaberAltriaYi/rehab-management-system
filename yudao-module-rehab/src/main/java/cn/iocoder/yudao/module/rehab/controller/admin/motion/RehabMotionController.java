@@ -299,6 +299,19 @@ public class RehabMotionController {
         write(response, reviewService.reportPdf(id, getLoginUserId()));
     }
 
+    @GetMapping("/report/docx")
+    @Operation(summary = "通过统一引擎导出已签署报告 DOCX（权限校验并留痕）")
+    @PreAuthorize("@ss.hasPermission('rehab:motion:export')")
+    public void reportDocx(@RequestParam("id") Long id, HttpServletResponse response) throws IOException {
+        byte[] data = reviewService.reportDocx(id, getLoginUserId());
+        response.setContentType("application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+        response.setHeader("Content-Disposition", "attachment; filename=motion-report-" + id + ".docx");
+        response.setHeader("X-Content-Type-Options", "nosniff");
+        response.setHeader("Cache-Control", "no-store");
+        response.setContentLength(data.length);
+        response.getOutputStream().write(data);
+    }
+
     // ========== 对比 / 趋势 / 留痕 / 协议 ==========
 
     @GetMapping("/compare")

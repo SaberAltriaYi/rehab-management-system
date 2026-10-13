@@ -29,10 +29,11 @@
       <el-table-column label="SHA-256" min-width="130" show-overflow-tooltip>
         <template #default="{ row }"><code>{{ row.contentSha256 }}</code></template>
       </el-table-column>
-      <el-table-column label="操作" width="200">
+      <el-table-column label="操作" width="255">
         <template #default="{ row }">
           <el-button link type="primary" @click="view(row)">查看</el-button>
           <el-button link type="primary" v-hasPermi="['rehab:motion:export']" @click="exportJson(row)">JSON</el-button>
+          <el-button link type="primary" v-hasPermi="['rehab:motion:export']" @click="docx(row)">DOCX</el-button>
           <el-button link type="primary" v-hasPermi="['rehab:motion:export']" :disabled="row.pdfStatus !== 'ready'" @click="pdf(row)">
             PDF
           </el-button>
@@ -87,6 +88,18 @@ const exportJson = async (row: any) => {
 const pdf = async (row: any) => {
   const blob: any = await MotionApi.reportPdf(row.id)
   download.pdf(blob, `motion-report-${props.assessment.id}-${row.reportType}-v${row.versionNo}.pdf`)
+}
+
+const docx = async (row: any) => {
+  const blob: Blob = await MotionApi.reportDocx(row.id)
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = `motion-report-${props.assessment.id}-${row.reportType}-v${row.versionNo}.docx`
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  setTimeout(() => URL.revokeObjectURL(url), 30000)
 }
 
 watch(() => props.result?.reports?.length, load)

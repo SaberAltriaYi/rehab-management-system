@@ -178,6 +178,7 @@ export const MotionApi = {
 
   reports: (assessmentId: number) => request.get({ url: `${BASE}/report/list`, params: { assessmentId } }),
   report: (id: number) => request.get({ url: `${BASE}/report/get`, params: { id } }),
+  reportDocx: (id: number) => request.download({ url: `${BASE}/report/docx`, params: { id } }),
   reportPdf: (id: number) => request.download({ url: `${BASE}/report/pdf`, params: { id } }),
   compare: (baseId: number, currentId: number) =>
     request.get({ url: `${BASE}/compare`, params: { baseId, currentId } }),

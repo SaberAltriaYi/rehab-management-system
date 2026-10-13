@@ -14,6 +14,11 @@ public interface MotionEngineClient {
     /** @param zip application/zip：根目录 request.json + OpenCap 目录结构 */
     byte[] analyze(byte[] zip);
 
+    /** Unified Reporter rendering; implementations must preserve service authentication. */
+    default byte[] renderReport(Map<String, Object> document) {
+        throw new MotionEngineException("REPORT_RENDER_UNSUPPORTED", "引擎未启用报告渲染", false);
+    }
+
     Map<String, Object> protocols();
 
     Map<String, Object> opencapTrialStatus(String sessionId, List<String> trialIds);

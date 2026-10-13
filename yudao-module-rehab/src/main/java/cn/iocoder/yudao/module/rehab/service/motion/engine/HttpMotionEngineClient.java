@@ -62,6 +62,21 @@ public class HttpMotionEngineClient implements MotionEngineClient {
     }
 
     @Override
+    public byte[] renderReport(Map<String, Object> document) {
+        byte[] body = JsonUtils.toJsonString(document).getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        if (body.length > 1024 * 1024) {
+            throw new MotionEngineException("REPORT_TOO_LARGE", "报告超过导出上限", false);
+        }
+        byte[] result = exchange("/internal/v1/reports/render?format=docx", HttpMethod.POST,
+                body, MediaType.APPLICATION_JSON, byte[].class);
+        if (result == null || result.length < 4 || result.length > 8 * 1024 * 1024
+                || result[0] != 'P' || result[1] != 'K') {
+            throw new MotionEngineException("INVALID_DOCX_RESPONSE", "引擎未返回有效 DOCX", false);
+        }
+        return result;
+    }
+
+    @Override
     public byte[] analyze(byte[] zip) {
         return exchange("/internal/v1/analyze", HttpMethod.POST, zip, MediaType.valueOf("application/zip"),
                 byte[].class);

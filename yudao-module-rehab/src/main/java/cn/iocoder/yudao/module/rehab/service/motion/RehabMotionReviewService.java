@@ -545,6 +545,38 @@ public class RehabMotionReviewService {
         return new RehabMotionAssessmentService.Download(name, "application/pdf", file);
     }
 
+    /** Render only an authorized, immutable signed snapshot; never re-analyze here. */
+    public byte[] reportDocx(Long reportId, Long userId) {
+        RehabMotionReportDO r = requireReport(reportId, userId);
+        if (!("signed".equals(r.getStatus()) || "superseded".equals(r.getStatus()))
+                || r.getContentJson() == null || r.getContentSha256() == null
+                || !r.getContentSha256().equals(cn.hutool.crypto.digest.DigestUtil.sha256Hex(r.getContentJson()))) {
+            throw new MotionEngineException("REPORT_INTEGRITY_ERROR", "签署报告完整性校验失败", false);
+        }
+        Map<String, Object> content = MotionEngineRequestBuilder.parseObject(r.getContentJson());
+        Map<String, Object> document = new LinkedHashMap<String, Object>();
+        document.put("schema_version", "unified-report/1.0");
+        document.put("assessment_ref", "report-" + r.getId() + "-v" + r.getVersionNo());
+        document.put("source", "main-system");
+        document.put("source_status", "superseded".equals(r.getStatus()) ? "superseded" : "current");
+        document.put("title", content.getOrDefault("title", "动作评估报告导出副本"));
+        document.put("state", "reviewed");
+        document.put("reviewer", StrUtil.blankToDefault(r.getSignerName(), "主系统签署记录"));
+        document.put("review_note", "源报告版本 " + r.getVersionNo() + "，签署时间 " + r.getSignedTime()
+                + "；正式状态以主系统为准。" + ("superseded".equals(r.getStatus()) ? "该历史版本已被替代。" : ""));
+        document.put("engine_version", content.getOrDefault("engine_version", ""));
+        document.put("input_sha256", r.getContentSha256());
+        document.put("sections", content.get("sections"));
+        byte[] data = engineClient.renderReport(document);
+        Map<String, Object> audit = new LinkedHashMap<String, Object>();
+        audit.put("reportId", r.getId());
+        audit.put("version", r.getVersionNo());
+        audit.put("contentSha256", r.getContentSha256());
+        audit.put("docxSha256", cn.hutool.crypto.digest.DigestUtil.sha256Hex(data));
+        access.audit(r.getAssessmentId(), "report_docx_export", userId, null, audit, null);
+        return data;
+    }
+
     private RehabMotionReportDO requireReport(Long reportId, Long userId) {
         RehabMotionReportDO r = reportId == null ? null : reportMapper.selectById(reportId);
         if (r == null) {
