@@ -29,7 +29,10 @@ DEV 包未进行发行者签名与 Apple 公证；请核验 SHA-256 并仅用于
 - [SaaS 连接客户端 2.0.0-dev.20261013](https://github.com/SaberAltriaYi/rehab-management-system/releases/tag/saas-client-v2.0.0-dev.20261013)：macOS arm64 / Windows x64，源码 `173413a15d`，双平台原生 CI `38343784932` 通过。
 - [统一评估工作台 0.2.0-dev.20261013](https://github.com/SaberAltriaYi/rehab-biomechanics-engine/releases/tag/studio-v0.2.0-dev.20261013)：源码 `b6da564eeb`，不是主项目服务器。
 - [Engine DEV 容器](https://github.com/users/SaberAltriaYi/packages/container/package/rehab-engine-dev)：源码 `03f6eda4d0`，amd64 / arm64；当前可见性为 **private**，部署管理员需仓库访问权限。
-- **主项目 Enterprise 新一体包、服务端/管理端 GHCR 镜像、统一隔离部署完整合成临床验收及正式临床发行不因上述包发布而视为完成。**
+- **Enterprise 新一体包、完整合成临床验收及正式临床发行仍未完成。** 已完成新隔离环境的五服务启动及发布镜像切换，未切换生产流量。
+
+- 主服务与管理端 GHCR 已发布并真实拉取校验：[Server](https://github.com/users/SaberAltriaYi/packages/container/package/rehab-saas-server-dev) · [Admin](https://github.com/users/SaberAltriaYi/packages/container/package/rehab-saas-admin-dev)。两者均支持 amd64 / arm64。
+- [统一版本清单](deploy/saas/releases/20261013-dev.json) · [发布、分支整理与验收边界](docs/releases/SAAS_DEV_20261013.md)。主项目完整 CI `38344541494` 与 SaaS 容器门禁 `38344161662` 已通过。
 
 ## 源码组织与版本纪律
 

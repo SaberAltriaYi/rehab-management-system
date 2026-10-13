@@ -1,0 +1,66 @@
+{
+  "schema_version": 1,
+  "bundle_version": "2026.10.13-dev.1",
+  "development_only": true,
+  "publisher_signed": false,
+  "production_ready": false,
+  "complete_clinical_acceptance": false,
+  "deployment_source_commit": "bf90e30f3b00487643301bdce75bd1a0f131b50a",
+  "images": {
+    "server": {
+      "source_commit": "45c5e8d41e433a6b059e18e8eccbc0753b82fc9d",
+      "reference": "ghcr.io/saberaltriayi/rehab-saas-server-dev@sha256:24bb8def45bd3da0bb839b3d4d9f2e2716b2ca4bd6e2500c46f422d71ed71618",
+      "platforms": [
+        "linux/amd64",
+        "linux/arm64"
+      ]
+    },
+    "admin": {
+      "source_commit": "45c5e8d41e433a6b059e18e8eccbc0753b82fc9d",
+      "reference": "ghcr.io/saberaltriayi/rehab-saas-admin-dev@sha256:f492152552fb1a1b319e0e476c292baa011e349521264273339fced316ba3dfb",
+      "platforms": [
+        "linux/amd64",
+        "linux/arm64"
+      ]
+    },
+    "engine": {
+      "source_commit": "03f6eda4d0496a37edc8714ae9a072be900cbfc7",
+      "reference": "ghcr.io/saberaltriayi/rehab-engine-dev@sha256:226e099717c48c8d3c6703d30e2fa45880f8894c2b4b644de2d4cc909e23861e",
+      "platforms": [
+        "linux/amd64",
+        "linux/arm64"
+      ]
+    }
+  },
+  "client": {
+    "kind": "https-browser-connector",
+    "backend_bundled": false,
+    "source_commit": "173413a15d7efbae002d04540557e6d26761acee",
+    "release_url": "https://github.com/SaberAltriaYi/rehab-management-system/releases/tag/saas-client-v2.0.0-dev.20261013",
+    "artifacts": [
+      {
+        "name": "RehabSaaSClient-DEV-Darwin-arm64-173413a15d.dmg",
+        "sha256": "51f57209d13d3c9552a9e44611370d73b7c86a2ffa0ad0f54a66412bb21a0d7d"
+      },
+      {
+        "name": "RehabSaaSClient-DEV-Windows-AMD64-173413a15d.exe",
+        "sha256": "7ba59a231107433b353818141aee84e886511961481a38b3c715cf5fa96cd9da"
+      }
+    ]
+  },
+  "verification": {
+    "main_ci_run": 38344541494,
+    "client_ci_run": 38343784932,
+    "saas_images_ci_run": 38344161662,
+    "engine_ci_run": 38344546262,
+    "engine_images_ci_run": 38343995877,
+    "isolated_deployment": true,
+    "production_traffic_switched": false,
+    "clinical_scope": "representative synthetic API workflow, not all protocols or full browser/patient acceptance"
+  },
+  "pending": [
+    "Enterprise integrated installers with release trust and signing resources",
+    "Complete multi-role, patient-side, all-protocol and full-browser clinical acceptance",
+    "Real clinical validation and production approval"
+  ]
+}
