@@ -5,6 +5,15 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 OUTPUT_JAR="${PROJECT_ROOT}/yudao-server/target/yudao-server.jar"
 
+# Optional business modules must be an explicit build choice; default stays lean.
+BUSINESS_MODULES=false
+if [[ $# -eq 1 && "$1" == "--business" ]]; then
+  BUSINESS_MODULES=true
+elif [[ $# -ne 0 ]]; then
+  echo "Usage: $0 [--business]" >&2
+  exit 2
+fi
+
 command -v mvn >/dev/null 2>&1 || {
   echo "ERROR: mvn is required" >&2
   exit 1
@@ -66,7 +75,11 @@ rsync -a \
 
 (
   cd "${BUILD_ROOT}"
-  mvn -pl yudao-server -am -DskipTests package
+  if [[ "${BUSINESS_MODULES}" == true ]]; then
+    mvn -Prehab-business-integration -pl yudao-server -am -DskipTests package
+  else
+    mvn -pl yudao-server -am -DskipTests package
+  fi
 )
 
 BUILT_JAR="${BUILD_ROOT}/yudao-server/target/yudao-server.jar"
