@@ -1,39 +1,81 @@
 <template>
   <ContentWrap>
+    <div class="motion-hero">
+      <div class="motion-heading">
+        <p class="motion-eyebrow">CLINICAL WORKSPACE / 动作评估</p>
+        <h2>智能动作评估</h2>
+        <p>管理采集、运动学处理和审核流程。所有结果均需治疗师确认，不代表自动诊断。</p>
+      </div>
+      <div class="motion-toolbar">
+        <el-button :loading="loading" aria-label="刷新动作评估列表" @click="load">
+          <Icon icon="ep:refresh" class="mr-4px" />刷新
+        </el-button>
+        <el-button type="primary" v-hasPermi="['rehab:motion:create']" @click="formRef.open({ patientId: query.patientId })">
+          <Icon icon="ep:plus" class="mr-4px" />新建评估
+        </el-button>
+      </div>
+    </div>
     <el-alert
       type="info"
       :closable="false"
       show-icon
-      title="智能动作评估：OpenCap 负责运动学，规则引擎负责质控与评分，AI 只做解释与草稿，最终分数与结论由治疗师确认并签署。"
-      class="mb-12px"
+      title="OpenCap 提供运动学数据，规则引擎提供质控与计算；AI 仅辅助解释，最终由治疗师复核和签署。"
+      class="motion-notice"
     />
-    <el-form :model="query" inline>
+    <div class="motion-overview" role="region" aria-label="当前页动作评估工作概况" :aria-busy="loading">
+      <div v-for="item in overviewItems" :key="item.label" class="motion-overview-card" :class="item.tone">
+        <div class="motion-overview-label">
+          <Icon :icon="item.icon" aria-hidden="true" />
+          <span>{{ item.label }}</span>
+        </div>
+        <strong>{{ item.value }}</strong>
+      </div>
+    </div>
+    <p class="motion-page-note">以上数量仅统计当前页 {{ list.length }} 条可见记录，不代表全部患者或全部评估。</p>
+    <el-form :model="query" inline class="motion-filter">
       <el-form-item label="患者 ID">
-        <el-input-number v-model="query.patientId" :min="1" controls-position="right" clearable />
+        <el-input-number v-model="query.patientId" :min="1" controls-position="right" clearable aria-label="按患者编号筛选评估" />
       </el-form-item>
       <el-form-item label="状态">
-        <el-select v-model="query.status" clearable style="width: 160px">
+        <el-select v-model="query.status" clearable placeholder="全部状态" class="motion-select">
           <el-option v-for="(v, k) in STATE_LABELS" :key="k" :label="v" :value="k" />
         </el-select>
       </el-form-item>
       <el-form-item label="类型">
-        <el-select v-model="query.visitType" clearable style="width: 120px">
+        <el-select v-model="query.visitType" clearable placeholder="全部类型" class="motion-select">
           <el-option v-for="v in VISIT_OPTIONS" :key="v.value" :label="v.label" :value="v.value" />
         </el-select>
       </el-form-item>
-      <el-form-item>
-        <el-button type="primary" @click="search">查询</el-button>
-        <el-button @click="reset">重置</el-button>
-        <el-button type="primary" plain v-hasPermi="['rehab:motion:create']" @click="formRef.open({ patientId: query.patientId })">
-          新建动作评估
+      <el-form-item class="motion-filter-actions">
+        <el-button type="primary" :loading="loading" @click="search">
+          <Icon icon="ep:search" class="mr-4px" />查询
         </el-button>
-        <el-button v-if="query.patientId" @click="trendVisible = true">患者趋势</el-button>
+        <el-button @click="reset">重置</el-button>
+        <el-button v-if="query.patientId" @click="trendVisible = true">
+          <Icon icon="ep:trend-charts" class="mr-4px" />患者趋势
+        </el-button>
       </el-form-item>
     </el-form>
   </ContentWrap>
 
   <ContentWrap>
-    <el-table v-loading="loading" :data="list" stripe>
+    <div class="motion-section-heading">
+      <div>
+        <h3>评估记录</h3>
+        <p>符合筛选条件共 {{ total }} 条，按评估编号排序。</p>
+      </div>
+    </div>
+    <el-alert v-if="errorMessage" type="error" :closable="false" show-icon class="mb-12px" :title="errorMessage">
+      <template #default>
+        <el-button link type="primary" @click="load">重新加载</el-button>
+      </template>
+    </el-alert>
+    <el-table v-loading="loading" :data="list" stripe row-key="id" class="motion-table">
+      <template #empty>
+        <el-empty description="当前筛选条件下暂无评估记录">
+          <el-button v-if="hasFilters" @click="reset">清除筛选条件</el-button>
+        </el-empty>
+      </template>
       <el-table-column label="编号" prop="id" width="80" />
       <el-table-column label="患者" min-width="140">
         <template #default="{ row }">{{ row.patientName || '-' }}<span class="muted"> {{ row.patientNo }}</span></template>
@@ -67,14 +109,14 @@
       <el-table-column label="签署" width="160">
         <template #default="{ row }">{{ row.signedTime ? formatDate(row.signedTime) : '-' }}</template>
       </el-table-column>
-      <el-table-column label="操作" width="200" fixed="right">
+      <el-table-column label="操作" width="180" fixed="right">
         <template #default="{ row }">
           <el-button link type="primary" @click="openDetail(row.id)">详情</el-button>
           <el-button
             link
             type="primary"
             v-hasPermi="['rehab:motion:create']"
-            :disabled="row.status === 'COMPLETED'"
+            :disabled="row.status === 'COMPLETED' || Boolean(row.signedTime)"
             @click="formRef.open({ id: row.id })"
           >
             编辑
@@ -83,7 +125,7 @@
             link
             type="danger"
             v-hasPermi="['rehab:motion:create']"
-            :disabled="row.status === 'COMPLETED'"
+            :disabled="row.status === 'COMPLETED' || Boolean(row.signedTime)"
             @click="remove(row.id)"
           >
             删除
@@ -91,11 +133,11 @@
         </template>
       </el-table-column>
     </el-table>
-    <Pagination v-model:page="query.pageNo" v-model:limit="query.pageSize" :total="total" @pagination="load" />
+    <Pagination v-if="total > 0" v-model:page="query.pageNo" v-model:limit="query.pageSize" :total="total" @pagination="load" />
   </ContentWrap>
 
   <MotionForm ref="formRef" @success="onCreated" />
-  <el-drawer v-model="trendVisible" title="患者动作评估趋势" size="60%">
+  <el-drawer v-model="trendVisible" title="患者动作评估趋势" size="min(760px, 100%)">
     <TrendPanel v-if="trendVisible && query.patientId" :patient-id="query.patientId" />
   </el-drawer>
 </template>
@@ -105,6 +147,7 @@ import { MotionApi, MotionAssessmentVO } from '@/api/rehab/motion'
 import { formatDate } from '@/utils/formatTime'
 import MotionForm from './MotionForm.vue'
 import TrendPanel from './components/TrendPanel.vue'
+import { summarizeMotionPage } from './motionMetrics'
 import { QC_LABEL, STATE_TAG, VISIT_OPTIONS, visitLabel } from './constants'
 
 defineOptions({ name: 'RehabMotion' })
@@ -131,18 +174,33 @@ const loading = ref(false)
 const list = ref<MotionAssessmentVO[]>([])
 const total = ref(0)
 const trendVisible = ref(false)
+const errorMessage = ref('')
+const initialPatientId = Number(route.query.patientId)
 const query = reactive<{ pageNo: number; pageSize: number; patientId?: number; status?: string; visitType?: string }>({
   pageNo: 1,
   pageSize: 10,
-  patientId: route.query.patientId ? Number(route.query.patientId) : undefined
+  patientId: Number.isSafeInteger(initialPatientId) && initialPatientId > 0 ? initialPatientId : undefined
 })
+const hasFilters = computed(() => Boolean(query.patientId || query.status || query.visitType))
+const pageMetrics = computed(() => summarizeMotionPage(list.value))
+const overviewItems = computed(() => [
+  { label: '待上传', value: pageMetrics.value.waitingUpload, icon: 'ep:upload-filled', tone: 'neutral' },
+  { label: '待治疗师审核', value: pageMetrics.value.pendingReview, icon: 'ep:document-checked', tone: 'review' },
+  { label: '已完成', value: pageMetrics.value.completed, icon: 'ep:circle-check-filled', tone: 'complete' },
+  { label: '需关注', value: pageMetrics.value.needsAttention, icon: 'ep:warning-filled', tone: 'attention' }
+])
 
 const load = async () => {
   loading.value = true
+  errorMessage.value = ''
   try {
     const page = await MotionApi.page({ ...query })
     list.value = page?.list || []
     total.value = page?.total || 0
+  } catch {
+    list.value = []
+    total.value = 0
+    errorMessage.value = '列表加载失败，请检查连接后重试。'
   } finally {
     loading.value = false
   }
@@ -173,8 +231,107 @@ onMounted(load)
 </script>
 
 <style scoped>
+.motion-hero, .motion-section-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+}
+.motion-hero { margin-bottom: 18px; }
+.motion-heading h2, .motion-section-heading h3 {
+  margin: 2px 0 6px;
+  font-size: 22px;
+  font-weight: 650;
+  color: var(--el-text-color-primary);
+}
+.motion-heading p:last-child, .motion-section-heading p {
+  margin: 0;
+  color: var(--el-text-color-secondary);
+  font-size: 13px;
+  line-height: 1.7;
+}
+.motion-eyebrow {
+  margin: 0;
+  color: var(--el-color-primary);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .08em;
+}
+.motion-toolbar { display: flex; flex-wrap: wrap; gap: 8px; flex-shrink: 0; }
+.motion-toolbar :deep(.el-button + .el-button) { margin-left: 0; }
+.motion-notice { margin-bottom: 16px; }
+.motion-overview {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+.motion-overview-card {
+  padding: 15px 17px;
+  border: 1px solid var(--el-border-color-light);
+  border-radius: 12px;
+  background: var(--el-fill-color-lighter);
+}
+.motion-overview-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--el-text-color-secondary);
+  font-size: 13px;
+}
+.motion-overview-card strong {
+  display: block;
+  margin-top: 8px;
+  color: var(--el-text-color-primary);
+  font-size: 26px;
+  font-variant-numeric: tabular-nums;
+}
+.motion-overview-card.review {
+  border-color: var(--el-color-primary-light-7);
+  background: var(--el-color-primary-light-9);
+}
+.motion-overview-card.complete {
+  border-color: var(--el-color-success-light-7);
+  background: var(--el-color-success-light-9);
+}
+.motion-overview-card.attention {
+  border-color: var(--el-color-warning-light-7);
+  background: var(--el-color-warning-light-9);
+}
+.motion-page-note {
+  margin: 9px 0 18px;
+  color: var(--el-text-color-placeholder);
+  font-size: 12px;
+}
+.motion-filter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  column-gap: 8px;
+}
+.motion-select { width: 164px; }
+.motion-filter-actions :deep(.el-form-item__content) {
+  flex-wrap: wrap;
+  row-gap: 8px;
+}
+.motion-section-heading { margin-bottom: 14px; }
+.motion-section-heading h3 { font-size: 17px; }
+.motion-table { width: 100%; }
 .muted {
   color: var(--el-text-color-secondary);
   font-size: 12px;
+}
+@media (max-width: 900px) {
+  .motion-overview { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .motion-hero { align-items: flex-start; flex-direction: column; }
+}
+@media (max-width: 520px) {
+  .motion-toolbar { width: 100%; }
+  .motion-toolbar :deep(.el-button) { flex: 1; }
+  .motion-overview { gap: 8px; }
+  .motion-overview-card { padding: 12px; }
+  .motion-overview-card strong { font-size: 22px; }
+  .motion-filter :deep(.el-form-item) { width: 100%; margin-right: 0; }
+  .motion-filter :deep(.el-form-item__content) { flex: 1; }
+  .motion-select { width: 100%; }
 }
 </style>

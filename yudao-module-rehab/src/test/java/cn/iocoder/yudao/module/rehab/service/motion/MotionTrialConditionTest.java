@@ -1,12 +1,16 @@
 package cn.iocoder.yudao.module.rehab.service.motion;
 
 import cn.iocoder.yudao.module.rehab.dal.dataobject.motion.RehabMotionTrialDO;
+import cn.iocoder.yudao.module.rehab.dal.dataobject.motion.RehabMotionAssessmentDO;
 import cn.iocoder.yudao.module.rehab.enums.RehabMotionConstants;
 import org.junit.jupiter.api.Test;
 
+import java.math.BigDecimal;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -26,6 +30,39 @@ class MotionTrialConditionTest {
         assertEquals(Arrays.asList("high", "low"), RehabMotionConstants.FMS_CONDITIONS.get("FMS_TSPU"));
         assertEquals(Arrays.asList("unilateral", "diagonal"), RehabMotionConstants.FMS_CONDITIONS.get("FMS_ROTARY_STABILITY"));
         assertNull(RehabMotionConstants.FMS_CONDITIONS.get("FMS_HURDLE_STEP"));
+    }
+
+    @Test
+    void limbLengthAloneDoesNotRequestYbtScoring() {
+        // 隔离环境联调发现：只选 LESS+FMS 但填了下肢长度时，引擎会生成 YBT 待审核评分并阻塞签署。
+        RehabMotionAssessmentDO a = new RehabMotionAssessmentDO();
+        a.setId(1L);
+        a.setCameraCount(3);
+        a.setProtocolFamilies("LESS,FMS");
+        a.setLimbLengthLeftCm(new BigDecimal("95"));
+        a.setLimbLengthRightCm(new BigDecimal("95"));
+        List<RehabMotionTrialDO> trials = Collections.singletonList(trial("less_1", "LESS", "bilateral", null));
+        Map<String, Object> manual = new HashMap<String, Object>();
+        assertFalse(MotionEngineRequestBuilder.build(a, trials, manual).containsKey("ybt"));
+
+        a.setProtocolFamilies("LESS,YBT_LQ");
+        Map<String, Object> selected = MotionEngineRequestBuilder.build(a, trials, manual);
+        assertTrue(selected.containsKey("ybt"));
+
+        a.setProtocolFamilies("LESS");
+        List<RehabMotionTrialDO> ybt = Arrays.asList(trial("ybt_l", "YBT_LQ", "left", null));
+        assertTrue(MotionEngineRequestBuilder.build(a, ybt, manual).containsKey("ybt"));
+    }
+
+    @Test
+    void clinicalUpdateKeepsTheSavedCondition() {
+        // 记录疼痛等临床字段时必须沿用已保存的分级条件，否则 TSPU/旋转稳定性永远无法记录疼痛（QC-06）。
+        RehabMotionTrialDO tspu = trial("fms_10", "FMS_TSPU", "bilateral", "high");
+        assertTrue(MotionEngineRequestBuilder.validateClinicalUpdate(tspu, true, null, null, null).isEmpty());
+        RehabMotionTrialDO rotary = trial("fms_11", "FMS_ROTARY_STABILITY", "left", "diagonal");
+        assertTrue(MotionEngineRequestBuilder.validateClinicalUpdate(rotary, true, null, null, null).isEmpty());
+        List<String> invalid = MotionEngineRequestBuilder.validateClinicalUpdate(tspu, false, " ", null, null);
+        assertEquals(1, invalid.size(), invalid.toString());
     }
 
     @Test

@@ -1,6 +1,8 @@
 package cn.iocoder.yudao.module.rehab.service.motion;
 
 import cn.iocoder.yudao.framework.common.exception.ServiceException;
+import cn.iocoder.yudao.framework.common.enums.UserTypeEnum;
+import cn.iocoder.yudao.framework.web.core.util.WebFrameworkUtils;
 import cn.iocoder.yudao.framework.tenant.core.db.TenantBaseDO;
 import cn.iocoder.yudao.module.rehab.dal.dataobject.motion.RehabMotionAssessmentDO;
 import cn.iocoder.yudao.module.rehab.dal.dataobject.motion.RehabMotionTaskDO;
@@ -21,6 +23,9 @@ import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
 
 import java.io.File;
 import java.net.URL;
@@ -29,6 +34,7 @@ import java.util.Collections;
 import java.util.List;
 
 import static cn.iocoder.yudao.module.rehab.enums.ErrorCodeConstants.PATIENT_NO_PERMISSION;
+import static cn.iocoder.yudao.module.rehab.enums.ErrorCodeConstants.CLINICAL_ROLE_REQUIRED;
 import static cn.iocoder.yudao.module.rehab.enums.RehabMotionErrorCodeConstants.*;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
@@ -116,6 +122,59 @@ class RehabMotionAccessAndTaskTest {
         when(dataPermissionService.isClerk(5L)).thenReturn(true);
         when(dataPermissionService.isTherapist(5L)).thenReturn(true);
         access.requireClinician(5L);
+    }
+
+    @Test
+    void arbitraryRoleAndMissingUserCannotWriteClinicalRecords() {
+        assertEquals(CLINICAL_ROLE_REQUIRED.getCode(), code(() -> access.requireClinician(6L)));
+        assertEquals(CLINICAL_ROLE_REQUIRED.getCode(), code(() -> access.requireClinician(null)));
+    }
+
+    @Test
+    void assignedClinicalRolesMayWriteEvenIfAlsoClerk() {
+        when(dataPermissionService.isTherapist(7L)).thenReturn(true);
+        access.requireClinician(7L);
+        when(dataPermissionService.isClerk(8L)).thenReturn(true);
+        when(dataPermissionService.isSuperAdmin(8L)).thenReturn(true);
+        access.requireClinician(8L);
+    }
+
+    @Test
+    void memberIdCollisionWithAdminTherapistMustNotAuthorizeClinicalWrite() {
+        // Simulate MEMBER id=7 and an unrelated ADMIN therapist id=7.
+        when(dataPermissionService.isTherapist(7L)).thenReturn(true);
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(request));
+        try {
+            WebFrameworkUtils.setLoginUserType(request, UserTypeEnum.MEMBER.getValue());
+            assertEquals(CLINICAL_ROLE_REQUIRED.getCode(), code(() -> access.requireClinician(7L)));
+            WebFrameworkUtils.setLoginUserType(request, UserTypeEnum.ADMIN.getValue());
+            access.requireClinician(7L);
+        } finally {
+            RequestContextHolder.resetRequestAttributes();
+        }
+    }
+
+    @Test
+    void memberIdCollisionCannotListAllPatientsOrMasqueradeInAuditRole() {
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(request));
+        try {
+            WebFrameworkUtils.setLoginUserType(request, UserTypeEnum.MEMBER.getValue());
+            assertEquals(Collections.emptySet(), access.visiblePatientIds(7L));
+            assertEquals("member", access.role(7L));
+            verify(dataPermissionService, never()).getVisiblePatientIds(7L);
+            verify(dataPermissionService, never()).isSuperAdmin(7L);
+            verify(dataPermissionService, never()).isTherapist(7L);
+            WebFrameworkUtils.setLoginUserType(request, UserTypeEnum.ADMIN.getValue());
+            when(dataPermissionService.getVisiblePatientIds(7L)).thenReturn(null);
+            when(dataPermissionService.isSuperAdmin(7L)).thenReturn(true);
+            assertNull(access.visiblePatientIds(7L));
+            assertEquals("admin", access.role(7L));
+        } finally {
+            RequestContextHolder.resetRequestAttributes();
+        }
+        assertEquals(Collections.emptySet(), access.visiblePatientIds(null));
     }
 
     // ---------------------------------------------------------------- 任务幂等 / 互斥

@@ -519,16 +519,8 @@ public class RehabMotionAssessmentService {
         }
         String criteria = req.getManualCriteria() == null ? null : JsonUtils.toJsonString(req.getManualCriteria());
         String values = req.getManualValues() == null ? null : JsonUtils.toJsonString(req.getManualValues());
-        RehabMotionTrialDO probe = new RehabMotionTrialDO();
-        probe.setTrialKey(t.getTrialKey());
-        probe.setTestCode(t.getTestCode());
-        probe.setSide(t.getSide());
-        probe.setAttemptNo(t.getAttemptNo());
-        probe.setValid(req.getValid());
-        probe.setInvalidReason(req.getInvalidReason());
-        probe.setManualCriteriaJson(criteria);
-        probe.setManualValuesJson(values);
-        List<String> errors = MotionEngineRequestBuilder.validateTrials(Arrays.asList(probe), null);
+        List<String> errors = MotionEngineRequestBuilder.validateClinicalUpdate(t, req.getValid(), req.getInvalidReason(),
+                criteria, values);
         if (!errors.isEmpty()) {
             throw exception(MOTION_TRIAL_INVALID, StrUtil.maxLength(String.join("；", errors), 200));
         }

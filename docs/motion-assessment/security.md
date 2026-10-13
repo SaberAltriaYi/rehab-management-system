@@ -7,6 +7,26 @@
 * 患者可见性复用 `RehabDataPermissionService`（机构/治疗师数据权限），不新增旁路。
 * 菜单 9700“动作评估”，按钮权限 `rehab:motion:{query,create,upload,process,review,sign,export,audit}`
   （9710–9717）；前台/文员角色不能执行审核、签署等临床动作（`clerkCannotPerformClinicalActions`）。
+* 临床写入的业务服务二次校验现为**显式白名单**：只有 `REHAB_THERAPIST` 或 `SUPER_ADMIN` 角色可通过 `requireClinician`；
+  既不是治疗师也不是管理员的普通角色、空用户 ID 都拒绝，而不是仅仅排除文员。文员继续使用既有
+  `CLERK_WRITE_FORBIDDEN` 错误码，其他未授权角色返回 `CLINICAL_ROLE_REQUIRED`。这是临床写入权限的
+  服务层补强，不能取代控制器 `@PreAuthorize`、患者可见性和租户隔离。回归包含
+  `arbitraryRoleAndMissingUserCannotWriteClinicalRecords`、`assignedClinicalRolesMayWriteEvenIfAlsoClerk`。
+* 登录身份命名空间隔离：显式 `MEMBER` 会话不能借助与 `ADMIN` 管理员/治疗师同值的数字 userId
+  通过 `requireClinician`，即使服务层的角色查询恰好命中同值管理端角色；
+  `memberIdCollisionWithAdminTherapistMustNotAuthorizeClinicalWrite` 分别验证同值 MEMBER 被拒和 ADMIN 被允许。
+  对无 HTTP 请求上下文的后台任务仍以显式角色白名单校验，不因此自动放行患者端身份。
+* 分页可见范围与审计身份进一步收紧：`RehabMotionAccess.visiblePatientIds` 对显式 `MEMBER` 和空
+  userId 返回空集合，禁止调用 ADMIN 角色查询（其 `null` 返回值代表“全部患者”）；
+  `RehabMotionAssessmentMapper.selectPage` 对空集合直接返回空页。审计 `role` 对
+  MEMBER 明确标识为 `member`，不以同值管理端 ID 冒用 `admin/therapist` 角色。
+  `memberIdCollisionCannotListAllPatientsOrMasqueradeInAuditRole` 使用相同数字 ID 的
+  MEMBER/ADMIN 请求分别验证拒绝和管理端正常访问。该防护不表示患者身份门禁已通过；
+  正式患者端 API 仍不得开放。
+* 共享数据权限服务 `RehabDataPermissionService.getVisiblePatientIds` 已同步增加 MEMBER 与空 userId
+  的拒绝规则，避免报告、评估、训练和仪表盘等其他消费者绕过动作评估专用服务；
+  `canReadPatient` 对空 patientId / userId 直接拒绝，而已绑定的患者端用户仍仅走授权绑定校验。
+  `RehabDataPermissionServiceTest` 使用合成 MEMBER/ADMIN 同值 ID 验证服务层不查询错位的管理员角色。
 * 签署后只读；更正（amend）必须在已完成状态并填写原因，旧报告被标记为 superseded，全程留痕。
 * 后台异步任务在 `TenantUtils.execute(tenantId, …)` 内执行；任务领取在 `executeIgnore` 中以租约锁（`lock-seconds`）进行，同组任务不并发。
 
@@ -49,6 +69,14 @@
 * AI 草稿的接受/拒绝永远不改动分数（`aiDraftReviewNeverTouchesScores`）；分析重算后旧草稿标记 stale 不能接受。
 * AI 关闭、超时或失败时生成带证据引用的模板草稿，评分/审核/签署/PDF 全部可用
   （`fallbackDraftWorksWithoutAiAndCitesEvidence`）。
+
+## 旧数据库迁移账本修复安全（尚未达到发布验收）
+
+* 仅对旧 Compose 已创建 020–023 增量表、却没有登记迁移账本的特殊情况允许 `deploy/internal/migrate.sh adopt <version>`。必须事先人工核验备份并显式设置 `CONFIRM_ADOPT=ADOPT-REHAB-INITDB`。
+* 已移除原先“只核对列名/顺序”的信任逻辑。`adopt_schema_guard.py` 首先以严格白名单解析纯 CREATE TABLE DDL，再只读比较 `information_schema.columns/statistics/tables` 中的**列类型、顺序、可空性、默认值、自增、自动更新时间、索引名称/顺序/唯一性、InnoDB 引擎和排序规则**。任何差异都拒绝账本写入；不读取患者业务行。
+* 024 的菜单/授权写入与 025 的 ALTER 不属于纯建表迁移，**严禁 adopt**。必须通过独立合成数据库进行正常 apply、账本和备份恢复验证，不能通过登记伪造迁移完成。
+* 迁移保护测试包含故意修改列类型、默认值、可空性、索引、引擎/排序规则等负例。真实 MySQL 的测试只允许在新建、无网络、tmpfs、无业务卷的随机容器中进行；不得使用既有患者库或已有 Docker volumes。
+* 迁移脚本通过单表 DDL 核验**并不等于**完整权限、租户、恢复、并发与生产升级验收，正式发布依旧 NO-GO。
 
 ## 签署阻断条件
 

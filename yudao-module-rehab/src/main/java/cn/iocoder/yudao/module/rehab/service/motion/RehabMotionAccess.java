@@ -1,7 +1,9 @@
 package cn.iocoder.yudao.module.rehab.service.motion;
 
 import cn.hutool.core.util.StrUtil;
+import cn.iocoder.yudao.framework.common.enums.UserTypeEnum;
 import cn.iocoder.yudao.framework.common.util.json.JsonUtils;
+import cn.iocoder.yudao.framework.web.core.util.WebFrameworkUtils;
 import cn.iocoder.yudao.module.rehab.dal.dataobject.motion.RehabMotionAssessmentDO;
 import cn.iocoder.yudao.module.rehab.dal.dataobject.motion.RehabMotionManualEditDO;
 import cn.iocoder.yudao.module.rehab.dal.mysql.motion.RehabMotionAssessmentMapper;
@@ -16,6 +18,7 @@ import javax.annotation.Resource;
 
 import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static cn.iocoder.yudao.module.rehab.enums.ErrorCodeConstants.CLERK_WRITE_FORBIDDEN;
+import static cn.iocoder.yudao.module.rehab.enums.ErrorCodeConstants.CLINICAL_ROLE_REQUIRED;
 import static cn.iocoder.yudao.module.rehab.enums.ErrorCodeConstants.PATIENT_NO_PERMISSION;
 import static cn.iocoder.yudao.module.rehab.enums.RehabMotionErrorCodeConstants.MOTION_NOT_EXISTS;
 import static cn.iocoder.yudao.module.rehab.enums.RehabMotionErrorCodeConstants.MOTION_SIGNED_LOCKED;
@@ -66,13 +69,35 @@ public class RehabMotionAccess {
     }
 
     public void requireClinician(Long userId) {
+        if (userId == null) {
+            throw exception(CLINICAL_ROLE_REQUIRED);
+        }
+        // Member and admin numeric user IDs live in different namespaces.
+        // A member whose numeric ID happens to match a therapist's admin ID
+        // must never inherit that admin account's clinical-write privileges.
+        if (UserTypeEnum.MEMBER.getValue().equals(WebFrameworkUtils.getLoginUserType())) {
+            throw exception(CLINICAL_ROLE_REQUIRED);
+        }
         if (dataPermissionService.isClerk(userId) && !dataPermissionService.isSuperAdmin(userId)
                 && !dataPermissionService.isTherapist(userId)) {
             throw exception(CLERK_WRITE_FORBIDDEN);
         }
+        // Deny by default. A non-clerk user is not necessarily a clinician.
+        // Controller permissions alone cannot be used to authorize service-layer
+        // writes (manual scores, clinical review, signature).
+        if (!dataPermissionService.isSuperAdmin(userId)
+                && !dataPermissionService.isTherapist(userId)) {
+            throw exception(CLINICAL_ROLE_REQUIRED);
+        }
     }
 
     public java.util.Set<Long> visiblePatientIds(Long userId) {
+        // MEMBER and ADMIN ids are independent namespaces. In particular,
+        // null from getVisiblePatientIds means all patients, so never pass
+        // a member id to an admin-role lookup even when their ids collide.
+        if (userId == null || UserTypeEnum.MEMBER.getValue().equals(WebFrameworkUtils.getLoginUserType())) {
+            return java.util.Collections.emptySet();
+        }
         return dataPermissionService.getVisiblePatientIds(userId);
     }
 
@@ -116,6 +141,9 @@ public class RehabMotionAccess {
     }
 
     public String role(Long userId) {
+        if (UserTypeEnum.MEMBER.getValue().equals(WebFrameworkUtils.getLoginUserType())) {
+            return "member";
+        }
         if (dataPermissionService.isSuperAdmin(userId)) {
             return "admin";
         }

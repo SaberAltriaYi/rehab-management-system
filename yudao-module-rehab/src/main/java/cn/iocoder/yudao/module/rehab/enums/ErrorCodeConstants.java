@@ -77,6 +77,7 @@ public interface ErrorCodeConstants {
     ErrorCode TRIGGER_CAN_NOT_HANDLE = new ErrorCode(1_011_010_002, "当前复评触发记录不可处理");
 
     ErrorCode CLERK_WRITE_FORBIDDEN = new ErrorCode(1_011_011_000, "文员无权执行该临床写入操作");
+    ErrorCode CLINICAL_ROLE_REQUIRED = new ErrorCode(1_011_011_001, "仅治疗师或管理员可以执行临床写入操作");
 
     ErrorCode APP_ADMIN_LOGIN_FORBIDDEN = new ErrorCode(1_011_012_000, "当前账号无权登录管理端小程序");
     ErrorCode APP_PATIENT_BINDING_REQUIRED = new ErrorCode(1_011_012_001, "当前账号未绑定患者身份，请先完成绑定");

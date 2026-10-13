@@ -114,28 +114,9 @@ validate_history() {
 }
 printf '%s\n' "$history_rows" | validate_history
 
-# adopt：只登记“纯 CREATE TABLE”增量迁移，且数据库中每张表的列名与顺序必须与脚本完全一致。
-# 用于修复旧版 Compose 把 020-023 直接挂到 initdb 造成的“表已存在、账本未登记”缺口。
-create_only_columns() {
-  awk '
-    function bad(msg) { print "BAD " NR ": " msg; failed = 1; exit }
-    /^[[:space:]]*$/ || /^[[:space:]]*--/ { next }
-    !inside && /^CREATE TABLE `[A-Za-z0-9_]+` \($/ {
-      table = $3; gsub("`", "", table); cols = ""; inside = 1; next
-    }
-    !inside { bad("非 CREATE TABLE 语句") }
-    inside && /^  `[A-Za-z0-9_]+`/ {
-      col = $1; gsub("`", "", col); cols = (cols == "" ? col : cols "," col); next
-    }
-    inside && /^\)/ {
-      if ($0 !~ /;[[:space:]]*$/) bad("CREATE TABLE 未以分号结束")
-      print table " " cols; tables++; inside = 0; next
-    }
-    inside && /^  (PRIMARY KEY|UNIQUE KEY|KEY|INDEX|CONSTRAINT)/ { next }
-    inside { bad("无法识别的表定义行") }
-    END { if (!failed && (inside || tables == 0)) print "BAD 0: 未找到完整 CREATE TABLE" }
-  ' "$1"
-}
+# adopt only recovers verified legacy initdb pure-CREATE migrations 020–023.
+# Use read-only information_schema metadata, never names-only matching.
+# All structure checks must finish before inserting a single history row.
 
 if [ "$MODE" = "adopt" ]; then
   adopt_row=$(awk -F'|' -v v="$BASELINE_THROUGH" '$1 == v { print }' "$MANIFEST")
@@ -151,19 +132,22 @@ if [ "$MODE" = "adopt" ]; then
     earlier=$(printf '%s\n' "$history_rows" | awk -v v="$version" '$1 == v { print $1 }')
     [ -n "$earlier" ] || fail "更早的迁移 $version 尚未登记；必须按顺序处理"
   done < "$MANIFEST"
-  adopt_columns=$(create_only_columns "$PROJECT_DIR/$adopt_file")
-  case "$adopt_columns" in *BAD*) fail "迁移 $BASELINE_THROUGH 不是纯建表脚本，禁止 adopt：$(printf '%s' "$adopt_columns" | grep BAD | head -1)" ;; esac
-  printf '%s\n' "$adopt_columns" > "${TMPDIR:-/tmp}/rehab-adopt-$$"
-  while read -r adopt_table expected_columns; do
+  adopt_tables=$(python3 "$SCRIPT_DIR/adopt_schema_guard.py" tables "$PROJECT_DIR/$adopt_file") \
+    || fail "迁移 $BASELINE_THROUGH 不是纯建表脚本或结构不受支持，禁止 adopt"
+  [ -n "$adopt_tables" ] || fail "迁移 $BASELINE_THROUGH 无可核验的建表结构"
+  while IFS= read -r adopt_table; do
     [ -n "$adopt_table" ] || continue
-    actual_columns=$(printf "SELECT COALESCE(GROUP_CONCAT(column_name ORDER BY ordinal_position SEPARATOR ','),'') FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = '%s';\n" "$adopt_table" | run_sql)
-    if [ "$actual_columns" != "$expected_columns" ]; then
-      rm -f "${TMPDIR:-/tmp}/rehab-adopt-$$"
-      fail "表 $adopt_table 不存在或列结构与迁移 $BASELINE_THROUGH 不一致：未登记。请人工核验后再决定 apply 或修复"
+    actual_columns=$(printf "SELECT COALESCE(JSON_ARRAYAGG(JSON_OBJECT('ordinal',ordinal_position,'name',column_name,'type',column_type,'nullable',is_nullable,'default',column_default,'extra',extra)),JSON_ARRAY()) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = '%s';\n" "$adopt_table" | run_sql)
+    actual_indexes=$(printf "SELECT COALESCE(JSON_ARRAYAGG(JSON_OBJECT('name',index_name,'non_unique',non_unique,'seq',seq_in_index,'column',column_name,'sub_part',sub_part,'index_type',index_type)),JSON_ARRAY()) FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = '%s';\n" "$adopt_table" | run_sql)
+    actual_options=$(printf "SELECT JSON_OBJECT('engine',engine,'collation',table_collation) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = '%s';\n" "$adopt_table" | run_sql)
+    if ! printf '%s\n%s\n%s\n' "$actual_columns" "$actual_indexes" "$actual_options" \
+      | python3 "$SCRIPT_DIR/adopt_schema_guard.py" verify "$PROJECT_DIR/$adopt_file" "$adopt_table" >/dev/null; then
+      fail "表 $adopt_table 的列结构、索引或表选项与迁移 $BASELINE_THROUGH 不一致：未登记"
     fi
     echo "VERIFIED: $adopt_table"
-  done < "${TMPDIR:-/tmp}/rehab-adopt-$$"
-  rm -f "${TMPDIR:-/tmp}/rehab-adopt-$$"
+  done <<EOF
+$adopt_tables
+EOF
   printf "INSERT INTO internal_schema_history(version, checksum, script_path, description, installed_by, baseline, execution_ms) VALUES ('%s','%s','%s','%s','adopt-verified',b'0',0);\n" \
     "$BASELINE_THROUGH" "$adopt_checksum" "$adopt_file" "$adopt_description" | run_sql
   echo "ADOPTED: $BASELINE_THROUGH $adopt_description"
