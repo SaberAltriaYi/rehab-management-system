@@ -1,26 +1,43 @@
-# 运动康复评估与业务管理系统
+# 运动康复评估与业务管理平台
 
-简称：**康复管理系统**
+**SaaS 多租户为主，Enterprise 私有／离线部署为备选。** 面向康复机构的患者档案、康复周期、评估、报告、训练、随访与复评管理，并通过独立 Engine 服务提供运动评估计算与报告渲染。
 
-历史桌面基线：**V1.0 / 1.0.0**
+> **2026-10-13 开发整合版本，非正式临床发行。** 未签名 DEV 安装包、合成测试和页面冒烟测试不等于完整临床验收。正式签名、公证、真实临床验证及部分端到端流程仍待完成；不应据此用于未经批准的真实临床决策。
 
-**2026-10-10 L0–L6 安全研发候选（尚未正式发行）：**本工作树在旧版 1.0.0 上增加软件所有者授权、工作室/员工席位、桌面激活及私有零信任远程接入安全预检。**旧版桌面安装包不包含这些能力**；现有 P0 14 项门禁与授权发行 3 项阻断尚未解除，不能把本次源码构建理解为新一代正式商业安装包。完整阶段测试、未完成生产验收与原因分别参见 [L5 交接](docs/releases/TENANT_LICENSE_L5_E2E_RELEASE_GATES_20261010.md)、[L6 私有远程访问](desktop/remote-access/README.md) 和 [历史版本清单](docs/releases/VERSIONS.md)。
+## 产品与部署形态
 
-这是一个面向运动康复工作室内部使用的本地管理系统，覆盖患者建档、康复周期、评估、报告、
-训练计划、训练执行、进度追踪、风险提醒、随访和复评等业务。
+| 形态 | 用途与边界 |
+| --- | --- |
+| **SaaS 平台（主线）** | 平台超级管理员管理机构；自助注册机构、单用户单租户、角色权限及订阅状态。第一阶段不接入支付。用户无需许可证、激活码、Ed25519 或本地授权。 |
+| **SaaS Client DEV** | 独立 macOS / Windows 浏览器连接客户端，仅保存 HTTPS 平台地址；服务器负责登录、租户、订阅与业务权限。**不包含后端、数据库或离线病历，不等同于一体化服务器安装包。** |
+| **Enterprise（保留）** | 私有／离线部署，保留 Owner Console、MFA、Ed25519 License、Issuer、Offline Lease、Installation Binding 与安全发行门禁。 |
+| **统一评估工作台 DEV** | Engine 仓库中的评估、复核、版本与 DOCX/JSON 导出工具。其本地复核不是 SaaS 正式报告签署，不替代主平台。 |
 
-项目基于芋道 `ruoyi-vue-pro` 二次开发。康复业务、桌面启动器、内部部署、安全加固和发布流程
-由本项目补充；上游作者、版权信息及 MIT License 保持不变。
+业务候选入口按后端实现、权限和前端路由逐项开放；ERP、CRM、OA 等模块不因菜单存在就视为完整交付。AI、支付、商城及未验收设计器仍保持关闭。旧患者测试账号不承担迁移兼容要求；新患者端仍必须通过安全身份认证后才能启用。
 
-**项目当前待办、运动学引擎本地/云端职责及 OpenCap → OpenSim 分阶段集成建议**：
-[康复管理系统待完成工作与 OpenSim 集成路线图（2026-10-08）](docs/rehab-completion-and-opensim-plan-2026-10-08.md)。
+## 下载与容器入口
 
-青少年专业评估报告生产边界与 B 版待建清单：[青少年 B 版报告契约](docs/report/adolescent-b-v1-contract.md)。当前 V4.1 自动报告仍为**原始资料汇总**，不能直接替代治疗师完成的正式 B 版报告。
+- **主项目安装包：[Releases](https://github.com/SaberAltriaYi/rehab-management-system/releases)**。以每个 Release 的实际附件、架构、源码 SHA、校验和与验证记录为准，不将历史包标为新版。
+- **容器镜像：[Packages / GHCR](https://github.com/SaberAltriaYi?tab=packages)**。服务端、管理端与 Engine 独立发布；未看到对应版本与 digest 前不得视为已发布。镜像不是 Windows/macOS 安装程序。
+- **统一评估工作台：[Engine Releases](https://github.com/SaberAltriaYi/rehab-biomechanics-engine/releases)**。
+- [SaaS 独立客户端源码与构建说明](desktop/saas-client/README.md) · [SaaS 隔离部署说明](deploy/saas/README.md) · [历史版本清单](docs/releases/VERSIONS.md)。
 
-> 本系统用于康复评估和业务记录，不替代医疗诊断。当前版本默认关闭 AI、商城、支付、IoT、
-> BPM 等未交付模块，不包含遥测、广告、第三方统计或患者数据云上传。
+DEV 包未进行发行者签名与 Apple 公证；请核验 SHA-256 并仅用于受控开发测试。SaaS 连接客户端要求有效 HTTPS，不提供全局忽略证书选项。Enterprise 缺少发行信任根、HTTPS 发行端点与签名资源时继续阻断正式发行，不能通过关闭安全检查来“完成打包”。
 
-## 下载桌面安装包
+## 源码组织与版本纪律
+
+- 主项目维护 SaaS 业务、管理端、患者端、Enterprise 兼容代码及客户端。
+- [Engine](https://github.com/SaberAltriaYi/rehab-biomechanics-engine) 统一承载运动计算与 Reporter 模型／DOCX 渲染；原 [Reporter 仓库](https://github.com/SaberAltriaYi/rehab-reporter) 和历史保留。
+- `master` 为默认入口，`integration/saas` 为开发整合线。整合前的主仓库分支头保存在 `archive/20261013/*` 标签；仅清理已确认合并的冗余分支，未合并研究改动保留。
+- 隔离部署使用新状态目录与独立数据库／卷／端口；测试仅使用合成数据，不自动覆盖旧版本或切换生产流量。
+
+本项目基于芋道 `ruoyi-vue-pro` 二次开发；上游版权和 MIT License 保持不变。不替代医疗诊断，不默认接入第三方遥测、广告或未经授权的数据上传。
+
+---
+
+以下内容保留 **V1.0 / Enterprise 历史版本** 的安装、业务及开发背景，不构成本次整合版的验收证明。
+
+## Enterprise 历史桌面安装包
 
 **历史桌面测试版**发布页（仅用于既有旧版本追溯，不是此次 L6 构建）：
 
@@ -34,7 +51,7 @@
 安装包内已经包含编译后的 Spring Boot 后端、Vue 管理端、Docker Compose、Nginx 配置和数据库
 初始化资源。最终用户不需要安装 JDK、Maven、Node.js 或 pnpm。
 
-### 当前预发布版说明
+### 历史预发布包说明
 
 上述**历史**安装包尚未完成 Windows Authenticode 签名和 Apple Developer ID 公证，因此文件名带
 `_unsigned`，Windows SmartScreen 或 macOS Gatekeeper 可能显示安全提醒。它们只用于可信
@@ -43,7 +60,7 @@
 下载后请同时下载发布页中的 `SHA256SUMS.txt` 并校验文件。不要使用来源不明或校验不一致的
 安装包。
 
-### L6 新版本与安全发行状态
+### Enterprise L6 历史发行门禁
 
 为了区分历史版本，本轮使用独立的 L6 源码研发候选，不复用或覆盖原有 preview.1–preview.4 Git 标签。**尚未创建新的正式测试版 Release 或公开可安装附件**；在所有 P0、所有者发行公钥/HTTPS、许可证 SQL 正式迁移、Windows 代码签名、macOS Developer ID 公证、浏览器/设备 MFA 和合法临床数据恢复等安全条件满足前，继续保持 NO-GO。
 
@@ -55,7 +72,7 @@
 
 这次交付的是源码，不是已签名的 APK/IPA 或已审核小程序。**患者登录默认关闭**：现有 API 只用手机号 + 患者编号认证，安全性不足；未完成后端身份认证改造和安全审查前，不得公开启用患者登录或使用真实患者数据。原生商店上架和微信发布还需要平台 AppID、有效 HTTPS 域名、签名/隐私资料与审核，当前均未提供。
 
-## 后台入口与使用说明
+## Enterprise 历史本地部署入口
 
 安装完成后，先启动 Docker Desktop，再打开“康复管理系统”启动器，点击“启动服务”；等待
 MySQL、Redis、后端和管理端全部健康后，点击“打开系统”。默认后台地址为
