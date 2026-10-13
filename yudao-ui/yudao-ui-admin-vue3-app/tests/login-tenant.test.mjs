@@ -27,6 +27,17 @@ test('installer declares UTF-8 before owner bootstrap writes', () => {
   assert.ok(owner.indexOf('SET NAMES utf8mb4;') >= 0)
   assert.ok(owner.indexOf('SET NAMES utf8mb4;') < owner.indexOf('START TRANSACTION;'))
 })
+test('installer refuses state below the source tree', () => {
+  const installer = readFileSync(new URL('../../../deploy/saas/install-synthetic.sh', import.meta.url), 'utf8')
+  assert.match(installer, /Refusing state path inside the source tree/)
+  assert.match(installer, /case "\$STATE\/" in/)
+  assert.match(installer, /"\$ROOT\/"\*\)/)
+})
+test('installer refuses symlinked state parents', () => {
+  const installer = readFileSync(new URL('../../../deploy/saas/install-synthetic.sh', import.meta.url), 'utf8')
+  assert.match(installer, /Refusing state path below a symlinked parent/)
+  assert.match(installer, /\[\[ ! -L "\$\(dirname "\$STATE"\)" \]\]/)
+})
 test('organization lookup uses encoded params instead of URL concatenation', () => {
   const api = readFileSync(new URL('../src/api/login/index.ts', import.meta.url), 'utf8')
   assert.match(api, /url: '\/system\/tenant\/get-id-by-name', params: \{ name: normalized \}/)
