@@ -176,13 +176,19 @@ fn parse_json_stream(value: &str) -> Vec<serde_json::Value> {
 }
 
 pub fn safe_error_summary(stderr: &str) -> String {
-    let one_line = stderr
-        .lines()
-        .filter(|line| !line.trim().is_empty())
-        .take(3)
-        .collect::<Vec<_>>()
-        .join(" ");
-    redact_sensitive(&one_line)
+    // Compose emits normal image-build progress before the actionable error.
+    let lines: Vec<_> = stderr.lines().map(str::trim)
+        .filter(|line| !line.is_empty()).collect();
+    let failure = lines.iter().rev().find(|line| {
+        let lower = line.to_ascii_lowercase();
+        lower.contains("error") || lower.contains("failed") ||
+            lower.contains("unhealthy") || lower.contains("exited")
+    });
+    let text = match failure {
+        Some(error) => (*error).to_owned(),
+        None => lines.iter().rev().take(3).rev().copied().collect::<Vec<_>>().join(" ")
+    };
+    redact_sensitive(&text.chars().take(800).collect::<String>())
 }
 
 pub fn redact_sensitive(value: &str) -> String {
@@ -353,5 +359,15 @@ mod tests {
         assert!(!output.contains("abc"));
         assert!(!output.contains("ey-secret"));
         assert!(!output.contains("13800138000"));
+    }
+
+    #[test]
+    fn compose_failures_do_not_get_hidden_behind_successful_image_build_progress() {
+        let output = safe_error_summary("Image server Building\nImage admin Built\nError: unhealthy password=should-not-leak");
+        assert!(output.contains("Error: unhealthy"));
+        assert!(!output.contains("admin Built"));
+        assert!(!output.contains("should-not-leak"));
+        assert!(safe_error_summary("Image server Building\nImage admin Built")
+            .contains("admin Built"));
     }
 }

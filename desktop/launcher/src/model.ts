@@ -35,6 +35,8 @@ export interface LicenseOverview {
   organization: string | null
   applicationId: string | null
   expiry: string | null
+  /** Signed commercial contract expiry; the 72h lease is expiry. */
+  entitlementExpiry?: string | null
   seatLimit: number | null
   modules: string[]
   pendingReplacement: boolean
@@ -71,8 +73,22 @@ export function licenseExpiryNotice(
   if (remainingMs <= 0) return '许可证已到期，须获得所有者重新授权'
   if (remainingMs > 7 * 24 * 60 * 60 * 1000) return null
   const hours = Math.ceil(remainingMs / (60 * 60 * 1000))
-  return hours <= 24 ? `授权约 ${hours} 小时后到期，请及时续签`
-    : `授权约 ${Math.ceil(hours / 24)} 天后到期，请及时续签`
+  return hours <= 24 ? `本次签名租约约 ${hours} 小时后到期；联网可续签`
+    : `本次签名租约约 ${Math.ceil(hours / 24)} 天后到期；联网可续签`
+}
+
+/** Never extend a signed lease locally. Renew only through the pinned Owner.
+ * The longer commercial entitlement and a short RHL1 lease are distinct. */
+export function licenseNeedsOnlineRenewal(
+  license: LicenseOverview | null | undefined, nowMs = Date.now()
+): boolean {
+  if (!license || !license.tenantId || !license.publisherConfigured ||
+      !['ACTIVE', 'GRACE', 'EXPIRED'].includes(license.status) ||
+      !license.expiry || !license.entitlementExpiry) return false
+  const leaseEnd = Date.parse(license.expiry)
+  const contractEnd = Date.parse(license.entitlementExpiry)
+  return Number.isFinite(leaseEnd) && Number.isFinite(contractEnd) &&
+    contractEnd > nowMs && leaseEnd - nowMs <= 24 * 60 * 60 * 1000
 }
 
 export interface LauncherSettings {

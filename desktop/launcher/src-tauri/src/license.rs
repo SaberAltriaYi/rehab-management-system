@@ -61,7 +61,24 @@ impl TrustedOwner {
     pub fn from_bundled_resources(resource_dir: &Path) -> LauncherResult<Self> {
         // Bundled, code-signed trust roots only. No key enrollment from online
         // /issuers or arbitrary customer-supplied activation files.
-        let path = resource_dir.join("license/trusted-issuers.json");
+        // Tauri macOS packaged resources reside under Contents/Resources/
+        // resources/license/, whereas dev/test fixtures may use license/.
+        // Trust either *bundled* layout only, never arbitrary external paths,
+        // customer-supplied keys, or the online issuer discovery endpoint.
+        let candidates = [
+            resource_dir.join("license/trusted-issuers.json"),
+            resource_dir.join("resources/license/trusted-issuers.json"),
+        ];
+        let available = candidates.iter().filter(|path| path.exists())
+            .collect::<Vec<_>>();
+        if available.len() != 1 {
+            return Err(bad("发行商可信公钥文件缺失或布局冲突，禁止激活"));
+        }
+        let path = available[0];
+        if !fs::symlink_metadata(path).is_ok_and(|meta|
+            meta.file_type().is_file() && !meta.file_type().is_symlink()) {
+            return Err(bad("发行商可信公钥文件格式异常，禁止激活"));
+        }
         let bytes = fs::read(path).map_err(|_| bad("发行商可信公钥文件缺失，禁止激活"))?;
         if bytes.len() > 8192 { return Err(bad("发行商公钥配置长度无效")); }
         let config: TrustConfig = serde_json::from_slice(&bytes)?;
@@ -239,6 +256,8 @@ pub struct LicenseOverview {
     pub organization: Option<String>,
     pub application_id: Option<String>,
     pub expiry: Option<String>,
+    /// Signed commercial entitlement end, NOT the <=72h refreshable lease.
+    pub entitlement_expiry: Option<String>,
     pub seat_limit: Option<u32>,
     pub modules: Vec<String>,
     pub pending_replacement: bool,
@@ -336,7 +355,8 @@ impl LicenseManager {
         let mut result = LicenseOverview {
             status: "UNLICENSED".into(), detail: "需向软件所有者申请许可".into(),
             tenant_id: None, installation_id: None, organization: None,
-            application_id: None, expiry: None, seat_limit: None, modules: vec![],
+            application_id: None, expiry: None, entitlement_expiry: None,
+            seat_limit: None, modules: vec![],
             pending_replacement: false, publisher_configured, local_verification_only: true,
         };
         let id = match self.identity() { Ok(id) => id, Err(_) => return result };
@@ -354,6 +374,7 @@ impl LicenseManager {
                 if let Some(owner) = self.owner.as_ref() {
                     if let Ok(claims) = verify_signed::<LeaseClaims>(token, "RHL1", owner) {
                         result.expiry = Some(claims.expires_at);
+                        result.entitlement_expiry = Some(claims.entitlement_expires_at);
                         result.seat_limit = claims.seat_limit;
                         result.modules = claims.modules;
                     }
@@ -376,6 +397,7 @@ impl LicenseManager {
         if let Ok((claims, _, _)) = self.verified() {
             result.status = "ACTIVE".into();
             result.expiry = Some(claims.expires_at);
+            result.entitlement_expiry = Some(claims.entitlement_expires_at);
             result.seat_limit = claims.seat_limit;
             result.modules = claims.modules;
             result.detail = "签名许可已在本机校验；需同时完成 Java 服务端授权同步".into();

@@ -7,6 +7,7 @@ import {
   isValidTransferPassword,
   licenseAllowsBusiness,
   licenseExpiryNotice,
+  licenseNeedsOnlineRenewal,
   licenseLabel,
   redactDiagnosticText,
   serviceBadgeClass
@@ -83,5 +84,30 @@ describe('launcher view model', () => {
     expect(licenseExpiryNotice({
       ...license, expiry: new Date(nowMs + 8 * 86_400_000).toISOString()
     }, nowMs)).toBe(null)
+  })
+
+  it('separates commercial entitlement from <=72h renewable lease', () => {
+    const nowMs = Date.parse('2026-10-10T05:00:00.000Z')
+    const base = {
+      status: 'ACTIVE' as const, detail: '', tenantId: 'synthetic-tenant',
+      installationId: 'synthetic-install', organization: 'Synthetic Studio',
+      applicationId: 'synthetic-application', seatLimit: null,
+      modules: ['rehab'], pendingReplacement: false, publisherConfigured: true,
+      localVerificationOnly: true,
+      expiry: new Date(nowMs + 3 * 86_400_000).toISOString(),
+      entitlementExpiry: new Date(nowMs + 90 * 86_400_000).toISOString()
+    }
+    expect(licenseNeedsOnlineRenewal(base, nowMs)).toBe(false)
+    const nearExpiry = { ...base, expiry: new Date(nowMs + 20 * 3_600_000).toISOString() }
+    expect(licenseNeedsOnlineRenewal(nearExpiry, nowMs)).toBe(true)
+    expect(licenseNeedsOnlineRenewal({ ...nearExpiry, status: 'GRACE' }, nowMs)).toBe(true)
+    expect(licenseNeedsOnlineRenewal({ ...nearExpiry, status: 'EXPIRED' }, nowMs)).toBe(true)
+    for (const status of ['SUSPENDED', 'REVOKED', 'PENDING', 'INVALID'] as const) {
+      expect(licenseNeedsOnlineRenewal({ ...nearExpiry, status }, nowMs)).toBe(false)
+    }
+    expect(licenseNeedsOnlineRenewal({ ...nearExpiry,
+      entitlementExpiry: new Date(nowMs - 1).toISOString() }, nowMs)).toBe(false)
+    expect(licenseNeedsOnlineRenewal({ ...nearExpiry, publisherConfigured: false }, nowMs)).toBe(false)
+    expect(licenseExpiryNotice(base, nowMs)).toContain('签名租约')
   })
 })
