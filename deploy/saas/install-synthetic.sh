@@ -5,6 +5,12 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 [[ "${1:-}" == --synthetic-only && -n "${2:-}" ]] || { echo 'Usage: bash deploy/saas/install-synthetic.sh --synthetic-only /absolute/new/directory'; exit 2; }
 STATE="$2"
 [[ "$STATE" == /* && ! -e "$STATE" && "$STATE" != *$'\n'* && "$STATE" != *' '* ]] || { echo 'Refusing existing, relative or whitespace-containing state path'; exit 2; }
+# Keep generated credentials, certificates and volumes outside the source tree.
+# This prevents an accidental install from polluting Git or being packaged.
+case "$STATE/" in
+  "$ROOT/"*) echo 'Refusing state path inside the source tree'; exit 2 ;;
+esac
+[[ ! -L "$(dirname "$STATE")" ]] || { echo 'Refusing state path below a symlinked parent'; exit 2; }
 for cmd in docker openssl node python3 git; do command -v "$cmd" >/dev/null; done
 [[ -s "$ROOT/yudao-server/target/yudao-server.jar" && -s "$ROOT/desktop/build/frontend-build-receipt.json" ]] || { echo 'Build isolated backend and current internal frontend first'; exit 1; }
 [[ -z "$(git -C "$ROOT" status --porcelain)" ]] || { echo 'Commit reviewed source before creating an attributable installation'; exit 1; }
