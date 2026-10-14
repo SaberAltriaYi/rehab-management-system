@@ -52,6 +52,125 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [800, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $node['Validate Task Envelope'].json;\\nconst taskId = $json.id ?? $json.taskId ?? $json.data?.id ?? $json.data?.taskId;\\nif (!taskId) throw new Error('Motion task response did not include taskId');\\nreturn [{ json: { ...input, taskId, pollAttempt: 0 } }];"
+      },
+      "id": "rehab-motion-task-envelope",
+      "name": "Keep Task Envelope",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1060, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{$env.REHAB_SYSTEM_BASE_URL}}/admin-api/rehab/motion/task/list",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{$env.REHAB_SYSTEM_TOKEN}}" }
+          ]
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "assessmentId", "value": "={{$json.assessmentId}}" }
+          ]
+        },
+        "options": { "timeout": 30000 }
+      },
+      "id": "rehab-motion-task-list",
+      "name": "Read Motion Task",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1320, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $node['Keep Task Envelope'].json;\\nconst rows = Array.isArray($json) ? $json : ($json.data ?? $json.list ?? []);\\nconst row = rows.find((item) => String(item.id ?? item.taskId) === String(input.taskId));\\nif (!row) throw new Error('Motion task was not found');\\nconst state = String(row.state ?? row.status ?? '').toUpperCase();\\nconst terminal = ['COMPLETED', 'FAILED', 'CANCELLED'].includes(state);\\nif (state === 'FAILED' || state === 'CANCELLED') throw new Error('Motion task ended in ' + state);\\nconst pollAttempt = Number(input.pollAttempt ?? 0) + 1;\\nif (pollAttempt > 60) throw new Error('Motion task polling exceeded 60 attempts');\\nreturn [{ json: { ...input, state, ready: state === 'COMPLETED', pollAttempt, task: row } }];"
+      },
+      "id": "rehab-motion-task-state",
+      "name": "Evaluate Task State",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1580, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            { "value1": "={{$json.ready}}", "operation": "isTrue" }
+          ]
+        }
+      },
+      "id": "rehab-motion-task-ready",
+      "name": "Task Completed?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1840, 300]
+    },
+    {
+      "parameters": {
+        "amount": 5,
+        "unit": "seconds"
+      },
+      "id": "rehab-motion-wait",
+      "name": "Wait Before Poll",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [1840, 500]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.REHAB_SYSTEM_BASE_URL}}/admin-api/rehab/motion/ai/regenerate",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{$env.REHAB_SYSTEM_TOKEN}}" },
+            { "name": "Idempotency-Key", "value": "={{$json.idempotencyKey + '-ai'}}" }
+          ]
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "assessmentId", "value": "={{$json.assessmentId}}" },
+            { "name": "idempotencyKey", "value": "={{$json.idempotencyKey + '-ai'}}" }
+          ]
+        },
+        "options": { "timeout": 30000 }
+      },
+      "id": "rehab-motion-ai-draft",
+      "name": "Generate AI Draft",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2100, 200]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{$env.REHAB_SYSTEM_BASE_URL}}/admin-api/rehab/motion/get",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{$env.REHAB_SYSTEM_TOKEN}}" }
+          ]
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "id", "value": "={{$node['Validate Task Envelope'].json.assessmentId}}" }
+          ]
+        },
+        "options": { "timeout": 30000 }
+      },
+      "id": "rehab-motion-draft-state",
+      "name": "Read Draft State",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2360, 200]
     }
   ],
   "connections": {
@@ -60,6 +179,30 @@
     },
     "Validate Task Envelope": {
       "main": [[{ "node": "Start Motion Task", "type": "main", "index": 0 }]]
+    },
+    "Start Motion Task": {
+      "main": [[{ "node": "Keep Task Envelope", "type": "main", "index": 0 }]]
+    },
+    "Keep Task Envelope": {
+      "main": [[{ "node": "Read Motion Task", "type": "main", "index": 0 }]]
+    },
+    "Read Motion Task": {
+      "main": [[{ "node": "Evaluate Task State", "type": "main", "index": 0 }]]
+    },
+    "Evaluate Task State": {
+      "main": [[{ "node": "Task Completed?", "type": "main", "index": 0 }]]
+    },
+    "Task Completed?": {
+      "main": [
+        [{ "node": "Generate AI Draft", "type": "main", "index": 0 }],
+        [{ "node": "Wait Before Poll", "type": "main", "index": 0 }]
+      ]
+    },
+    "Wait Before Poll": {
+      "main": [[{ "node": "Read Motion Task", "type": "main", "index": 0 }]]
+    },
+    "Generate AI Draft": {
+      "main": [[{ "node": "Read Draft State", "type": "main", "index": 0 }]]
     }
   },
   "pinData": {}
