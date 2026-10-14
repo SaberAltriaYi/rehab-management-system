@@ -22,4 +22,10 @@
 021|38de230ced2356461012db8291217fffb8a94e57fb32a5b0718ec5fb93b3a853|sql/mysql/rehab-member-remaining-v1.sql|会员扩展七表
 022|c4c1fbb24dc91e34addfefaabafbef0389b842cf64b14e62265fa53a29669755|sql/mysql/rehab-bpm-core-v1.sql|BPM流程八表
 023|a650926756f203d79f9d6c0cb2051df389dee894c073632407a077253643a810|sql/mysql/rehab-erp-core-v1.sql|ERP库存财务三十三表
-024|659db17ae877f55fa834192bd8db1facd3a36d4ecfc90bea119f583a1e22e891|sql/mysql/rehab-system-owner-tenant-v1.sql|系统拥有者租户总览权限
+024|a3db2d5b336f523c7db516e7a815236629d5e69115842bc962d2874f1be5496a|sql/mysql/rehab-motion-assessment-v1.sql|智能动作评估十一表与菜单
+025|ca388b3cf7cf5e08a0c590c4acc392e72f9fc17c48a106e070a5a15cc7cfbfb0|sql/mysql/rehab-motion-audit-columns-v1.sql|动作评估审计列允许后台任务写入
+026|488b7d7bf268f9f7cb5a582eaea7e832390fc9f3d1e28d9815e8f21e69398038|sql/mysql/rehab-tenant-license-v1.sql|签名工作室许可持久绑定及状态证明
+027|c7a519052782f152175fa5dc316f3086ed951d815b6d9f558cdf2397852da56b|sql/mysql/rehab-saas-platform-v2.sql|SaaS 多租户平台套餐、平台管理员与用量
+028|95f0cd0e550ee274e49b574ce2f196e024a35d5557d138591bbcc2ef84bb8755|sql/mysql/rehab-saas-onboarding-v2.sql|SaaS 机构注册申请及平台操作审计
+029|3be02fe62ec4f06a590de9fa64efda16dc473bdc01fc32e48adb102c91b9b5ea|sql/mysql/rehab-saas-staff-invitations-v2.sql|SaaS 治疗师一次性邀请
+030|659db17ae877f55fa834192bd8db1facd3a36d4ecfc90bea119f583a1e22e891|sql/mysql/rehab-system-owner-tenant-v1.sql|系统拥有者租户总览权限

@@ -122,7 +122,7 @@ if ENV_FILE_OVERRIDE="${ENV_FILE}" sh "${MIGRATOR}" status > "${STAGE}/pending.l
   exit 1
 fi
 last_version="$(awk -F'|' '$1 ~ /^[0-9][0-9][0-9]$/ { last=$1 } END { print last }' "${MANIFEST}")"
-case "${last_version}" in 023|025) ;; *) echo "FAIL: unsupported test manifest range ${last_version}"; exit 1 ;; esac
+case "${last_version}" in 023|025|026) ;; *) echo "FAIL: unsupported test manifest range ${last_version}"; exit 1 ;; esac
 last_count=$((10#${last_version}))
 incrementals="$(awk -F'|' '$1 ~ /^[0-9][0-9][0-9]$/ && ($1+0)>19 {print $1}' "${MANIFEST}")"
 for version in ${incrementals}; do
@@ -133,11 +133,11 @@ done
   { echo 'FAIL: unexpected pending migrations'; exit 1; }
 echo "PASS: 020-${last_version} pending after baseline"
 
-if [[ "${last_version}" == '025' ]]; then
+if [[ "${last_version}" == '025' || "${last_version}" == '026' ]]; then
   # Do not modify immutable migration SQL: stage a pre-024 manifest only for
   # this isolated disposable test fixture, then restore the original bytes.
   cp "${ROOT}/deploy/internal/migrations.manifest" "${STAGE}/original.manifest"
-  sed '/^024|/d; /^025|/d' "${STAGE}/original.manifest" > "${ROOT}/deploy/internal/migrations.manifest"
+  sed '/^024|/d; /^025|/d; /^026|/d' "${STAGE}/original.manifest" > "${ROOT}/deploy/internal/migrations.manifest"
   ENV_FILE_OVERRIDE="${ENV_FILE}" sh "${MIGRATOR}" apply > "${STAGE}/earlier.log" 2>&1 ||
     { tail -20 "${STAGE}/earlier.log"; exit 1; }
   [[ "$(counts)" == '0|23' ]] || { echo 'FAIL: pre-024 ledger mismatch'; exit 1; }
@@ -165,6 +165,19 @@ if [[ "${last_version}" == '025' ]]; then
   [[ "$(sql "SELECT COUNT(*) FROM system_menu WHERE id IN (9700,9710,9711,9712,9713,9714,9715,9716,9717);")" == 9 ]] ||
     { echo 'FAIL: 024 menu entries missing'; exit 1; }
   echo 'PASS: 024-025 created 11 tables, relaxed 22 audit fields, created 9 menus'
+  if [[ "${last_version}" == '026' ]]; then
+    [[ "$(sql "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name='rehab_tenant_license_binding';")" == 1 ]] ||
+      { echo 'FAIL: 026 signature-bound tenant license table missing'; exit 1; }
+    [[ "$(sql "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='rehab_tenant_license_binding' AND column_name IN ('tenant_uuid','installation_uuid','signed_lease','status_proof','revocation_epoch','trusted_time_ms');")" == 6 ]] ||
+      { echo 'FAIL: 026 critical license columns missing'; exit 1; }
+    sql "INSERT INTO rehab_tenant_license_binding(tenant_id,tenant_uuid,installation_uuid,signed_lease,status_proof,revocation_epoch,trusted_time_ms) VALUES(991701,'00000000-0000-0000-0000-000000099171','00000000-0000-0000-0000-000000099172','synthetic-RHL1','synthetic-RHR1',0,0);"
+    [[ "$(sql "SELECT COUNT(*) FROM rehab_tenant_license_binding WHERE tenant_id=991701 AND revocation_epoch=0;")" == 1 ]] ||
+      { echo 'FAIL: 026 synthetic signed-license binding insert/read mismatch'; exit 1; }
+    if sql "INSERT INTO rehab_tenant_license_binding(tenant_id,tenant_uuid,installation_uuid,signed_lease,status_proof,revocation_epoch,trusted_time_ms) VALUES(991702,'00000000-0000-0000-0000-000000099171','00000000-0000-0000-0000-000000099173','synthetic-reused-id','synthetic-proof',0,0);" >/dev/null 2>&1; then
+      echo 'FAIL: 026 allowed duplicate tenant UUID'; exit 1
+    fi
+    echo 'PASS: 026 license table, critical columns, synthetic binding and tenant UUID uniqueness'
+  fi
 else
   ENV_FILE_OVERRIDE="${ENV_FILE}" sh "${MIGRATOR}" apply > "${STAGE}/applied.log" 2>&1 ||
     { tail -20 "${STAGE}/applied.log"; exit 1; }
@@ -198,5 +211,10 @@ RESTORED="$(docker compose "${COMPOSE_ARGS[@]}" exec -T mysql sh -c \
   restore-verify "${RESTORE_DB}" \
   "SELECT CONCAT((SELECT COUNT(*) FROM rehab_patient),'|',(SELECT COUNT(*) FROM internal_schema_history));")"
 [[ "${RESTORED}" == "0|${last_count}" ]] || { echo 'FAIL: synthetic backup/restore count mismatch'; exit 1; }
+if [[ "${last_version}" == '026' ]]; then
+  LICENSE_RESTORED="$(docker compose "${COMPOSE_ARGS[@]}" exec -T mysql sh -c     'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysql -uroot "$1" -N -B --execute "$2"'     restore-verify "${RESTORE_DB}"     "SELECT COUNT(*) FROM rehab_tenant_license_binding WHERE tenant_id=991701 AND revocation_epoch=0;")"
+  [[ "${LICENSE_RESTORED}" == 1 ]] || { echo 'FAIL: license binding not recovered after synthetic restore'; exit 1; }
+  echo 'PASS: synthetic license binding survives backup/restore'
+fi
 echo "PASS: synthetic post-migration backup/restore (patients=0, ledger=${last_count})"
 echo 'PASS: full isolated migration and backup/restore suite complete'

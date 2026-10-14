@@ -2,6 +2,7 @@ mod config;
 mod docker;
 mod error;
 mod license;
+mod migrations;
 mod model;
 mod runner;
 mod runtime;

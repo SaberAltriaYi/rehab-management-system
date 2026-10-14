@@ -1,7 +1,7 @@
--- L2 additive MySQL schema candidate. Do not append to migration manifest
--- until the main and motion-assessment migration versions are reconciled.
--- Never execute directly against existing patient/clinic databases.
-CREATE TABLE IF NOT EXISTS rehab_tenant_license_binding (
+-- L7 immutable incremental migration 026, AFTER motion-assessment 024 and 025.
+-- Additive license metadata only, no patient fields, no destructive SQL.
+-- NEVER run directly against original business DB; use verified migration ledger.
+CREATE TABLE rehab_tenant_license_binding (
   tenant_id BIGINT NOT NULL PRIMARY KEY,
   tenant_uuid CHAR(36) NOT NULL,
   installation_uuid CHAR(36) NOT NULL,

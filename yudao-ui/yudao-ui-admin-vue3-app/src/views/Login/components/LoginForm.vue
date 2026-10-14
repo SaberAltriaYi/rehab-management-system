@@ -81,7 +81,7 @@
   </el-form>
 </template>
 <script lang="ts" setup>
-import { ElLoading } from 'element-plus'
+import { ElLoading, ElMessage } from 'element-plus'
 import LoginFormTitle from './LoginFormTitle.vue'
 import type { RouteLocationNormalizedLoaded } from 'vue-router'
 
@@ -130,6 +130,7 @@ const loginData = reactive({
 
 // 获取验证码
 const getCode = async () => {
+  if (!(await validForm()) || !(await getTenantId())) return
   // 情况一，未开启：则直接登录
   if (loginData.captchaEnable === 'false') {
     await handleLogin({})
@@ -142,9 +143,17 @@ const getCode = async () => {
 // 获取租户 ID
 const getTenantId = async () => {
   if (loginData.tenantEnable === 'true') {
-    const res = await LoginApi.getTenantIdByName(loginData.loginForm.tenantName)
-    authUtil.setTenantId(res)
+    // A failed lookup must not reuse a previously selected organization.
+    authUtil.removeTenantId()
+    try {
+      const id = await LoginApi.getTenantIdByName(loginData.loginForm.tenantName)
+      authUtil.setTenantId(id)
+    } catch (error) {
+      ElMessage.error(error instanceof Error ? error.message : '机构识别失败，请重试')
+      return false
+    }
   }
+  return true
 }
 // 记住我
 const getLoginFormCache = () => {
@@ -164,9 +173,8 @@ const loading = ref() // ElLoading.service 返回的实例
 const handleLogin = async (params: any) => {
   loginLoading.value = true
   try {
-    await getTenantId()
     const data = await validForm()
-    if (!data) {
+    if (!data || !(await getTenantId())) {
       return
     }
     const loginDataLoginForm = { ...loginData.loginForm }

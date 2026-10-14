@@ -13,6 +13,7 @@ CANDIDATES = {
     'member': ('sql/mysql/rehab-member-remaining-v1.sql', 7),
     'bpm': ('sql/mysql/rehab-bpm-core-v1.sql', 8),
     'erp': ('sql/mysql/rehab-erp-core-v1.sql', 33),
+    'rehab': ('sql/mysql/rehab-motion-assessment-v1.sql', 11),
 }
 AUDIT = {'creator', 'create_time', 'updater', 'update_time', 'deleted', 'tenant_id'}
 
@@ -39,7 +40,7 @@ class BusinessSchemaContractTest(unittest.TestCase):
             self.assertEqual(set(sources), set(tables), module)
             for table, body in tables.items():
                 with self.subTest(table=table):
-                    columns = dict(re.findall(r'^\s{2}`([a-z_]+)`\s+([A-Z]+)(?:\([^)]+\))?', body, re.M))
+                    columns = dict(re.findall(r'^\s{2}`([a-z0-9_]+)`\s+([A-Z]+)(?:\([^)]+\))?', body, re.M))
                     self.assertTrue(AUDIT <= set(columns), table)
                     self.assertEqual(columns.get('id'), 'BIGINT', table)
                     self.assertEqual(columns['tenant_id'], 'BIGINT', table)
@@ -66,7 +67,7 @@ class BusinessSchemaContractTest(unittest.TestCase):
                         else:
                             self.fail((table, name, java_type))
                     total += 1
-        self.assertEqual(total, 49)
+        self.assertEqual(total, 60)
 
 
 if __name__ == '__main__':

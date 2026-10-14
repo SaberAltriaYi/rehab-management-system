@@ -47,6 +47,18 @@ export TLS_KEY_PATH="${STAGE}/server.key"
 export FIRST_START_SQL_PATH="${STAGE}/first.sql"
 export MYSQL_CLIENT_CONFIG_PATH="${STAGE}/client.cnf"
 export RUNTIME_BOOTSTRAP="${RUNTIME}/sql/desktop-bootstrap.sql"
+# The release bootstrap already has ledger 001-026. For upgrade/recovery
+# testing, generate a separate, sanitized ledger-019 fixture in this private
+# temporary directory. Never modify the packaged runtime or an installed DB.
+EXPECTED_INITIAL_LEDGER="$(awk -F'|' '/^[0-9][0-9][0-9]\|/ {n=$1} END {print n+0}' "${RUNTIME}/sql/migrations.manifest")"
+case "${MODE}" in
+  --upgrade-smoke|--upgrade-auth-smoke|--upgrade-browser-smoke|--report-browser-smoke|--launcher-fault-restore)
+    export RUNTIME_BOOTSTRAP="${STAGE}/baseline-019.sql"
+    node "${SCRIPT_DIR}/build-sanitized-bootstrap.mjs" --output "${RUNTIME_BOOTSTRAP}" --baseline-only >/dev/null
+    EXPECTED_INITIAL_LEDGER=19
+    echo 'PASS: separately generated sanitized 001-019 baseline; packaged runtime preserved'
+    ;;
+esac
 export SERVER_IMAGE="rehab-ephemeral-server:${PROJECT}"
 export ADMIN_IMAGE="rehab-ephemeral-admin:${PROJECT}"
 export COMPOSE_PROJECT_NAME="${PROJECT}"
@@ -240,8 +252,8 @@ counts="$("${COMPOSE[@]}" exec -T mysql \
   mysql --defaults-extra-file=/run/rehab-secrets/mysql-client.cnf \
   -N -B ruoyi-vue-pro --execute \
   "SELECT CONCAT((SELECT COUNT(*) FROM rehab_patient),'|',(SELECT COUNT(*) FROM internal_schema_history));")"
-[[ "${counts}" == '0|19' ]] || { echo "FAIL: unexpected patient|ledger: ${counts}"; exit 1; }
-echo 'PASS: 0 patients and 19 baseline migration rows'
+[[ "${counts}" == "0|${EXPECTED_INITIAL_LEDGER}" ]] || { echo "FAIL: unexpected patient|ledger: ${counts}"; exit 1; }
+echo "PASS: 0 patients and ${EXPECTED_INITIAL_LEDGER} initial migration rows"
 
 if [[ "${MODE}" == '--launcher-fault-restore' ]]; then
   # Never run the ignored Rust test without preflight and the random project
@@ -257,7 +269,8 @@ if [[ "${MODE}" == '--launcher-fault-restore' ]]; then
   export REHAB_LAUNCHER_E2E_OVERRIDE="${OVERRIDE}"
   export REHAB_LAUNCHER_E2E_RUNTIME="${RUNTIME}"
   export PATH="${HOME}/.rustup/toolchains/stable-aarch64-apple-darwin/bin:${PATH}"
-  WORKTREE="${SCRIPT_DIR}/../../../worktrees/motion-assessment/desktop/launcher/src-tauri"
+  # Run the live test from this L7 source tree, never the older motion branch.
+  WORKTREE="${SCRIPT_DIR}/../launcher/src-tauri"
   [[ -f "${WORKTREE}/src/service_live_synthetic.rs" ]] ||
     { echo 'FAIL: live synthetic Rust test source missing'; exit 1; }
   (
@@ -267,11 +280,11 @@ if [[ "${MODE}" == '--launcher-fault-restore' ]]; then
   [[ "$("${COMPOSE[@]}" exec -T mysql mysql \
      --defaults-extra-file=/run/rehab-secrets/mysql-client.cnf \
      --batch --skip-column-names ruoyi-vue-pro --execute \
-     'SELECT COUNT(*) FROM internal_schema_history;')" == 25 ]] ||
-    { echo 'FAIL: successful launcher upgrade ledger is not 25'; exit 1; }
+     'SELECT COUNT(*) FROM internal_schema_history;')" == 26 ]] ||
+    { echo 'FAIL: successful launcher upgrade ledger is not 26'; exit 1; }
   [[ "$("${COMPOSE[@]}" exec -T server cat /app/data/rehab/synthetic-attachment.txt)" == 'SYNTHETIC_ATTACHMENT_BEFORE_UPGRADE' ]] ||
     { echo 'FAIL: restored synthetic attachment mismatch'; exit 1; }
-  echo 'PASS: REAL launcher orchestration, partial-DDL failure, explicit DB/attachment recovery, then packaged 020-025 successful upgrade'
+  echo 'PASS: REAL launcher orchestration, partial-DDL failure, explicit DB/attachment recovery, then packaged 020-026 successful upgrade'
   exit 0
 fi
 
@@ -314,11 +327,27 @@ if [[ "${MODE}" == '--upgrade-smoke' || "${MODE}" == '--upgrade-auth-smoke' || "
     applied=$((applied + 1))
     echo "PASS: packaged migration ${version} applied with matching checksum"
   done < "${manifest}"
-  [[ "${applied}" == 6 ]] || { echo "FAIL: expected 6 upgrades 020-025, got ${applied}"; exit 1; }
+  [[ "${applied}" == 7 ]] || { echo "FAIL: expected 7 upgrades 020-026, got ${applied}"; exit 1; }
 
   upgraded="$(sql "SELECT CONCAT((SELECT COUNT(*) FROM rehab_patient),'|',(SELECT COUNT(*) FROM internal_schema_history),'|',(SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name LIKE 'rehab_motion_%'),'|',(SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name LIKE 'rehab_motion_%' AND column_name IN ('creator','updater') AND is_nullable='YES'));")"
-  [[ "${upgraded}" == '0|25|11|22' ]] ||
+  [[ "${upgraded}" == '0|26|11|22' ]] ||
     { echo "FAIL: unexpected upgraded synthetic structure ${upgraded}"; exit 1; }
+  [[ "$(sql "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name='rehab_tenant_license_binding';")" == 1 ]] ||
+    { echo 'FAIL: 026 tenant license binding table missing'; exit 1; }
+  # These are deliberately invalid synthetic strings: SQL constraints are
+  # tested here; no test lease is represented as a valid signed credential.
+  sql "INSERT INTO rehab_tenant_license_binding (tenant_id,tenant_uuid,installation_uuid,signed_lease,status_proof,revocation_epoch,trusted_time_ms) VALUES (1,'00000000-0000-4000-8000-000000000001','00000000-0000-4000-8000-000000000002','SYNTHETIC_NOT_SIGNED','SYNTHETIC_NOT_SIGNED',0,0);" >/dev/null
+  if sql "UPDATE rehab_tenant_license_binding SET revocation_epoch=-1 WHERE tenant_id=1;" >/dev/null 2>&1; then
+    echo 'FAIL: 026 accepted a negative revocation epoch'; exit 1
+  fi
+  [[ "$(sql "SELECT revocation_epoch FROM rehab_tenant_license_binding WHERE tenant_id=1;")" == 0 ]] ||
+    { echo 'FAIL: rejected 026 epoch update changed the stored row'; exit 1; }
+  if sql "INSERT INTO rehab_tenant_license_binding (tenant_id,tenant_uuid,installation_uuid,signed_lease,status_proof,revocation_epoch,trusted_time_ms) VALUES (2,'00000000-0000-4000-8000-000000000001','00000000-0000-4000-8000-000000000003','SYNTHETIC_NOT_SIGNED','SYNTHETIC_NOT_SIGNED',0,0);" >/dev/null 2>&1; then
+    echo 'FAIL: 026 accepted a cross-tenant duplicate license UUID'; exit 1
+  fi
+  [[ "$(sql "SELECT COUNT(*) FROM rehab_tenant_license_binding;")" == 1 ]] ||
+    { echo 'FAIL: 026 license binding uniqueness is not enforced'; exit 1; }
+  echo 'PASS: packaged 026 binding, negative epoch rejection and unique tenant UUID'
   [[ "$(sql "SELECT COUNT(*) FROM system_menu WHERE id IN (9700,9710,9711,9712,9713,9714,9715,9716,9717);")" == 9 ]] ||
     { echo 'FAIL: motion menus missing after packaged upgrade'; exit 1; }
   for role in super_admin rehab_therapist; do
@@ -333,7 +362,7 @@ if [[ "${MODE}" == '--upgrade-smoke' || "${MODE}" == '--upgrade-auth-smoke' || "
     { echo 'FAIL: second tenant patient was granted motion menus'; exit 1; }
   [[ "$(sql "SELECT COUNT(*) FROM system_role r JOIN system_role_menu rm ON rm.role_id=r.id AND rm.tenant_id=r.tenant_id WHERE r.code='rehab_patient' AND rm.menu_id BETWEEN 9700 AND 9717;")" == 0 ]] ||
     { echo 'FAIL: patient role granted therapist motion menus'; exit 1; }
-  echo 'PASS: packaged 020-025, ledger=25, 11 tables, 22 audit columns, two tenant-scoped therapists, no patient grants'
+  echo 'PASS: packaged 020-026, ledger=26, 11 motion tables, 22 audit columns, two tenant-scoped therapists, no patient grants'
 
   curl --noproxy '*' --fail --silent --show-error --cacert "${TLS_CERT_PATH}" "${BASE}/healthz" >/dev/null
   tenant="$(curl --noproxy '*' --fail --silent --show-error --cacert "${TLS_CERT_PATH}" --get \

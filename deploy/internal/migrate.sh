@@ -29,7 +29,16 @@ case "$MODE" in
       || fail "baseline 只登记历史，不验证业务 Schema；需人工核验和备份后显式设置 CONFIRM_BASELINE=BASELINE-REHAB-INTERNAL"
     [ "$BASELINE_THROUGH" -le 19 ] || fail "baseline 只允许历史初始化版本 001-019；新增迁移必须实际执行"
     ;;
-  *) fail "用法：$0 verify-files|status|apply|baseline <version>" ;;
+  adopt)
+    case "$BASELINE_THROUGH" in
+      ''|*[!0-9]*) fail "adopt 必须指定一个三位增量迁移版本号" ;;
+    esac
+    [ "${#BASELINE_THROUGH}" -eq 3 ] || fail "adopt 版本必须为三位数字"
+    [ "$BASELINE_THROUGH" -gt 19 ] || fail "adopt 只用于 020+ 增量迁移；001-019 请使用经人工核验的 baseline"
+    [ "${CONFIRM_ADOPT:-}" = "ADOPT-REHAB-INITDB" ] \
+      || fail "adopt 仅用于旧版 Compose 已在 initdb 直接建表但未登记的数据库；备份后显式设置 CONFIRM_ADOPT=ADOPT-REHAB-INITDB"
+    ;;
+  *) fail "用法：$0 verify-files|status|apply|baseline <version>|adopt <version>" ;;
 esac
 
 verify_manifest_files() {
@@ -58,7 +67,7 @@ verify_manifest_files() {
       grep -Fq "$ledger_entry" "$INIT_LEDGER" \
         || fail "全新数据库迁移账本缺少或不匹配历史版本：$version"
     elif grep -Fq "$ledger_entry" "$INIT_LEDGER"; then
-      fail "全新数据库迁移账本不可预登记增量迁移 $version；必须实际执行后再登记"
+      fail "全新数据库迁移账本不可预登记增量迁移 ${version}；必须实际执行后再登记"
     fi
   done < "$MANIFEST"
   [ "$previous_version" -ge 19 ] || fail "迁移清单缺少已发布历史基线"
@@ -104,6 +113,47 @@ validate_history() {
   done
 }
 printf '%s\n' "$history_rows" | validate_history
+
+# adopt only recovers verified legacy initdb pure-CREATE migrations 020–023.
+# Use read-only information_schema metadata, never names-only matching.
+# All structure checks must finish before inserting a single history row.
+
+if [ "$MODE" = "adopt" ]; then
+  adopt_row=$(awk -F'|' -v v="$BASELINE_THROUGH" '$1 == v { print }' "$MANIFEST")
+  [ -n "$adopt_row" ] || fail "adopt 目标不在发布清单中"
+  adopt_checksum=$(printf '%s\n' "$adopt_row" | awk -F'|' '{ print $2 }')
+  adopt_file=$(printf '%s\n' "$adopt_row" | awk -F'|' '{ print $3 }')
+  adopt_description=$(printf '%s\n' "$adopt_row" | awk -F'|' '{ print $4 }')
+  already=$(printf '%s\n' "$history_rows" | awk -v v="$BASELINE_THROUGH" '$1 == v { print $1 }')
+  [ -z "$already" ] || fail "迁移 $BASELINE_THROUGH 已登记，无需 adopt"
+  while IFS='|' read -r version expected_checksum relative_file description; do
+    case "$version" in ''|'#'*) continue ;; esac
+    [ "$version" -lt "$BASELINE_THROUGH" ] || continue
+    earlier=$(printf '%s\n' "$history_rows" | awk -v v="$version" '$1 == v { print $1 }')
+    [ -n "$earlier" ] || fail "更早的迁移 $version 尚未登记；必须按顺序处理"
+  done < "$MANIFEST"
+  adopt_tables=$(python3 "$SCRIPT_DIR/adopt_schema_guard.py" tables "$PROJECT_DIR/$adopt_file") \
+    || fail "迁移 $BASELINE_THROUGH 不是纯建表脚本或结构不受支持，禁止 adopt"
+  [ -n "$adopt_tables" ] || fail "迁移 $BASELINE_THROUGH 无可核验的建表结构"
+  while IFS= read -r adopt_table; do
+    [ -n "$adopt_table" ] || continue
+    actual_columns=$(printf "SELECT COALESCE(JSON_ARRAYAGG(JSON_OBJECT('ordinal',ordinal_position,'name',column_name,'type',column_type,'nullable',is_nullable,'default',column_default,'extra',extra)),JSON_ARRAY()) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = '%s';\n" "$adopt_table" | run_sql)
+    actual_indexes=$(printf "SELECT COALESCE(JSON_ARRAYAGG(JSON_OBJECT('name',index_name,'non_unique',non_unique,'seq',seq_in_index,'column',column_name,'sub_part',sub_part,'index_type',index_type)),JSON_ARRAY()) FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = '%s';\n" "$adopt_table" | run_sql)
+    actual_options=$(printf "SELECT JSON_OBJECT('engine',engine,'collation',table_collation) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = '%s';\n" "$adopt_table" | run_sql)
+    if ! printf '%s\n%s\n%s\n' "$actual_columns" "$actual_indexes" "$actual_options" \
+      | python3 "$SCRIPT_DIR/adopt_schema_guard.py" verify "$PROJECT_DIR/$adopt_file" "$adopt_table" >/dev/null; then
+      fail "表 $adopt_table 的列结构、索引或表选项与迁移 $BASELINE_THROUGH 不一致：未登记"
+    fi
+    echo "VERIFIED: $adopt_table"
+  done <<EOF
+$adopt_tables
+EOF
+  printf "INSERT INTO internal_schema_history(version, checksum, script_path, description, installed_by, baseline, execution_ms) VALUES ('%s','%s','%s','%s','adopt-verified',b'0',0);\n" \
+    "$BASELINE_THROUGH" "$adopt_checksum" "$adopt_file" "$adopt_description" | run_sql
+  echo "ADOPTED: $BASELINE_THROUGH $adopt_description"
+  echo "PASS: 已按实际表结构登记 ${BASELINE_THROUGH}；请运行 status 确认剩余迁移"
+  exit 0
+fi
 
 if [ "$MODE" = "baseline" ]; then
   baseline_known=$(awk -F'|' -v v="$BASELINE_THROUGH" '$1 == v { print $1 }' "$MANIFEST")
@@ -159,7 +209,7 @@ while IFS='|' read -r version expected_checksum relative_file description; do
 done < "$MANIFEST"
 
 if [ "$MODE" = "baseline" ]; then
-  echo "PASS: 已登记人工核验基线至 $BASELINE_THROUGH；请运行 status 确认剩余迁移"
+  echo "PASS: 已登记人工核验基线至 ${BASELINE_THROUGH}；请运行 status 确认剩余迁移"
 else
   echo "PASS: 数据库迁移账本与发布清单一致"
 fi

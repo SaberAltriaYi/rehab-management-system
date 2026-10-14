@@ -1,0 +1,48 @@
+name: SaaS client developer installers
+on:
+  push:
+    branches: ['integration/saas']
+    paths: ['desktop/saas-client/**', '.github/workflows/saas-client-dev.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  native-developer-package:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-14, windows-2025]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 35
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78
+        with:
+          version: '0.12.19'
+          enable-cache: false
+      - name: Locked native toolchain
+        run: |
+          uv python install 3.11.14
+          uv sync --project desktop/saas-client --locked --all-groups
+      - name: Synthetic contract tests
+        run: uv run --project desktop/saas-client --locked pytest -q desktop/saas-client/tests
+      - name: Build development-only installer
+        run: uv run --project desktop/saas-client --locked python desktop/saas-client/build.py --output "$RUNNER_TEMP/saas-client-package"
+      - name: Install pinned browser
+        run: uv run --project desktop/saas-client --locked playwright install chromium
+      - name: Validate actual native installer with synthetic workflow
+        run: uv run --project desktop/saas-client --locked python desktop/saas-client/validate_installer.py --package-dir "$RUNNER_TEMP/saas-client-package"
+      - name: Upload unsigned developer artifacts only
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: saas-client-DEV-UNSIGNED-${{ matrix.os }}-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/saas-client-package/*.dmg
+            ${{ runner.temp }}/saas-client-package/*.exe
+            ${{ runner.temp }}/saas-client-package/manifest.json
+            ${{ runner.temp }}/saas-client-package/installer-validation.json
+          if-no-files-found: error
+          retention-days: 14

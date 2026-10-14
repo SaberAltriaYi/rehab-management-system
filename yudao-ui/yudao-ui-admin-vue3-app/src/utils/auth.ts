@@ -73,6 +73,10 @@ export const setTenantId = (tenantId: number) => {
   wsCache.set(CACHE_KEY.TenantId, tenantId)
 }
 
+export const removeTenantId = () => {
+  wsCache.delete(CACHE_KEY.TenantId)
+}
+
 export const getVisitTenantId = () => {
   return wsCache.get(CACHE_KEY.VisitTenantId)
 }
