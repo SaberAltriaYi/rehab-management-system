@@ -34,8 +34,9 @@
           <el-checkbox v-for="f in FAMILY_OPTIONS" :key="f.value" :value="f.value">{{ f.label }}</el-checkbox>
         </el-checkbox-group>
       </el-form-item>
-      <el-form-item label="标题">
-        <el-input v-model="form.title" maxlength="128" placeholder="可选，例如：术后 6 周复评" />
+      <el-form-item label="评估命名">
+        <el-input v-model="form.title" maxlength="128" placeholder="按模板填写 OpenCap Session / Trial 名称" />
+        <div class="name-hint">建议使用：{{ suggestedName }}；系统不会用患者姓名替代评估名称。</div>
       </el-form-item>
       <el-form-item label="采集时间">
         <el-date-picker v-model="captureTime" type="datetime" placeholder="采集时间" />
@@ -48,6 +49,10 @@
       </el-form-item>
       <el-form-item v-if="form.dataSource === 'opencap'" label="OpenCap 会话 ID" prop="opencapSessionId">
         <el-input v-model="form.opencapSessionId" placeholder="UUID，例如 abe79267-...." />
+        <div class="opencap-actions">
+          <el-button link type="primary" @click="openOpenCap">打开 OpenCap 官网</el-button>
+          <span class="hint">在官网完成采集后回到本页粘贴 Session ID；Trial 名称必须与上方评估命名一致。</span>
+        </div>
       </el-form-item>
       <el-form-item label="相机数量" prop="cameraCount">
         <el-input-number v-model="form.cameraCount" :min="2" :max="8" />
@@ -93,7 +98,7 @@ import type { FormRules } from 'element-plus'
 import { MotionApi, MotionAssessmentVO, MotionSaveReqVO } from '@/api/rehab/motion'
 import { formatDate } from '@/utils/formatTime'
 import { getRehabPatient, getRehabPatientPage } from '@/api/rehab/patient'
-import { FAMILY_OPTIONS, TJA_VARIANTS, VISIT_OPTIONS, visitLabel } from './constants'
+import { FAMILY_OPTIONS, OPENCAP_WEB_URL, TEMPLATE_ASSESSMENT_NAMES, TJA_VARIANTS, VISIT_OPTIONS, visitLabel } from './constants'
 
 defineOptions({ name: 'RehabMotionForm' })
 const emit = defineEmits(['success'])
@@ -132,6 +137,11 @@ const blank = (): MotionSaveReqVO => ({
   tjaVariant: 'TJA_MODIFIED_0_2'
 })
 const form = ref<MotionSaveReqVO>(blank())
+const suggestedName = computed(() => {
+  const family = form.value.protocolFamilies?.[0]
+  const prefix = family === 'FMS' ? TEMPLATE_ASSESSMENT_NAMES[11] : family === 'NASM_CES' ? TEMPLATE_ASSESSMENT_NAMES[0] : family === 'YBT_LQ' ? TEMPLATE_ASSESSMENT_NAMES[23] : family === 'TUCK_JUMP' ? TEMPLATE_ASSESSMENT_NAMES[9] : family === 'LESS' ? TEMPLATE_ASSESSMENT_NAMES[8] : '动作评估'
+  return prefix + " — " + visitLabel(form.value.visitType)
+})
 
 const uuid = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/
 const rules: FormRules = {
@@ -197,6 +207,8 @@ const open = async (opts: { id?: number; patientId?: number } = {}) => {
 }
 defineExpose({ open })
 
+const openOpenCap = () => window.open(OPENCAP_WEB_URL, '_blank', 'noopener,noreferrer')
+
 const submit = async () => {
   await formRef.value.validate()
   loading.value = true
@@ -224,5 +236,17 @@ const submit = async () => {
   margin-left: 12px;
   font-size: 12px;
   color: var(--el-text-color-secondary);
+}
+.name-hint {
+  width: 100%;
+  margin-top: 4px;
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+}
+.opencap-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 12px;
 }
 </style>

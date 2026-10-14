@@ -1,0 +1,66 @@
+{
+  "name": "Rehab Motion Assessment Orchestrator",
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "none"
+  },
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "rehab/motion/assessment",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "rehab-motion-webhook",
+      "name": "Assessment Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [260, 300],
+      "webhookId": "rehab-motion-assessment"
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $json.body ?? $json;\\nconst required = ['assessmentId', 'taskId', 'tenantId', 'idempotencyKey'];\\nconst missing = required.filter((key) => body[key] === undefined || body[key] === null || body[key] === '');\\nif (missing.length) throw new Error('Missing required fields: ' + missing.join(', '));\\nreturn [{ json: { ...body, receivedAt: new Date().toISOString() } }];"
+      },
+      "id": "rehab-motion-validate",
+      "name": "Validate Task Envelope",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [520, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.REHAB_SYSTEM_BASE_URL}}/admin-api/rehab/motion/process",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{$env.REHAB_SYSTEM_TOKEN}}" },
+            { "name": "Idempotency-Key", "value": "={{$json.idempotencyKey}}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "jsonBody": "={{ { assessmentId: $json.assessmentId, idempotencyKey: $json.idempotencyKey } }}",
+        "options": { "timeout": 30000 }
+      },
+      "id": "rehab-motion-process",
+      "name": "Start Motion Task",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [800, 300]
+    }
+  ],
+  "connections": {
+    "Assessment Webhook": {
+      "main": [[{ "node": "Validate Task Envelope", "type": "main", "index": 0 }]]
+    },
+    "Validate Task Envelope": {
+      "main": [[{ "node": "Start Motion Task", "type": "main", "index": 0 }]]
+    }
+  },
+  "pinData": {}
+}
