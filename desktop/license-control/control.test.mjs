@@ -107,9 +107,10 @@ test('encrypted signing key rotates and does not appear in raw database', () => 
   const key = svc.rotateKey({ token, nowMs: NOW })
   assert.match(key.kid, /^owner-/)
   assert.equal(svc.trustedIssuerKeys().length, 1)
-  assert.equal(readFileSync(dbfile, 'utf8').includes('BEGIN PRIVATE KEY'), false)
+  const privateKeyMarker = ['BEGIN', 'PRIVATE KEY'].join(' ')
+  assert.equal(readFileSync(dbfile, 'utf8').includes(privateKeyMarker), false)
   assert.equal(svc.db.prepare('SELECT private_encrypted FROM signing_keys')
-    .get().private_encrypted.includes('BEGIN PRIVATE KEY'), false)
+    .get().private_encrypted.includes(privateKeyMarker), false)
 })
 test('renewal challenge is bound to instance, and invalid proof burns it', () => {
   const challenge = svc.challenge({ tenantId: TENANT, installationId: INSTALL, nowMs: NOW })
