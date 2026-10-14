@@ -23,7 +23,6 @@ export interface TenantOwnerOverviewVO {
   expiredTenants: number
   expiringWithin30Days: number
   totalAccountQuota: number
-  tenants: TenantVO[]
 }
 
 export interface TenantPageReqVO extends PageParam {

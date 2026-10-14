@@ -3,7 +3,6 @@ package cn.iocoder.yudao.module.system.controller.admin.tenant.vo.tenant;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 
-import java.util.List;
 
 @Schema(description = "管理后台 - 系统拥有者租户总览")
 @Data
@@ -27,6 +26,4 @@ public class TenantOwnerOverviewRespVO {
     @Schema(description = "租户账号额度合计", requiredMode = Schema.RequiredMode.REQUIRED)
     private Long totalAccountQuota;
 
-    @Schema(description = "租户明细")
-    private List<TenantRespVO> tenants;
 }

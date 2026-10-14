@@ -44,7 +44,8 @@ INSERT INTO system_role_menu (role_id, menu_id, creator, updater, deleted, tenan
 SELECT r.id, t.menu_id, 'script', 'script', b'0', 1
 FROM system_role r
 JOIN (
-  SELECT 1224 AS menu_id UNION ALL
+  SELECT 1 AS menu_id UNION ALL
+  SELECT 1224 UNION ALL
   SELECT 1138 UNION ALL
   SELECT 1139 UNION ALL
   SELECT 1140 UNION ALL

@@ -13,12 +13,13 @@
         <Icon icon="ep:odometer" class="mr-5px" />刷新总览
       </el-button>
     </div>
-    <div v-if="ownerOverviewVisible && ownerOverview" class="grid grid-cols-2 md:grid-cols-5 gap-12px mt-16px">
+    <div v-if="ownerOverviewVisible && ownerOverview" class="grid grid-cols-2 md:grid-cols-3 gap-12px mt-16px">
       <el-statistic title="租户总数" :value="ownerOverview.totalTenants" />
       <el-statistic title="启用租户" :value="ownerOverview.activeTenants" />
       <el-statistic title="停用租户" :value="ownerOverview.disabledTenants" />
       <el-statistic title="已过期" :value="ownerOverview.expiredTenants" />
       <el-statistic title="30 天内到期" :value="ownerOverview.expiringWithin30Days" />
+      <el-statistic title="账号额度合计" :value="ownerOverview.totalAccountQuota" />
     </div>
   </ContentWrap>
 

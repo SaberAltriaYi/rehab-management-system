@@ -14,6 +14,7 @@ import cn.iocoder.yudao.module.system.controller.admin.tenant.vo.tenant.TenantRe
 import cn.iocoder.yudao.module.system.controller.admin.tenant.vo.tenant.TenantSaveReqVO;
 import cn.iocoder.yudao.module.system.dal.dataobject.tenant.TenantDO;
 import cn.iocoder.yudao.module.system.service.tenant.TenantService;
+import cn.iocoder.yudao.module.system.service.tenant.TenantOwnerOverviewService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -27,7 +28,6 @@ import javax.servlet.http.HttpServletResponse;
 import javax.validation.Valid;
 import javax.validation.constraints.Pattern;
 import java.io.IOException;
-import java.time.LocalDateTime;
 import java.util.List;
 
 import static cn.iocoder.yudao.framework.apilog.core.enums.OperateTypeEnum.EXPORT;
@@ -42,6 +42,16 @@ public class TenantController {
 
     @Resource
     private TenantService tenantService;
+
+    @Resource
+    private TenantOwnerOverviewService ownerOverviewService;
+
+    @GetMapping("/owner/overview")
+    @Operation(summary = "获得系统拥有者租户总览")
+    @PreAuthorize("@tenantOwnerAccess.isOwner() and @ss.hasPermission('system:tenant:owner')")
+    public CommonResult<TenantOwnerOverviewRespVO> getTenantOwnerOverview() {
+        return success(ownerOverviewService.getOverview());
+    }
 
     @GetMapping("/get-id-by-name")
     @PermitAll
