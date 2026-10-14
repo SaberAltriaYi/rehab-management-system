@@ -23,7 +23,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const body = $json.body ?? $json;\\nconst required = ['assessmentId', 'taskId', 'tenantId', 'idempotencyKey'];\\nconst missing = required.filter((key) => body[key] === undefined || body[key] === null || body[key] === '');\\nif (missing.length) throw new Error('Missing required fields: ' + missing.join(', '));\\nreturn [{ json: { ...body, receivedAt: new Date().toISOString() } }];"
+        "jsCode": "const body = $json.body ?? $json;\\nconst required = ['assessmentId', 'tenantId', 'idempotencyKey'];\\nconst missing = required.filter((key) => body[key] === undefined || body[key] === null || body[key] === '');\\nif (missing.length) throw new Error('Missing required fields: ' + missing.join(', '));\\nreturn [{ json: { ...body, receivedAt: new Date().toISOString() } }];"
       },
       "id": "rehab-motion-validate",
       "name": "Validate Task Envelope",

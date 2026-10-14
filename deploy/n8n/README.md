@@ -13,7 +13,7 @@
 工作流顺序：
 
 1. 系统创建评估任务并调用 Webhook。
-2. 校验 assessmentId、taskId、tenantId 和 idempotencyKey。
+2. 校验 assessmentId、tenantId 和幂等键；taskId 可选，系统会从启动任务响应中取得真实 taskId。
 3. 调用管理系统启动动作评估任务。
 4. 轮询任务状态，失败、取消或超过60次轮询立即停止。
 5. 任务完成后调用 AI 草稿生成接口，再读取评估状态。
