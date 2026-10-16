@@ -67,6 +67,21 @@ function validateOrganization(name) {
     name.length > 120 || /[\u0000-\u001f]/.test(name)) deny('INVALID_ORGANIZATION')
   return name.trim()
 }
+function validateContact(value, { required = false, max = 120 } = {}) {
+  if (value === undefined || value === null || value === '') {
+    if (required) deny('INVALID_CONTACT')
+    return null
+  }
+  if (typeof value !== 'string' || value.trim().length < 2 || value.length > max || /[\u0000-\u001f]/.test(value)) {
+    deny('INVALID_CONTACT')
+  }
+  return value.trim()
+}
+function validateEmail(value) {
+  if (value === undefined || value === null || value === '') return null
+  if (typeof value !== 'string' || value.length > 160 || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(value)) deny('INVALID_EMAIL')
+  return value.trim().toLowerCase()
+}
 const hashToken = value => createHash('sha256').update(value, 'utf8').digest('hex')
 
 export class OwnerLicensingService {
@@ -265,21 +280,48 @@ export class OwnerLicensingService {
     return { applicationId, status: 'PENDING' }
   }
 
+  submitPublicApplication({ organization, contactName, contactPhone, contactEmail, region, note, nowMs }) {
+    validMs(nowMs)
+    const name = validateOrganization(organization)
+    const contact = validateContact(contactName, { required: true, max: 80 })
+    const phone = validateContact(contactPhone, { required: true, max: 40 })
+    const email = validateEmail(contactEmail)
+    const area = validateContact(region, { max: 80 })
+    const memo = validateContact(note, { max: 500 })
+    const tenantId = randomUUID()
+    const installationId = randomUUID()
+    const { publicKey } = generateKeyPairSync('ed25519')
+    const publicPem = publicKey.export({ type: 'spki', format: 'pem' })
+    const applicationId = randomUUID()
+    this.store.transaction(() => {
+      this.db.prepare(`INSERT INTO applications
+        (id,tenant_uuid,installation_uuid,installation_public_pem,organization,status,submitted_at,
+         source,contact_name,contact_phone,contact_email,region,note)
+        VALUES(?,?,?,?,?,'PENDING',?,'public',?,?,?,?,?)`).run(applicationId, tenantId, installationId,
+        publicPem, name, nowMs, contact, phone, email, area, memo)
+      this.store.audit({ actor: 'public-registration', action: 'PUBLIC_APPLICATION_SUBMITTED',
+        subject: tenantId, details: { applicationId, organization: name, region: area }, nowMs })
+    })
+    return { applicationId, tenantId, status: 'PENDING', message: '申请已提交，等待软件拥有者审核' }
+  }
+
   applicationList({ token, nowMs }) {
     this.requireOwner(token, nowMs)
     return this.db.prepare(`SELECT id,tenant_uuid AS tenantId,installation_uuid AS installationId,
       organization,status,submitted_at AS submittedAt,decision_at AS decisionAt,
-      decision_reason AS decisionReason FROM applications ORDER BY submitted_at,id`).all()
+      decision_reason AS decisionReason,source,contact_name AS contactName,
+      contact_phone AS contactPhone,contact_email AS contactEmail,region,note
+      FROM applications ORDER BY submitted_at,id`).all()
   }
 
   decideApplication({ token, applicationId, decision, reason = '', policy, nowMs }) {
     const actor = this.requireStrongOwner(token, nowMs)
-    if (decision !== 'APPROVED' && decision !== 'REJECTED') deny('INVALID_DECISION')
+    if (!['APPROVED', 'REJECTED', 'NEEDS_INFO'].includes(decision)) deny('INVALID_DECISION')
     if (typeof reason !== 'string' || reason.length > 240) deny('INVALID_REASON')
     if (decision === 'APPROVED') validatePolicy({ ...policy, nowMs })
     this.store.transaction(() => {
       const app = this.db.prepare('SELECT * FROM applications WHERE id=?').get(applicationId)
-      if (!app || app.status !== 'PENDING') deny('APPLICATION_NOT_PENDING')
+      if (!app || !['PENDING', 'NEEDS_INFO'].includes(app.status)) deny('APPLICATION_NOT_PENDING')
       this.db.prepare(`UPDATE applications SET status=?,decision_at=?,decision_reason=? WHERE id=?`)
         .run(decision, nowMs, reason, applicationId)
       if (decision === 'APPROVED') {
