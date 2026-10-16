@@ -76,6 +76,12 @@ function policyFromForm() {
   })
 }
 const tenantId = () => requireUuid(String(formData('tenant-form').tenantId ?? '').trim())
+const applicationStatusLabel = {
+  PENDING: '待审核',
+  NEEDS_INFO: '待补充',
+  APPROVED: '已授权',
+  REJECTED: '已驳回'
+}
 function applyTenant(id) {
   $('tenant-form').elements.namedItem('tenantId').value = id
   $('offline-form').elements.namedItem('tenantId').value = id
@@ -85,7 +91,7 @@ async function refreshApplications() {
   const body = $('applications')
   body.replaceChildren()
   $('application-count').textContent = applications.length + ' 条申请'
-  selected = selected && applications.some(x => x.id === selected.id && x.status === 'PENDING')
+  selected = selected && applications.some(x => x.id === selected.id && ['PENDING', 'NEEDS_INFO'].includes(x.status))
     ? applications.find(x => x.id === selected.id) : null
   for (const app of applications) {
     const row = node('tr')
@@ -93,9 +99,13 @@ async function refreshApplications() {
     const name = node('td', app.organization)
     const ids = node('td')
     ids.append(node('small', app.tenantId), node('div', app.installationId))
-    const status = node('td', app.status)
+    if (app.contactName || app.contactPhone || app.contactEmail) {
+      ids.append(node('div', [app.contactName, app.contactPhone, app.contactEmail].filter(Boolean).join(' · '), 'muted'))
+    }
+    if (app.region) ids.append(node('div', app.region, 'muted'))
+    const status = node('td', applicationStatusLabel[app.status] ?? app.status)
     const actions = node('td')
-    if (app.status === 'PENDING') {
+    if (['PENDING', 'NEEDS_INFO'].includes(app.status)) {
       const choose = node('button', '审核')
       choose.type = 'button'
       choose.addEventListener('click', () => {
@@ -109,6 +119,18 @@ async function refreshApplications() {
         feedback('已选中 ' + app.organization + '：请核实机构身份、部署实例和策略')
       })
       actions.append(choose)
+      const requestInfo = node('button', '要求补充')
+      requestInfo.type = 'button'
+      requestInfo.className = 'outline'
+      requestInfo.addEventListener('click', () => void handle(async () => {
+        const reason = window.prompt('请填写需要机构补充的资料：')
+        if (!reason || reason.trim().length < 5) throw Error('补充说明至少需要五个字符')
+        await strongOperation(() => api('/owner/v1/applications/' + requireUuid(app.id) + '/request-info', {
+          method: 'POST', body: { reason: reason.trim() }
+        }), '要求机构补充资料')
+        await refreshAll()
+      }))
+      actions.append(requestInfo)
     }
     row.append(name, ids, status, actions)
     body.append(row)
