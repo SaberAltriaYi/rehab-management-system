@@ -69,8 +69,10 @@ public class RehabDataPermissionService {
             if (blocked.isEmpty()) {
                 return null;
             }
-            return patientMapper.selectList().stream().map(RehabPatientDO::getId)
-                    .filter(id -> !blocked.contains(id)).collect(Collectors.toSet());
+            // 只读取 ID，避免为部门权限过滤将全量患者敏感字段装入内存。
+            return jdbcTemplate.query("SELECT id FROM rehab_patient WHERE tenant_id=? AND deleted=b'0'",
+                            (rs, n) -> rs.getLong(1), TenantContextHolder.getRequiredTenantId())
+                    .stream().filter(id -> !blocked.contains(id)).collect(Collectors.toSet());
         }
         if (!isTherapist(userId)) {
             return Collections.emptySet();

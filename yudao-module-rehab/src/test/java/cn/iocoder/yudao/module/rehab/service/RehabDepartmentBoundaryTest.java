@@ -1,7 +1,6 @@
 package cn.iocoder.yudao.module.rehab.service;
 
 import cn.iocoder.yudao.framework.tenant.core.context.TenantContextHolder;
-import cn.iocoder.yudao.module.rehab.dal.dataobject.patient.RehabPatientDO;
 import cn.iocoder.yudao.module.rehab.dal.mysql.patient.RehabPatientMapper;
 import cn.iocoder.yudao.module.rehab.enums.RehabRoleCodeConstants;
 import cn.iocoder.yudao.module.system.api.permission.PermissionApi;
@@ -46,8 +45,8 @@ class RehabDepartmentBoundaryTest {
         when(permissions.hasAnyRoles(5L, RehabRoleCodeConstants.REHAB_CLERK)).thenReturn(true);
         when(jdbc.query(anyString(), any(RowMapper.class), eq(8L), eq(10L)))
                 .thenReturn(Arrays.asList(101L));
-        when(patients.selectList()).thenReturn(Arrays.asList(
-                RehabPatientDO.builder().id(101L).build(), RehabPatientDO.builder().id(102L).build()));
+        when(jdbc.query(startsWith("SELECT id FROM rehab_patient"), any(RowMapper.class), eq(8L)))
+                .thenReturn(Arrays.asList(101L, 102L));
         Set<Long> visible = service.getVisiblePatientIds(5L);
         assertEquals(1, visible.size());
         assertFalse(visible.contains(101L));
