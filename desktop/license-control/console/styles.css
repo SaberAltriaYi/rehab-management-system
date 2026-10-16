@@ -36,7 +36,29 @@ td button{white-space:nowrap;margin-right:5px;margin-bottom:6px;font-size:12px;p
 .event small{color:#61756f}
 .muted{color:#71857e}
 .toolbar{justify-content:flex-start}
+.toolbar-link{display:inline-flex;align-items:center;color:#246b5b;font-weight:600;text-decoration:none;padding:9px 12px;border:1px solid #9fcabb;border-radius:9px;background:#f5faf8}
+.toolbar-link:hover{background:#e6f5ee}
 #feedback{display:block;white-space:pre-wrap;overflow-wrap:anywhere;padding:16px 4px;color:#235b50;min-height:48px}
 #feedback.error{color:#a42f30}
 footer{color:#687c77;font-size:12px;text-align:center}
 @media(max-width:800px){main{padding:18px 12px}.grid2{grid-template-columns:1fr}.top{align-items:flex-start}.panel{padding:15px}}
+.register-page{background:linear-gradient(135deg,#e8f4ef 0%,#f6f8f5 52%,#eaf0fb 100%);color:#173b33}
+.register-shell{max-width:1120px;min-height:100vh;display:grid;grid-template-columns:minmax(0,1fr) minmax(380px,520px);align-items:center;gap:54px;padding-top:54px;padding-bottom:54px}
+.register-hero{padding:24px 0}
+.register-hero h1{font-size:clamp(32px,4vw,54px);line-height:1.12;letter-spacing:-.04em;max-width:650px;margin:14px 0 18px}
+.register-hero p{font-size:17px;line-height:1.8;color:#527067;max-width:620px;margin:0}
+.register-points{display:flex;flex-wrap:wrap;gap:9px;margin-top:28px}
+.register-points span{padding:8px 12px;border:1px solid #bfdacf;border-radius:999px;background:#ffffff99;color:#286554;font-size:13px}
+.register-card{padding:30px;box-shadow:0 18px 55px #244f4122}
+.register-card h2{font-size:25px;margin-bottom:3px}
+.register-card .section-heading p{margin:0}
+.register-step{font-size:12px;letter-spacing:.12em;color:#5b8477}
+.register-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.register-consent{display:flex;grid-template-columns:none;align-items:flex-start;gap:9px;font-weight:500;color:#537067}
+.register-consent input{width:18px;margin-top:3px;accent-color:#246b5b}
+.register-result{padding:14px;border-radius:10px;margin-top:15px;line-height:1.6;overflow-wrap:anywhere}
+.register-result.success{background:#e5f5e9;color:#1e684d;border:1px solid #b8dec6}
+.register-result.error{background:#fff0ed;color:#a33e39;border:1px solid #efc4bd}
+.register-footnote{margin:16px 0 0}
+@media(max-width:860px){.register-shell{grid-template-columns:1fr;gap:12px;padding-top:30px}.register-hero{padding-bottom:0}.register-hero h1{font-size:38px}}
+@media(max-width:520px){.register-grid{grid-template-columns:1fr}.register-card{padding:20px}}
