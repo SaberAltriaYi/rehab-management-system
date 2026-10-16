@@ -19,84 +19,87 @@
 19:     <form id="login-form">
 20:       <label>所有者用户名 <input name="username" required autocomplete="username" maxlength="40" /></label>
 21:       <label>所有者密码 <input name="password" type="password" required autocomplete="current-password" /></label>
-22:       <label>TOTP 动态验证码 <input name="totp" required inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" /></label>
-23:       <button type="submit">验证身份并登录</button>
-24:     </form>
-25:     <p class="hint">会话令牌仅保存在当前页面内存；刷新或关闭页面必须重新登录，不使用浏览器持久存储。</p>
-26:   </section>
-27:   <div id="owner-content" hidden>
-28:     <nav class="toolbar" aria-label="所有者操作">
-29:       <button id="refresh" type="button">刷新申请与审计</button>
-30:       <button id="stepup" type="button" class="outline">重新验证 TOTP</button>
-31:       <a class="toolbar-link" href="/owner/register" target="_blank" rel="noopener">打开机构注册页</a>
-32:       <button id="logout" type="button" class="outline">注销会话</button>
-33:     </nav>
-34:     <section class="panel">
-35:       <div class="section-heading"><h2>待审批工作室</h2><span id="application-count" aria-live="polite">—</span></div>
-36:       <div class="table-scroll"><table><thead><tr><th>工作室</th><th>租户 / 设备编号</th><th>申请状态</th><th>操作</th></tr></thead><tbody id="applications"></tbody></table></div>
-37:       <p class="hint">审批只签发软件许可；不授予所有者查看任何康复病历的权限。拒绝与审批均记录审计。</p>
-38:     </section>
-39:     <section class="grid2">
-40:       <section class="panel">
-41:         <h2>审批、续费、扩容策略</h2>
-42:         <form id="policy-form">
-43:           <label>到期日期 <input name="expiry" type="datetime-local" required /></label>
-44:           <label>员工席位数 <input name="seats" type="number" min="1" max="2147483647" value="6" required /></label>
-45:           <label class="check"><input name="unlimited" type="checkbox" checked/> 许可证明确签署无限员工席位（默认；定额合同可取消勾选）</label>
-46:           <label>最大部署实例数 <input name="installations" type="number" min="1" max="100000" value="1" required /></label>
-47:           <label>授权模块（逗号分隔） <input name="modules" value="rehab,motion,report" maxlength="2100" required /></label>
-48:           <label>首位机构管理员账号（仅本次转发） <input name="adminUsername" pattern="[a-zA-Z0-9]{4,30}" autocomplete="off" placeholder="例如 rehabadmin" /></label>
-49:           <label>首位机构管理员临时密码（仅本次转发） <input name="adminPassword" type="password" minlength="12" maxlength="72" autocomplete="new-password" placeholder="至少 12 位" /></label>
-50:           <label>人工审核理由 <textarea name="reason" maxlength="240" rows="3" placeholder="填写审批或变更理由"></textarea></label>
-51:           <p class="hint">审批会先签发授权，再异步开通主系统租户。管理员凭据只通过加密连接转发，不写入授权控制面；开通失败可重试。</p>
-52:           <button id="approve" type="button" disabled>批准当前选中的申请</button>
-53:           <button id="reject" type="button" class="danger" disabled>拒绝当前选中的申请</button>
-54:         </form>
-55:       </section>
-56:       <section class="panel">
-57:         <h2>已批准租户维护</h2>
-58:         <form id="tenant-form">
-59:           <label>租户 UUID <input name="tenantId" required placeholder="从申请列表复制小写 UUID"/></label>
-60:           <button type="submit" class="outline">查询当前许可</button>
-61:           <div id="tenant-status" aria-live="polite"></div>
-62:           <button type="button" id="update-policy">按左侧策略续期/扩容</button>
-63:           <button type="button" id="suspend" class="warning">暂停此租户</button>
-64:           <button type="button" id="resume" class="outline">恢复此租户</button>
-65:           <button type="button" id="revoke" class="danger">永久撤销此租户</button>
-66:         </form>
-67:         <hr/>
-68:         <h2>离线许可证签发</h2>
-69:         <form id="offline-form">
-70:           <label>已批准租户 UUID <input name="tenantId" required /></label>
-71:           <label>已批准安装实例 UUID <input name="installationId" required /></label>
-72:           <button type="submit">MFA 审批并生成 .rehab-license 文件</button>
-73:         </form>
-74:       </section>
-75:     </section>
-76:     <section class="grid2">
-77:       <section class="panel">
-78:         <h2>设备更换人工审核</h2>
-79:         <p class="hint">新设备的公钥/持有证明来自 L3，必须核验旧设备管理员与机构归属，不接受自行复制许可证。</p>
-80:         <form id="replace-form">
-81:           <label>新设备申请 JSON <textarea name="request" rows="8" required placeholder="粘贴 L3 生成的换机 JSON（不含私钥）"></textarea></label>
-82:           <button type="submit" class="warning">重新 MFA 核验后批准换机</button>
-83:         </form>
-84:       </section>
-85:       <section class="panel">
-86:         <h2>事件审计</h2>
-87:         <div id="audit" class="audit" aria-live="polite"></div>
-88:         <button type="button" id="checkpoint" class="outline">生成签名审计锚点（复制）</button>
-89:         <p class="hint">仅保留链头摘要；必须将锚点归档至独立不可变更的 WORM 审计存储。</p>
-90:       </section>
-91:     </section>
-92:     <section class="panel"><h2>密钥治理</h2>
-93:       <p>直接轮换会立刻启用新签发密钥。<strong>必须先通过已签名发行渠道，将新可信公钥分发给全部客户端。</strong></p>
-94:       <button type="button" id="rotate" class="warning" disabled>密钥轮换（待受控发布流程启用）</button>
-95:       <p class="hint">L4 不开放直接点击轮换，以免新许可无法被现有工作室验证。API 级轮换与紧急吊销属于经过安全审查的独立运维流程，生产发布仍为 NO-GO。</p>
-96:     </section>
-97:   </div>
-98:   <output id="feedback" role="status" aria-live="polite"></output>
-99:   <footer>此控制面仅处理授权申请、组织实例与审计元数据。不得上传患者文件、视频或病历。</footer>
-100: </main>
-101: </body>
-102: </html>
+22:       <label>TOTP 动态验证码
+23:         <input name="totp" type="text" required inputmode="numeric" autocomplete="one-time-code"
+24:           pattern="[0-9]{6}" minlength="6" maxlength="6" aria-label="六位 TOTP 动态验证码" />
+25:       </label>
+26:       <button type="submit">验证身份并登录</button>
+27:     </form>
+28:     <p class="hint">会话令牌仅保存在当前页面内存；刷新或关闭页面必须重新登录，不使用浏览器持久存储。</p>
+29:   </section>
+30:   <div id="owner-content" hidden>
+31:     <nav class="toolbar" aria-label="所有者操作">
+32:       <button id="refresh" type="button">刷新申请与审计</button>
+33:       <button id="stepup" type="button" class="outline">重新验证 TOTP</button>
+34:       <a class="toolbar-link" href="/owner/register" target="_blank" rel="noopener">打开机构注册页</a>
+35:       <button id="logout" type="button" class="outline">注销会话</button>
+36:     </nav>
+37:     <section class="panel">
+38:       <div class="section-heading"><h2>待审批工作室</h2><span id="application-count" aria-live="polite">—</span></div>
+39:       <div class="table-scroll"><table><thead><tr><th>工作室</th><th>租户 / 设备编号</th><th>申请状态</th><th>操作</th></tr></thead><tbody id="applications"></tbody></table></div>
+40:       <p class="hint">审批只签发软件许可；不授予所有者查看任何康复病历的权限。拒绝与审批均记录审计。</p>
+41:     </section>
+42:     <section class="grid2">
+43:       <section class="panel">
+44:         <h2>审批、续费、扩容策略</h2>
+45:         <form id="policy-form">
+46:           <label>到期日期 <input name="expiry" type="datetime-local" required /></label>
+47:           <label>员工席位数 <input name="seats" type="number" min="1" max="2147483647" value="6" required /></label>
+48:           <label class="check"><input name="unlimited" type="checkbox" checked/> 许可证明确签署无限员工席位（默认；定额合同可取消勾选）</label>
+49:           <label>最大部署实例数 <input name="installations" type="number" min="1" max="100000" value="1" required /></label>
+50:           <label>授权模块（逗号分隔） <input name="modules" value="rehab,motion,report" maxlength="2100" required /></label>
+51:           <label>首位机构管理员账号（仅本次转发） <input name="adminUsername" pattern="[a-zA-Z0-9]{4,30}" autocomplete="off" placeholder="例如 rehabadmin" /></label>
+52:           <label>首位机构管理员临时密码（仅本次转发） <input name="adminPassword" type="password" minlength="12" maxlength="72" autocomplete="new-password" placeholder="至少 12 位" /></label>
+53:           <label>人工审核理由 <textarea name="reason" maxlength="240" rows="3" placeholder="填写审批或变更理由"></textarea></label>
+54:           <p class="hint">审批会先签发授权，再异步开通主系统租户。管理员凭据只通过加密连接转发，不写入授权控制面；开通失败可重试。</p>
+55:           <button id="approve" type="button" disabled>批准当前选中的申请</button>
+56:           <button id="reject" type="button" class="danger" disabled>拒绝当前选中的申请</button>
+57:         </form>
+58:       </section>
+59:       <section class="panel">
+60:         <h2>已批准租户维护</h2>
+61:         <form id="tenant-form">
+62:           <label>租户 UUID <input name="tenantId" required placeholder="从申请列表复制小写 UUID"/></label>
+63:           <button type="submit" class="outline">查询当前许可</button>
+64:           <div id="tenant-status" aria-live="polite"></div>
+65:           <button type="button" id="update-policy">按左侧策略续期/扩容</button>
+66:           <button type="button" id="suspend" class="warning">暂停此租户</button>
+67:           <button type="button" id="resume" class="outline">恢复此租户</button>
+68:           <button type="button" id="revoke" class="danger">永久撤销此租户</button>
+69:         </form>
+70:         <hr/>
+71:         <h2>离线许可证签发</h2>
+72:         <form id="offline-form">
+73:           <label>已批准租户 UUID <input name="tenantId" required /></label>
+74:           <label>已批准安装实例 UUID <input name="installationId" required /></label>
+75:           <button type="submit">MFA 审批并生成 .rehab-license 文件</button>
+76:         </form>
+77:       </section>
+78:     </section>
+79:     <section class="grid2">
+80:       <section class="panel">
+81:         <h2>设备更换人工审核</h2>
+82:         <p class="hint">新设备的公钥/持有证明来自 L3，必须核验旧设备管理员与机构归属，不接受自行复制许可证。</p>
+83:         <form id="replace-form">
+84:           <label>新设备申请 JSON <textarea name="request" rows="8" required placeholder="粘贴 L3 生成的换机 JSON（不含私钥）"></textarea></label>
+85:           <button type="submit" class="warning">重新 MFA 核验后批准换机</button>
+86:         </form>
+87:       </section>
+88:       <section class="panel">
+89:         <h2>事件审计</h2>
+90:         <div id="audit" class="audit" aria-live="polite"></div>
+91:         <button type="button" id="checkpoint" class="outline">生成签名审计锚点（复制）</button>
+92:         <p class="hint">仅保留链头摘要；必须将锚点归档至独立不可变更的 WORM 审计存储。</p>
+93:       </section>
+94:     </section>
+95:     <section class="panel"><h2>密钥治理</h2>
+96:       <p>直接轮换会立刻启用新签发密钥。<strong>必须先通过已签名发行渠道，将新可信公钥分发给全部客户端。</strong></p>
+97:       <button type="button" id="rotate" class="warning" disabled>密钥轮换（待受控发布流程启用）</button>
+98:       <p class="hint">L4 不开放直接点击轮换，以免新许可无法被现有工作室验证。API 级轮换与紧急吊销属于经过安全审查的独立运维流程，生产发布仍为 NO-GO。</p>
+99:     </section>
+100:   </div>
+101:   <output id="feedback" role="status" aria-live="polite"></output>
+102:   <footer>此控制面仅处理授权申请、组织实例与审计元数据。不得上传患者文件、视频或病历。</footer>
+103: </main>
+104: </body>
+105: </html>
