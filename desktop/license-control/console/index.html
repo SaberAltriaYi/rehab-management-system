@@ -19,7 +19,10 @@
     <form id="login-form">
       <label>所有者用户名 <input name="username" required autocomplete="username" maxlength="40" /></label>
       <label>所有者密码 <input name="password" type="password" required autocomplete="current-password" /></label>
-      <label>TOTP 动态验证码 <input name="totp" required inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" /></label>
+      <label>TOTP 动态验证码
+        <input name="totp" type="text" required inputmode="numeric" autocomplete="one-time-code"
+          pattern="[0-9]{6}" minlength="6" maxlength="6" aria-label="六位 TOTP 动态验证码" />
+      </label>
       <button type="submit">验证身份并登录</button>
     </form>
     <p class="hint">会话令牌仅保存在当前页面内存；刷新或关闭页面必须重新登录，不使用浏览器持久存储。</p>

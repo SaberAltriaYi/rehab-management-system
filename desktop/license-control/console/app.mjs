@@ -6,6 +6,9 @@ let session = null
 let selected = null
 const $ = (id) => document.getElementById(id)
 const formData = (id) => Object.fromEntries(new FormData($(id)))
+function normalizeTotp(value) {
+  return String(value ?? '').replace(/[^0-9]/g, '').slice(0, 6)
+}
 const node = (tag, value, className) => {
   const result = document.createElement(tag)
   if (value !== undefined) result.textContent = String(value)
@@ -203,15 +206,20 @@ $('login-form').addEventListener('submit', event => {
   event.preventDefault()
   void handle(async () => {
     const data = formData('login-form')
+    const totp = normalizeTotp(data.totp)
+    if (totp.length !== 6) throw Error('TOTP 动态验证码必须是六位数字')
     const result = await api('/owner/v1/login', {
       method: 'POST', auth: false,
-      body: { username: String(data.username), password: String(data.password), totp: String(data.totp) }
+      body: { username: String(data.username), password: String(data.password), totp }
     })
     session = { token: result.token }
     $('login-form').reset()
     displaySession()
     await refreshAll()
   })
+})
+$('login-form').elements.namedItem('totp').addEventListener('input', event => {
+  event.target.value = normalizeTotp(event.target.value)
 })
 $('logout').addEventListener('click', () => void handle(async () => {
   try { await api('/owner/v1/logout', { method: 'POST' }) }
