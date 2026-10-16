@@ -98,6 +98,31 @@ test('HTTP API is inaccessible as an owner without TOTP session', async () => {
   assert.equal(login.headers.get('cache-control'), 'no-store')
   assert.equal((await api('/owner/v1/applications', { token: sessionToken })).status, 200)
 })
+test('public institution registration creates a pending owner application without clinical data', async () => {
+  const page = await fetch(url + '/owner/register')
+  assert.equal(page.status, 200)
+  assert.match(await page.text(), /机构申请/)
+  const submitted = await api('/public/v1/applications', {
+    method: 'POST', body: {
+      organization: '线上申请合成康复中心', contactName: '申请联系人',
+      contactPhone: '13800000000', contactEmail: 'apply@example.com',
+      region: '杭州', note: '需要主系统和动作评估模块'
+    }
+  })
+  assert.equal(submitted.status, 201, JSON.stringify(submitted.body))
+  assert.equal(submitted.body.status, 'PENDING')
+  assert.match(submitted.body.tenantId, /^[0-9a-f-]{36}$/)
+  const list = await api('/owner/v1/applications', { token: sessionToken })
+  const application = list.body.applications.find(item => item.id === submitted.body.applicationId)
+  assert.equal(application.source, 'public')
+  assert.equal(application.contactName, '申请联系人')
+  assert.equal(application.contactEmail, 'apply@example.com')
+  const requested = await api('/owner/v1/applications/' + submitted.body.applicationId + '/request-info', {
+    method: 'POST', token: sessionToken, body: { reason: '请补充机构使用人数和所在地' }
+  })
+  assert.equal(requested.status, 200)
+  assert.equal(requested.body.status, 'NEEDS_INFO')
+})
 test('CORS, unknown fields, payload length and alternate HTTP content types fail closed', async () => {
   assert.equal((await api('/owner/v1/applications', {
     token: sessionToken, headers: { origin: 'https://evil.example.invalid' }
@@ -142,11 +167,11 @@ test('owner controls cryptographic signer, pending studio cannot renew', async (
   })
   assert.equal(unlicensed.status, 409)
   const pending = await api('/owner/v1/applications', { token: sessionToken })
-  assert.equal(pending.body.applications[0].status, 'PENDING')
+  assert.equal(pending.body.applications.find(item => item.tenantId === TENANT).status, 'PENDING')
   const unauthApproval = await api('/owner/v1/applications/' + app.body.applicationId + '/approve', {
     method: 'POST', body: {
       policy: { expiresAtMs: now() + 86_400_000, seatLimit: 6,
-        maxInstallations: 1, modules: ['rehab', 'report'] }
+        maxInstallations: 1, modules: ['rehab', 'motion', 'report'] }
     }
   })
   assert.equal(unauthApproval.status, 401)
@@ -154,7 +179,7 @@ test('owner controls cryptographic signer, pending studio cannot renew', async (
     method: 'POST', token: sessionToken, body: {
       reason: 'Synthetic approval',
       policy: { expiresAtMs: now() + 86_400_000, seatLimit: 6,
-        maxInstallations: 1, modules: ['rehab', 'report'] }
+        maxInstallations: 1, modules: ['rehab', 'motion', 'report'] }
     }
   })
   assert.equal(approved.status, 200, JSON.stringify(approved.body))
