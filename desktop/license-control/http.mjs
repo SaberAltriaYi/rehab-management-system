@@ -212,12 +212,19 @@ export function createOwnerControlServer(service, {
       const application = /^\/owner\/v1\/applications\/([0-9a-f-]{36})\/(approve|reject|request-info)$/.exec(path)
       if (application && req.method === 'POST') {
         const b = await readJson(req)
-        fieldsOnly(b, application[2] === 'approve' ? ['reason', 'policy'] : ['reason'])
+        fieldsOnly(b, application[2] === 'approve' ? ['reason', 'policy', 'credentials'] : ['reason'])
         return writeJson(res, 200, service.decideApplication({
           token, applicationId: application[1],
           decision: application[2] === 'approve' ? 'APPROVED' : application[2] === 'reject' ? 'REJECTED' : 'NEEDS_INFO',
-          reason: b.reason, policy: application[2] === 'approve' ? policy(b) : null, nowMs
+          reason: b.reason, policy: application[2] === 'approve' ? policy(b) : null,
+          credentials: application[2] === 'approve' ? b.credentials : null, nowMs
         }))
+      }
+      const retry = /^\/owner\/v1\/applications\/([0-9a-f-]{36})\/retry-provision$/.exec(path)
+      if (retry && req.method === 'POST') {
+        const b = await readJson(req)
+        fieldsOnly(b, ['credentials'])
+        return writeJson(res, 200, service.retryProvision({ token, applicationId: retry[1], credentials: b.credentials, nowMs }))
       }
       const status = /^\/owner\/v1\/tenants\/([0-9a-f-]{36})$/.exec(path)
       if (status && req.method === 'GET') {

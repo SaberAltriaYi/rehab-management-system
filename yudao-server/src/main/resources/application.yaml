@@ -261,6 +261,13 @@ yudao:
   info:
     version: 1.0.0
     base-package: cn.iocoder.yudao
+  # Owner control plane -> main system handoff. Disabled unless a private-network token is injected.
+  provisioning:
+    enabled: ${YUDAO_PROVISIONING_ENABLED:false}
+    token: ${YUDAO_PROVISIONING_TOKEN:}
+  legacy:
+    saas-platform:
+      enabled: ${YUDAO_LEGACY_SAAS_PLATFORM_ENABLED:false}
   web:
     admin-ui:
       url: ${ADMIN_UI_URL:http://localhost:3000} # Admin 管理后台 UI 的地址

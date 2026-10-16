@@ -75,12 +75,25 @@ function policyFromForm() {
     modules: field.elements.namedItem('modules').value
   })
 }
+function credentialsFromForm() {
+  const field = $('policy-form')
+  return {
+    username: String(field.elements.namedItem('adminUsername').value || '').trim(),
+    password: String(field.elements.namedItem('adminPassword').value || '')
+  }
+}
 const tenantId = () => requireUuid(String(formData('tenant-form').tenantId ?? '').trim())
 const applicationStatusLabel = {
   PENDING: '待审核',
   NEEDS_INFO: '待补充',
   APPROVED: '已授权',
   REJECTED: '已驳回'
+}
+const provisioningStatusLabel = {
+  NOT_CONFIGURED: '未接入主系统',
+  PROVISIONING: '主系统开通中',
+  ACTIVE: '主系统已开通',
+  FAILED: '主系统开通失败'
 }
 function applyTenant(id) {
   $('tenant-form').elements.namedItem('tenantId').value = id
@@ -104,6 +117,8 @@ async function refreshApplications() {
     }
     if (app.region) ids.append(node('div', app.region, 'muted'))
     const status = node('td', applicationStatusLabel[app.status] ?? app.status)
+    if (app.provisioningStatus) status.append(node('div', provisioningStatusLabel[app.provisioningStatus] ?? app.provisioningStatus, 'muted'))
+    if (app.provisioningError) status.append(node('small', app.provisioningError, 'muted'))
     const actions = node('td')
     if (['PENDING', 'NEEDS_INFO'].includes(app.status)) {
       const choose = node('button', '审核')
@@ -131,6 +146,20 @@ async function refreshApplications() {
         await refreshAll()
       }))
       actions.append(requestInfo)
+    }
+    if (app.status === 'APPROVED' && app.provisioningStatus === 'FAILED') {
+      const retry = node('button', '重试开通')
+      retry.type = 'button'
+      retry.className = 'warning'
+      retry.addEventListener('click', () => void handle(async () => {
+        const credentials = credentialsFromForm()
+        if (!credentials.username || !credentials.password) throw Error('重试前请重新填写机构管理员账号和临时密码')
+        await strongOperation(() => api('/owner/v1/applications/' + requireUuid(app.id) + '/retry-provision', {
+          method: 'POST', body: { credentials }
+        }), '重试主系统租户开通')
+        await refreshAll()
+      }))
+      actions.append(retry)
     }
     row.append(name, ids, status, actions)
     body.append(row)
@@ -197,7 +226,7 @@ $('approve').addEventListener('click', () => void handle(async () => {
   if (reason.length < 5) throw Error('人工批准必须填写至少五个字符的审核依据')
   const confirmed = await strongOperation(async () => {
     await api('/owner/v1/applications/' + requireUuid(selected.id) + '/approve', {
-      method: 'POST', body: { reason, policy }
+      method: 'POST', body: { reason, policy, credentials: credentialsFromForm() }
     })
   }, '批准工作室，并签署租户额度、实例和功能授权')
   if (!confirmed) return

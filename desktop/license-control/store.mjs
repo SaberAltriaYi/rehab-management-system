@@ -125,7 +125,11 @@ export class OwnerLicenseStore {
       ['contact_phone', 'TEXT'],
       ['contact_email', 'TEXT'],
       ['region', 'TEXT'],
-      ['note', 'TEXT']
+      ['note', 'TEXT'],
+      ['provisioning_status', "TEXT NOT NULL DEFAULT 'NOT_CONFIGURED'"],
+      ['provisioning_id', 'TEXT'],
+      ['provisioning_error', 'TEXT'],
+      ['main_tenant_id', 'INTEGER']
     ]
     for (const [name, definition] of applicationAdditions) {
       if (!applicationColumns.includes(name)) this.db.exec(`ALTER TABLE applications ADD COLUMN ${name} ${definition}`)

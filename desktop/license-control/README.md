@@ -43,6 +43,12 @@
 
 本地申请入口是 `https://127.0.0.1:9444/owner/register`（测试服务器可用随机环回 HTTP）。申请进入 `PENDING`，Owner 可改为 `NEEDS_INFO`、`APPROVED` 或 `REJECTED`；审批时在独立控制台选择 `rehab,motion,report` 等模块。主系统不再承载拥有者租户管理台；旧 `/system/saas/platform/*` 只有显式设置 `yudao.legacy.saas-platform.enabled=true` 才会启用，默认关闭。
 
+### Owner 审批到主系统开通
+
+主系统的租户开通接口默认关闭。要在本地联调时，在主系统注入 `YUDAO_PROVISIONING_ENABLED=true`、至少 24 位的 `YUDAO_PROVISIONING_TOKEN`，并在 Owner 进程注入 `REHAB_MAIN_PROVISIONING_URL`、同一 token、`REHAB_MAIN_PROVISIONING_PLAN_ID` 和 `REHAB_MAIN_PROVISIONING_PACKAGE_ID`。审批页面的首位管理员账号/临时密码只在当前请求中转发，不写入 Owner SQLite；主系统用 `saas_provisioning_requests.idempotency_key` 和申请 UUID 防重复创建。
+
+流程为：机构注册 → Owner MFA 审核 → 签发软件授权 → 异步调用主系统私有接口 → 创建 `system_tenant` 并写入同一 `tenant_uuid` → 建立订阅与用量 → Owner 页面显示“主系统已开通”。失败会保留 `FAILED` 和脱敏错误，可使用“重试开通”继续同一个幂等请求。数据库先执行 `sql/mysql/rehab-saas-provisioning-v3.sql`。
+
 ## API （均为 JSON；受保护接口需要 `Authorization: Bearer <session>`）
 
 L3 桌面离线许可证对接：只有软件所有者 MFA 登录并审批安装实例后，调用 `POST /owner/v1/leases/offline`，成功 JSON 同时包含 `token`、`statusProof` 和可直接保存为 `.rehab-license` 文件的 `licenseFile` 子对象。后者由 `schemaVersion/tenantId/installationId/token/statusProof` 构成，必须通过独立安全通道交付目标工作室。不得导出签名私钥、MFA 种子、短期 Bearer 或患者数据；工作室不得自签许可证。
@@ -56,6 +62,7 @@ L3 桌面离线许可证对接：只有软件所有者 MFA 登录并审批安装
 | POST | `/public/v1/applications` | 机构提交基础资料和联系人，创建 PENDING 申请 |
 | GET | `/owner/register` | 机构公开注册页面 |
 | POST | `/owner/v1/applications/{id}/approve` | 审批、确定员工席位/实例数/期限/模块 |
+| POST | `/owner/v1/applications/{id}/retry-provision` | MFA 后重试主系统租户开通 |
 | POST | `/owner/v1/applications/{id}/reject` | 驳回附原因 |
 | POST | `/owner/v1/applications/{id}/request-info` | 要求申请人补充资料 |
 | POST | `/owner/v1/signing-keys/rotate` | 初始化/轮换所有者签名密钥 |
