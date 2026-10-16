@@ -28,6 +28,7 @@
     <nav class="toolbar" aria-label="所有者操作">
       <button id="refresh" type="button">刷新申请与审计</button>
       <button id="stepup" type="button" class="outline">重新验证 TOTP</button>
+      <a class="toolbar-link" href="/owner/register" target="_blank" rel="noopener">打开机构注册页</a>
       <button id="logout" type="button" class="outline">注销会话</button>
     </nav>
     <section class="panel">
@@ -43,7 +44,7 @@
           <label>员工席位数 <input name="seats" type="number" min="1" max="2147483647" value="6" required /></label>
           <label class="check"><input name="unlimited" type="checkbox" checked/> 许可证明确签署无限员工席位（默认；定额合同可取消勾选）</label>
           <label>最大部署实例数 <input name="installations" type="number" min="1" max="100000" value="1" required /></label>
-          <label>授权模块（逗号分隔） <input name="modules" value="rehab,report" maxlength="2100" required /></label>
+          <label>授权模块（逗号分隔） <input name="modules" value="rehab,motion,report" maxlength="2100" required /></label>
           <label>人工审核理由 <textarea name="reason" maxlength="240" rows="3" placeholder="填写审批或变更理由"></textarea></label>
           <p class="hint">先在申请列表选中待审批工作室。确认并完成新一次 MFA 后才会签发。</p>
           <button id="approve" type="button" disabled>批准当前选中的申请</button>
