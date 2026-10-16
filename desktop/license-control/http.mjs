@@ -8,14 +8,16 @@ import { LicensingServiceError } from './service.mjs'
 const BODY_LIMIT = 16 * 1024
 const limiter = new Map()
 const PRIVATE_ENDPOINT = /^\/owner\/v1\//
-const PUBLIC_PREFIX = /^\/license\/v1\//
+const PUBLIC_PREFIX = /^(\/license\/v1|\/public\/v1)\//
 // No authentication state, secrets or clinical records in these immutable
 // browser assets. Owner data APIs continue to require MFA bearer on every call.
 const CONSOLE_ASSETS = Object.freeze({
   '/owner/console': ['index.html', 'text/html; charset=utf-8'],
   '/owner/console/app.mjs': ['app.mjs', 'text/javascript; charset=utf-8'],
   '/owner/console/policy.mjs': ['policy.mjs', 'text/javascript; charset=utf-8'],
-  '/owner/console/styles.css': ['styles.css', 'text/css; charset=utf-8']
+  '/owner/console/styles.css': ['styles.css', 'text/css; charset=utf-8'],
+  '/owner/register': ['register.html', 'text/html; charset=utf-8'],
+  '/owner/register.mjs': ['register.mjs', 'text/javascript; charset=utf-8']
 })
 function writeConsoleAsset(res, path) {
   const [file, type] = CONSOLE_ASSETS[path]
@@ -140,6 +142,11 @@ export function createOwnerControlServer(service, {
       if (path === '/license/v1/issuers' && req.method === 'GET') {
         return writeJson(res, 200, { issuers: service.trustedIssuerKeys() })
       }
+      if (path === '/public/v1/applications' && req.method === 'POST') {
+        const b = await readJson(req)
+        fieldsOnly(b, ['organization', 'contactName', 'contactPhone', 'contactEmail', 'region', 'note'])
+        return writeJson(res, 201, service.submitPublicApplication({ ...b, nowMs }))
+      }
       if (path === '/license/v1/applications' && req.method === 'POST') {
         const b = await readJson(req)
         fieldsOnly(b, ['tenantId', 'installationId', 'installationPublicKeyPem', 'possessionSignature', 'organization'])
@@ -202,13 +209,13 @@ export function createOwnerControlServer(service, {
           token, kid: compromised[1], nowMs
         }))
       }
-      const application = /^\/owner\/v1\/applications\/([0-9a-f-]{36})\/(approve|reject)$/.exec(path)
+      const application = /^\/owner\/v1\/applications\/([0-9a-f-]{36})\/(approve|reject|request-info)$/.exec(path)
       if (application && req.method === 'POST') {
         const b = await readJson(req)
-        fieldsOnly(b, ['reason', 'policy'])
+        fieldsOnly(b, application[2] === 'approve' ? ['reason', 'policy'] : ['reason'])
         return writeJson(res, 200, service.decideApplication({
           token, applicationId: application[1],
-          decision: application[2] === 'approve' ? 'APPROVED' : 'REJECTED',
+          decision: application[2] === 'approve' ? 'APPROVED' : application[2] === 'reject' ? 'REJECTED' : 'NEEDS_INFO',
           reason: b.reason, policy: application[2] === 'approve' ? policy(b) : null, nowMs
         }))
       }
