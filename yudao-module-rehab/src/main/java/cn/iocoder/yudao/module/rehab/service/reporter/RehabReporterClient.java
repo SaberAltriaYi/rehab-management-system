@@ -1,6 +1,7 @@
 package cn.iocoder.yudao.module.rehab.service.reporter;
 
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.web.client.RestTemplateBuilder;
 import org.springframework.stereotype.Component;
 import org.springframework.http.HttpEntity;
@@ -25,6 +26,7 @@ public class RehabReporterClient {
     private final String baseUrl;
     private final String bearerToken;
 
+    @Autowired
     public RehabReporterClient(RestTemplateBuilder builder,
                                @Value("${rehab.reporter-engine.base-url:http://127.0.0.1:8790}") String baseUrl,
                                @Value("${rehab.reporter-engine.token:}") String bearerToken) {
