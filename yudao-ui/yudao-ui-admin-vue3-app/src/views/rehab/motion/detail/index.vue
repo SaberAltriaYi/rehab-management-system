@@ -148,6 +148,7 @@
 
 <script lang="ts" setup>
 import { MotionApi, MotionAssessmentVO } from '@/api/rehab/motion'
+import { formatDate } from '@/utils/formatTime'
 import { STATE_TAG, visitLabel } from '../constants'
 import UploadPanel from '../components/UploadPanel.vue'
 import TrialPanel from '../components/TrialPanel.vue'

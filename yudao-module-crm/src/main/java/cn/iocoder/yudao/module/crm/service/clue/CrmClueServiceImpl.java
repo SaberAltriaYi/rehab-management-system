@@ -2,6 +2,7 @@ package cn.iocoder.yudao.module.crm.service.clue;
 
 import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.lang.Assert;
+import cn.hutool.core.util.StrUtil;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.module.crm.controller.admin.clue.vo.CrmCluePageReqVO;
@@ -9,8 +10,11 @@ import cn.iocoder.yudao.module.crm.controller.admin.clue.vo.CrmClueSaveReqVO;
 import cn.iocoder.yudao.module.crm.controller.admin.clue.vo.CrmClueTransferReqVO;
 import cn.iocoder.yudao.module.crm.controller.admin.customer.vo.customer.CrmCustomerSaveReqVO;
 import cn.iocoder.yudao.module.crm.dal.dataobject.clue.CrmClueDO;
+import cn.iocoder.yudao.module.crm.dal.dataobject.customer.CrmCustomerDO;
 import cn.iocoder.yudao.module.crm.dal.dataobject.followup.CrmFollowUpRecordDO;
 import cn.iocoder.yudao.module.crm.dal.mysql.clue.CrmClueMapper;
+import cn.iocoder.yudao.module.crm.dal.mysql.customer.CrmCustomerMapper;
+import cn.iocoder.yudao.framework.mybatis.core.query.LambdaQueryWrapperX;
 import cn.iocoder.yudao.module.crm.enums.common.CrmBizTypeEnum;
 import cn.iocoder.yudao.module.crm.enums.permission.CrmPermissionLevelEnum;
 import cn.iocoder.yudao.module.crm.framework.permission.core.annotations.CrmPermission;
@@ -39,6 +43,7 @@ import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.singleton;
 import static cn.iocoder.yudao.module.crm.enums.ErrorCodeConstants.CLUE_NOT_EXISTS;
 import static cn.iocoder.yudao.module.crm.enums.ErrorCodeConstants.CLUE_TRANSFORM_FAIL_ALREADY;
+import static cn.iocoder.yudao.module.crm.enums.ErrorCodeConstants.CLUE_TRANSFORM_DUPLICATE_MOBILE;
 import static cn.iocoder.yudao.module.crm.enums.LogRecordConstants.*;
 import static cn.iocoder.yudao.module.system.enums.ErrorCodeConstants.USER_NOT_EXISTS;
 
@@ -53,6 +58,8 @@ public class CrmClueServiceImpl implements CrmClueService {
 
     @Resource
     private CrmClueMapper clueMapper;
+    @Resource
+    private CrmCustomerMapper customerMapper;
 
     @Resource
     private CrmCustomerService customerService;
@@ -186,6 +193,11 @@ public class CrmClueServiceImpl implements CrmClueService {
         // 1.2 存在已经转化的
         if (clue.getTransformStatus()) {
             throw exception(CLUE_TRANSFORM_FAIL_ALREADY);
+        }
+        // 只按准确手机号拦截高置信重复；不向线索负责人泄露已有客户的私密字段。
+        if (StrUtil.isNotBlank(clue.getMobile()) && customerMapper.selectCount(new LambdaQueryWrapperX<CrmCustomerDO>()
+                .eq(CrmCustomerDO::getMobile, clue.getMobile().trim())) > 0) {
+            throw exception(CLUE_TRANSFORM_DUPLICATE_MOBILE);
         }
 
         // 2.1 遍历线索(未转化的线索)，创建对应的客户

@@ -18,6 +18,7 @@ import cn.iocoder.yudao.module.crm.dal.dataobject.customer.CrmCustomerDO;
 import cn.iocoder.yudao.module.crm.dal.dataobject.receivable.CrmReceivableDO;
 import cn.iocoder.yudao.module.crm.service.contract.CrmContractService;
 import cn.iocoder.yudao.module.crm.service.customer.CrmCustomerService;
+import cn.iocoder.yudao.module.crm.service.department.CrmDepartmentService;
 import cn.iocoder.yudao.module.crm.service.receivable.CrmReceivableService;
 import cn.iocoder.yudao.module.system.api.dept.DeptApi;
 import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
@@ -59,6 +60,8 @@ public class CrmReceivableController {
     private CrmContractService contractService;
     @Resource
     private CrmCustomerService customerService;
+    @Resource
+    private CrmDepartmentService departmentService;
 
     @Resource
     private AdminUserApi adminUserApi;
@@ -115,8 +118,10 @@ public class CrmReceivableController {
 
     @GetMapping("/page-by-customer")
     @Operation(summary = "获得回款分页，基于指定客户")
+    @PreAuthorize("@ss.hasPermission('crm:receivable:query')")
     public CommonResult<PageResult<CrmReceivableRespVO>> getReceivablePageByCustomer(@Valid CrmReceivablePageReqVO pageReqVO) {
         Assert.notNull(pageReqVO.getCustomerId(), "客户编号不能为空");
+        departmentService.assertCustomerVisible(pageReqVO.getCustomerId(), getLoginUserId());
         PageResult<CrmReceivableDO> pageResult = receivableService.getReceivablePageByCustomerId(pageReqVO);
         return success(new PageResult<>(buildReceivableDetailList(pageResult.getList()), pageResult.getTotal()));
     }

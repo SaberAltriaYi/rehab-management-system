@@ -29,3 +29,4 @@
 028|95f0cd0e550ee274e49b574ce2f196e024a35d5557d138591bbcc2ef84bb8755|sql/mysql/rehab-saas-onboarding-v2.sql|SaaS 机构注册申请及平台操作审计
 029|3be02fe62ec4f06a590de9fa64efda16dc473bdc01fc32e48adb102c91b9b5ea|sql/mysql/rehab-saas-staff-invitations-v2.sql|SaaS 治疗师一次性邀请
 030|659db17ae877f55fa834192bd8db1facd3a36d4ecfc90bea119f583a1e22e891|sql/mysql/rehab-system-owner-tenant-v1.sql|系统拥有者租户总览权限
+031|27283e424befaf9122d5a2d35f237a0bbf5f44a66b195d180081545c59e06872|sql/mysql/rehab-crm-department-workspaces-v1.sql|CRM共享客户目录与部门私有工作台
