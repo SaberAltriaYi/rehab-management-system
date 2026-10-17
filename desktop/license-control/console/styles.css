@@ -62,3 +62,12 @@ footer{color:#687c77;font-size:12px;text-align:center}
 .register-footnote{margin:16px 0 0}
 @media(max-width:860px){.register-shell{grid-template-columns:1fr;gap:12px;padding-top:30px}.register-hero{padding-bottom:0}.register-hero h1{font-size:38px}}
 @media(max-width:520px){.register-grid{grid-template-columns:1fr}.register-card{padding:20px}}
+.recovery-shell{max-width:720px;margin:auto;padding-top:58px}
+.recovery-shell h1{font-size:36px;margin:8px 0 12px}
+.recovery-warning{background:#fff4df;border:1px solid #e6c783;border-radius:10px;padding:14px 16px;color:#754f17;margin:18px 0}
+.recovery-result{background:#e8f5ed;border:1px solid #b8d9c3;border-radius:10px;padding:18px;margin-top:18px}
+.recovery-secret{display:block;word-break:break-all;background:#fff;border:1px solid #c6dcd0;border-radius:8px;padding:12px;font-family:ui-monospace,monospace;letter-spacing:.08em}
+.recovery-uri{display:block;word-break:break-all;color:#246b5b;background:#fff;border:1px solid #c6dcd0;border-radius:8px;padding:12px;font-family:ui-monospace,monospace;font-size:12px}
+.recovery-link{text-align:center;margin:12px 0 0}
+.recovery-link a{color:#246b5b;font-weight:600}
+.recovery-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
