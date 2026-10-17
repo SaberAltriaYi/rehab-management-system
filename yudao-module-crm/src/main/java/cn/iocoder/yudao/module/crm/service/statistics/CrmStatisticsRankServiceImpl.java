@@ -124,11 +124,7 @@ public class CrmStatisticsRankServiceImpl implements CrmStatisticsRankService {
      * @return 用户编号数组
      */
     public List<Long> getUserIds(Long deptId) {
-        // 1. 获得部门列表
-        List<Long> deptIds = convertList(deptApi.getChildDeptList(deptId), DeptRespDTO::getId);
-        deptIds.add(deptId);
-        // 2. 获得用户编号
-        return convertList(adminUserApi.getUserListByDeptIds(deptIds), AdminUserRespDTO::getId);
+        return CrmStatisticsScope.users(deptId, null, adminUserApi, deptApi);
     }
 
 }

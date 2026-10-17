@@ -6,9 +6,14 @@
         <h2>康复评估报告</h2>
         <p>按患者整理报告、追溯版本和复核记录。报告状态不等同于临床签署。</p>
       </div>
-      <el-button :loading="loading" aria-label="刷新报告患者列表" @click="getList">
-        <Icon icon="ep:refresh" class="mr-4px" />刷新列表
-      </el-button>
+      <div class="report-hero-actions">
+        <el-button :loading="engineReportLoading" type="primary" plain @click="openEngineReport">
+          <Icon icon="ep:data-analysis" class="mr-4px" />引擎联调报告
+        </el-button>
+        <el-button :loading="loading" aria-label="刷新报告患者列表" @click="getList">
+          <Icon icon="ep:refresh" class="mr-4px" />刷新列表
+        </el-button>
+      </div>
     </div>
     <el-form
       ref="queryFormRef"
@@ -325,6 +330,16 @@
     </el-table>
   </Dialog>
 
+  <Dialog v-model="engineReportVisible" title="运动评估引擎联调报告" width="min(1100px, 96%)">
+    <el-alert
+      title="该结果来自已接入的运动评估引擎 /v1/reports/rehearsal 接口，用于验证主系统到引擎的报告链路。"
+      type="info"
+      :closable="false"
+      class="mb-12px"
+    />
+    <pre v-loading="engineReportLoading" class="engine-report-json">{{ engineReportText || '暂无联调结果' }}</pre>
+  </Dialog>
+
   <Dialog v-if="AI_ENABLED" v-model="aiSummaryVisible" title="AI 报告摘要" width="60%">
     <el-alert
       v-if="aiFallback"
@@ -346,6 +361,7 @@ import {
   approveRehabReport,
   exportRehabReportDocx,
   exportRehabReportPdf,
+  getRehabEngineRehearsalReport,
   getRehabReportAuditLogs,
   getRehabReportPage,
   getRehabReportPatientPage,
@@ -389,6 +405,9 @@ const auditList = ref<any[]>([])
 const aiSummaryVisible = ref(false)
 const aiSummaryText = ref('')
 const aiFallback = ref(false)
+const engineReportVisible = ref(false)
+const engineReportLoading = ref(false)
+const engineReportText = ref('')
 
 const queryParams = reactive<RehabReportPageReqVO>({
   pageNo: 1,
@@ -408,6 +427,17 @@ const getList = async () => {
     total.value = data.total || 0
   } finally {
     loading.value = false
+  }
+}
+
+const openEngineReport = async () => {
+  engineReportVisible.value = true
+  engineReportLoading.value = true
+  try {
+    const data = await getRehabEngineRehearsalReport()
+    engineReportText.value = JSON.stringify(data, null, 2)
+  } finally {
+    engineReportLoading.value = false
   }
 }
 
@@ -556,6 +586,8 @@ onMounted(getList)
 </script>
 
 <style scoped>
+.report-hero-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+.engine-report-json { max-height: 60vh; overflow: auto; padding: 16px; border-radius: 8px; background: var(--el-fill-color-light); color: var(--el-text-color-primary); white-space: pre-wrap; word-break: break-word; }
 .report-filter-control { width: 170px; }
 .report-date-editor { width: 300px; }
 .report-mobile-list { display: none; }

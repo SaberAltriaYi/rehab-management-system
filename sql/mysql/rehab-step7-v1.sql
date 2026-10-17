@@ -100,7 +100,7 @@ CREATE TABLE IF NOT EXISTS `rehab_ai_config` (
     `enable_assessment_interpretation` bit(1) NOT NULL DEFAULT b'1',
     `enable_report_summary` bit(1) NOT NULL DEFAULT b'1',
     `enable_patient_summary` bit(1) NOT NULL DEFAULT b'1',
-    `enable_plan_draft` bit(1) NOT NULL DEFAULT b'1',
+    `enable_plan_draft` bit(1) NOT NULL DEFAULT b'0',
     `enable_followup_writer` bit(1) NOT NULL DEFAULT b'1',
     `require_human_review_before_visible` bit(1) NOT NULL DEFAULT b'1',
     `visible_to_patient_after_review_only` bit(1) NOT NULL DEFAULT b'1',
@@ -258,7 +258,7 @@ INSERT INTO `rehab_ai_config`
  `enable_plan_draft`, `enable_followup_writer`, `require_human_review_before_visible`, `visible_to_patient_after_review_only`,
  `preferred_model_name`, `prompt_style`, `safety_mode`, `note`, `creator`, `updater`, `deleted`)
 VALUES
-    (99001, 'global', 0, b'1', b'1', b'1', b'1', b'1', b'1', b'1', b'1', 'gpt-4.1-mini', 'standard', 'strict',
+    (99001, 'global', 0, b'1', b'1', b'1', b'1', b'0', b'1', b'1', b'1', 'gpt-4.1-mini', 'standard', 'strict',
      'Step7 默认全局 AI 配置', 'script', 'script', b'0')
 ON DUPLICATE KEY UPDATE
     `ai_enabled` = VALUES(`ai_enabled`),

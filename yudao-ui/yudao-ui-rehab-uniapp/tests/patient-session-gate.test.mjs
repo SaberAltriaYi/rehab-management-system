@@ -27,11 +27,16 @@ test('a persisted legacy patient session is discarded before any API can read it
   assert.equal(state.removals, 1)
 })
 
-test('patient tokens cannot be saved even when code calls saveSession directly', () => {
+test('patient sessions require a future expiry and never carry a refresh token', () => {
   const state = storage(legacyPatient)
-  assert.throws(() => saveSession(legacyPatient), /患者凭据/)
+  assert.throws(() => saveSession(legacyPatient), /会话无效/)
   assert.equal(state.writes, 0)
   assert.equal(state.value, null)
+  const validPatient = { ...legacyPatient, expiresTime: '2999-01-01T00:00:00.000Z' }
+  saveSession(validPatient)
+  assert.deepEqual(getSession(), validPatient)
+  assert.equal(state.writes, 1)
+  assert.throws(() => saveSession({ ...validPatient, refreshToken: 'SHOULD_NOT_PERSIST' }), /会话无效/)
 })
 
 test('the existing staff session remains usable', () => {

@@ -38,6 +38,7 @@ import cn.iocoder.yudao.module.rehab.enums.RehabPlanConstants;
 import cn.iocoder.yudao.module.rehab.service.notification.RehabNotificationService;
 import cn.iocoder.yudao.module.rehab.service.checkin.RehabDailyCheckinService;
 import cn.iocoder.yudao.module.rehab.service.ai.RehabAiService;
+import cn.iocoder.yudao.module.rehab.service.app.auth.PatientAppAccessService;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import cn.iocoder.yudao.module.system.api.user.dto.AdminUserRespDTO;
 import org.springframework.stereotype.Service;
@@ -85,6 +86,8 @@ public class RehabAppPatientServiceImpl implements RehabAppPatientService {
     private RehabAiService aiService;
     @Resource
     private AdminUserApi adminUserApi;
+    @Resource
+    private PatientAppAccessService patientAppAccessService;
 
     @Override
     public AppPatientLoginRespVO login(AppPatientLoginReqVO reqVO) {
@@ -95,9 +98,13 @@ public class RehabAppPatientServiceImpl implements RehabAppPatientService {
 
     @Override
     public Long bindPatient(AppPatientAuthBindReqVO reqVO, Long appUserId) {
-        // The new clinic-verified, single-use invitation + verified-phone proof
-        // has not been implemented. Do not create a binding from public identifiers.
-        throw exception(APP_PATIENT_AUTH_DISABLED);
+        return patientAppAccessService.redeemInvitation(reqVO.getPatientNo(), reqVO.getPhone(),
+                reqVO.getInvitationCode(), reqVO.getBindType(), reqVO.getNickname(), appUserId);
+    }
+
+    @Override
+    public void validatePatientSession(Long appUserId) {
+        patientAppAccessService.validateActiveBinding(appUserId);
     }
 
     @Override

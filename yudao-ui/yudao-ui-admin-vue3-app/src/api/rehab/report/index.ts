@@ -44,6 +44,10 @@ export const generateRehabReport = async (data: {
   return await request.post({ url: '/rehab/report/generate', data, timeout: 60000 })
 }
 
+export const getRehabEngineRehearsalReport = async () => {
+  return await request.get({ url: '/rehab/report/engine-rehearsal', timeout: 60000 })
+}
+
 export const previewRehabReport = async (id: number) => {
   return await request.get({ url: '/rehab/report/preview', params: { id } })
 }

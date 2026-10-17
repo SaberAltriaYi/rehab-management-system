@@ -59,6 +59,29 @@ test('TOTP has one-time step, valid clock skew and detects bad digits', async ()
     assert.equal(verifyTotp(mfaSecret, code, T + 60_000, -1), null)
   })
 })
+test('MFA recovery rotates the seed, revokes sessions and returns an import URI once', async () => {
+  await setup(async ({ svc, store, mfaSecret }) => {
+    const session = (await svc.login({
+      username: 'onlyowner', password: PW,
+      totp: totpAt(mfaSecret, Math.floor(T / 30_000)), nowMs: T
+    })).token
+    const recovered = await svc.recoverMfa({
+      username: 'onlyowner', password: PW, confirmation: 'ROTATE-MFA', nowMs: T + 1_000
+    })
+    assert.notEqual(recovered.secret, mfaSecret)
+    assert.match(recovered.secret, /^[A-Z2-7]{32}$/)
+    assert.match(recovered.otpauthUrl, /^otpauth:\/\/totp\//)
+    assert.equal(recovered.otpauthUrl.includes(recovered.secret), true)
+    rejects('OWNER_UNAUTHORIZED', () => svc.requireOwner(session, T + 1_000))
+    const fresh = await svc.login({
+      username: 'onlyowner', password: PW,
+      totp: totpAt(recovered.secret, Math.floor((T + 30_000) / 30_000)),
+      nowMs: T + 30_000
+    })
+    assert.match(fresh.token, /^[A-Za-z0-9_-]{43}$/)
+    assert.ok(store.verifyAuditChain())
+  })
+})
 test('five invalid owner authentications lock login for 15 minutes', async () => {
   await setup(async ({ svc, mfaSecret }) => {
     for (let i = 0; i < 5; i++) {

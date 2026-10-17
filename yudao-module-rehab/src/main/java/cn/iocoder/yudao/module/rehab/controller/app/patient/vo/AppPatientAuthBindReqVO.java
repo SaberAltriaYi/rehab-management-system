@@ -19,6 +19,10 @@ public class AppPatientAuthBindReqVO {
     @NotBlank(message = "手机号不能为空")
     private String phone;
 
+    @Schema(description = "机构签发的一次性邀请码", requiredMode = Schema.RequiredMode.REQUIRED)
+    @NotBlank(message = "邀请码不能为空")
+    private String invitationCode;
+
     @Schema(description = "绑定类型 self/caregiver/imported", example = "self")
     private String bindType;
 

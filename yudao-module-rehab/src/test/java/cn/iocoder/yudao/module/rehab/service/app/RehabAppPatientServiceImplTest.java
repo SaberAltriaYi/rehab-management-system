@@ -14,6 +14,7 @@ import cn.iocoder.yudao.module.rehab.dal.mysql.checkin.RehabDailyCheckinMapper;
 import cn.iocoder.yudao.module.rehab.dal.mysql.patient.RehabPatientMapper;
 import cn.iocoder.yudao.module.rehab.dal.mysql.plan.RehabCarePlanMapper;
 import cn.iocoder.yudao.module.rehab.service.checkin.RehabDailyCheckinService;
+import cn.iocoder.yudao.module.rehab.service.app.auth.PatientAppAccessService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -31,6 +32,8 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 import static cn.iocoder.yudao.module.rehab.enums.ErrorCodeConstants.APP_PATIENT_DAILY_CHECKIN_EXISTS;
 import static cn.iocoder.yudao.module.rehab.enums.ErrorCodeConstants.APP_PATIENT_AUTH_DISABLED;
+import static cn.iocoder.yudao.module.rehab.enums.ErrorCodeConstants.APP_PATIENT_INVITATION_INVALID;
+import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionUtil.exception;
 
 @ExtendWith(MockitoExtension.class)
 class RehabAppPatientServiceImplTest {
@@ -47,15 +50,24 @@ class RehabAppPatientServiceImplTest {
     private RehabDailyCheckinMapper checkinMapper;
     @Mock
     private RehabDailyCheckinService checkinService;
+    private PatientAppAccessService patientAppAccessService;
 
     @BeforeEach
     void setUp() {
         appPatientService = new RehabAppPatientServiceImpl();
+        patientAppAccessService = new PatientAppAccessService() {
+            @Override
+            public Long redeemInvitation(String patientNo, String phone, String invitation, String bindType,
+                                          String nickname, Long appUserId) {
+                throw exception(APP_PATIENT_INVITATION_INVALID);
+            }
+        };
         ReflectionTestUtils.setField(appPatientService, "patientUserBindingMapper", patientUserBindingMapper);
         ReflectionTestUtils.setField(appPatientService, "patientMapper", patientMapper);
         ReflectionTestUtils.setField(appPatientService, "planMapper", planMapper);
         ReflectionTestUtils.setField(appPatientService, "checkinMapper", checkinMapper);
         ReflectionTestUtils.setField(appPatientService, "checkinService", checkinService);
+        ReflectionTestUtils.setField(appPatientService, "patientAppAccessService", patientAppAccessService);
     }
 
     @Test
@@ -74,7 +86,7 @@ class RehabAppPatientServiceImplTest {
         reqVO.setPatientId(10001L);
         reqVO.setPhone("13800138000");
         ServiceException ex = assertThrows(ServiceException.class, () -> appPatientService.bindPatient(reqVO, null));
-        assertEquals(APP_PATIENT_AUTH_DISABLED.getCode(), ex.getCode());
+        assertEquals(APP_PATIENT_INVITATION_INVALID.getCode(), ex.getCode());
         verifyNoInteractions(patientUserBindingMapper, patientMapper);
     }
 

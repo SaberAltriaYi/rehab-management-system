@@ -101,6 +101,9 @@ export const getCustomerSimpleList = async () => {
   return await request.get({ url: `/crm/customer/simple-list` })
 }
 
+export const searchCustomerSimple = (keyword = '') =>
+  request.get<Array<Pick<CustomerVO, 'id' | 'name'>>>({ url: '/crm/customer/simple-search', params: { keyword } })
+
 // ======================= 业务操作 =======================
 
 // 客户转移

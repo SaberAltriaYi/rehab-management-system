@@ -2,20 +2,26 @@
 // Does NOT proxy any patient or clinic application data.
 import http from 'node:http'
 import https from 'node:https'
+import { randomBytes } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { LicensingServiceError } from './service.mjs'
 
 const BODY_LIMIT = 16 * 1024
 const limiter = new Map()
+const recoveryChallenges = new Map()
 const PRIVATE_ENDPOINT = /^\/owner\/v1\//
-const PUBLIC_PREFIX = /^\/license\/v1\//
+const PUBLIC_PREFIX = /^(\/license\/v1|\/public\/v1)\//
 // No authentication state, secrets or clinical records in these immutable
 // browser assets. Owner data APIs continue to require MFA bearer on every call.
 const CONSOLE_ASSETS = Object.freeze({
   '/owner/console': ['index.html', 'text/html; charset=utf-8'],
   '/owner/console/app.mjs': ['app.mjs', 'text/javascript; charset=utf-8'],
   '/owner/console/policy.mjs': ['policy.mjs', 'text/javascript; charset=utf-8'],
-  '/owner/console/styles.css': ['styles.css', 'text/css; charset=utf-8']
+  '/owner/console/styles.css': ['styles.css', 'text/css; charset=utf-8'],
+  '/owner/recovery': ['recovery.html', 'text/html; charset=utf-8'],
+  '/owner/recovery.mjs': ['recovery.mjs', 'text/javascript; charset=utf-8'],
+  '/owner/register': ['register.html', 'text/html; charset=utf-8'],
+  '/owner/register.mjs': ['register.mjs', 'text/javascript; charset=utf-8']
 })
 function writeConsoleAsset(res, path) {
   const [file, type] = CONSOLE_ASSETS[path]
@@ -41,7 +47,7 @@ function restricted(ip, path, nowMs) {
   if (nowMs > v.until) { v.count = 0; v.until = nowMs + 60_000 }
   ++v.count
   limiter.set(key, v)
-  return v.count > (path.includes('/login') ? 12 : 60)
+  return v.count > (path.includes('/login') || path.includes('/mfa/recover') ? 12 : 60)
 }
 function writeJson(res, status, value) {
   res.writeHead(status, {
@@ -105,9 +111,11 @@ export function createOwnerControlServer(service, {
   if (!tlsOptions && !allowInsecureLoopbackForTests) {
     throw new Error('Owner control API requires TLS by default')
   }
-  if (permittedBrowserOrigin !== null &&
-    (typeof permittedBrowserOrigin !== 'string' ||
-    !permittedBrowserOrigin.startsWith('https://'))) {
+  const permittedOrigins = permittedBrowserOrigin === null ? null :
+    Array.isArray(permittedBrowserOrigin) ? permittedBrowserOrigin : [permittedBrowserOrigin]
+  if (permittedOrigins !== null &&
+    (permittedOrigins.length < 1 ||
+    permittedOrigins.some(origin => typeof origin !== 'string' || !origin.startsWith('https://')))) {
     throw new Error('Browser origin must be an explicit HTTPS origin')
   }
   const handle = async (req, res) => {
@@ -117,18 +125,28 @@ export function createOwnerControlServer(service, {
       if (typeof path !== 'string' || path.length > 256 ||
         path.includes('?') || path.includes('#') ||
         !(PRIVATE_ENDPOINT.test(path) || PUBLIC_PREFIX.test(path) ||
-          path === '/health' || Object.hasOwn(CONSOLE_ASSETS, path))) {
+          path === '/' || path === '/health' || Object.hasOwn(CONSOLE_ASSETS, path))) {
         return writeJson(res, 404, { error: 'NOT_FOUND' })
       }
       if (!tlsOptions && !loopback(req.socket.remoteAddress)) {
         return writeJson(res, 403, { error: 'TLS_REQUIRED' })
       }
-      if (req.headers.origin && req.headers.origin !== permittedBrowserOrigin) {
+      if (req.headers.origin && !permittedOrigins?.includes(req.headers.origin)) {
         return writeJson(res, 403, { error: 'CROSS_ORIGIN_FORBIDDEN' })
       }
       if (req.method === 'OPTIONS') return writeJson(res, 405, { error: 'NOT_ALLOWED' })
       if (restricted(req.socket.remoteAddress, path, nowMs)) {
         return writeJson(res, 429, { error: 'RATE_LIMITED' })
+      }
+      if (path === '/') {
+        if (req.method !== 'GET') return writeJson(res, 405, { error: 'NOT_ALLOWED' })
+        res.writeHead(302, {
+          Location: '/owner/console',
+          'Cache-Control': 'no-store',
+          'Referrer-Policy': 'no-referrer',
+          'X-Content-Type-Options': 'nosniff'
+        })
+        return res.end()
       }
       if (Object.hasOwn(CONSOLE_ASSETS, path)) {
         if (req.method !== 'GET') return writeJson(res, 405, { error: 'NOT_ALLOWED' })
@@ -139,6 +157,11 @@ export function createOwnerControlServer(service, {
       }
       if (path === '/license/v1/issuers' && req.method === 'GET') {
         return writeJson(res, 200, { issuers: service.trustedIssuerKeys() })
+      }
+      if (path === '/public/v1/applications' && req.method === 'POST') {
+        const b = await readJson(req)
+        fieldsOnly(b, ['organization', 'contactName', 'contactPhone', 'contactEmail', 'region', 'note'])
+        return writeJson(res, 201, service.submitPublicApplication({ ...b, nowMs }))
       }
       if (path === '/license/v1/applications' && req.method === 'POST') {
         const b = await readJson(req)
@@ -164,6 +187,30 @@ export function createOwnerControlServer(service, {
         const b = await readJson(req)
         fieldsOnly(b, ['username', 'password', 'totp'])
         return writeJson(res, 200, await service.login({ ...b, nowMs }))
+      }
+      if (path === '/owner/v1/mfa/recovery/challenge' && req.method === 'GET') {
+        if (!loopback(req.socket.remoteAddress)) return writeJson(res, 403, { error: 'LOOPBACK_REQUIRED' })
+        for (const [challenge, item] of recoveryChallenges) {
+          if (item.expiresAt <= nowMs) recoveryChallenges.delete(challenge)
+        }
+        const challenge = randomBytes(32).toString('base64url')
+        recoveryChallenges.set(challenge, {
+          expiresAt: nowMs + 5 * 60_000, ip: req.socket.remoteAddress
+        })
+        return writeJson(res, 200, {
+          challenge, expiresAt: new Date(nowMs + 5 * 60_000).toISOString()
+        })
+      }
+      if (path === '/owner/v1/mfa/recover' && req.method === 'POST') {
+        if (!loopback(req.socket.remoteAddress)) return writeJson(res, 403, { error: 'LOOPBACK_REQUIRED' })
+        const b = await readJson(req)
+        fieldsOnly(b, ['challenge', 'username', 'password', 'confirmation'])
+        const pending = recoveryChallenges.get(b.challenge)
+        recoveryChallenges.delete(b.challenge)
+        if (!pending || pending.expiresAt <= nowMs || pending.ip !== req.socket.remoteAddress) {
+          throw new LicensingServiceError('INVALID_RECOVERY_CHALLENGE')
+        }
+        return writeJson(res, 200, await service.recoverMfa({ ...b, nowMs }))
       }
       // Every owner operation must carry an MFA-authenticated bearer session.
       // Never accept owner flag, role or TOTP bypass from user-supplied JSON.
@@ -202,15 +249,22 @@ export function createOwnerControlServer(service, {
           token, kid: compromised[1], nowMs
         }))
       }
-      const application = /^\/owner\/v1\/applications\/([0-9a-f-]{36})\/(approve|reject)$/.exec(path)
+      const application = /^\/owner\/v1\/applications\/([0-9a-f-]{36})\/(approve|reject|request-info)$/.exec(path)
       if (application && req.method === 'POST') {
         const b = await readJson(req)
-        fieldsOnly(b, ['reason', 'policy'])
+        fieldsOnly(b, application[2] === 'approve' ? ['reason', 'policy', 'credentials'] : ['reason'])
         return writeJson(res, 200, service.decideApplication({
           token, applicationId: application[1],
-          decision: application[2] === 'approve' ? 'APPROVED' : 'REJECTED',
-          reason: b.reason, policy: application[2] === 'approve' ? policy(b) : null, nowMs
+          decision: application[2] === 'approve' ? 'APPROVED' : application[2] === 'reject' ? 'REJECTED' : 'NEEDS_INFO',
+          reason: b.reason, policy: application[2] === 'approve' ? policy(b) : null,
+          credentials: application[2] === 'approve' ? b.credentials : null, nowMs
         }))
+      }
+      const retry = /^\/owner\/v1\/applications\/([0-9a-f-]{36})\/retry-provision$/.exec(path)
+      if (retry && req.method === 'POST') {
+        const b = await readJson(req)
+        fieldsOnly(b, ['credentials'])
+        return writeJson(res, 200, service.retryProvision({ token, applicationId: retry[1], credentials: b.credentials, nowMs }))
       }
       const status = /^\/owner\/v1\/tenants\/([0-9a-f-]{36})$/.exec(path)
       if (status && req.method === 'GET') {

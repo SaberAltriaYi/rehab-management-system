@@ -163,7 +163,7 @@ const areaList = ref([]) // 地区列表
 const userOptions = ref<UserApi.UserVO[]>([]) // 用户列表
 const formData = ref({
   id: undefined,
-  name: undefined,
+  name: undefined as string | undefined,
   contactNextTime: undefined,
   ownerUserId: 0,
   mobile: undefined,
@@ -185,7 +185,7 @@ const formRules = reactive({
 const formRef = ref() // 表单 Ref
 
 /** 打开弹窗 */
-const open = async (type: string, id?: number) => {
+const open = async (type: string, id?: number, initialName?: string) => {
   dialogVisible.value = true
   dialogTitle.value = t('action.' + type)
   formType.value = type
@@ -206,6 +206,7 @@ const open = async (type: string, id?: number) => {
   // 默认新建时选中自己
   if (formType.value === 'create') {
     formData.value.ownerUserId = useUserStore().getUser.id
+    if (initialName) formData.value.name = initialName
   }
 }
 defineExpose({ open }) // 提供 open 方法，用于打开弹窗
@@ -221,8 +222,9 @@ const submitForm = async () => {
   formLoading.value = true
   try {
     const data = formData.value as unknown as CustomerApi.CustomerVO
+    let savedId = data.id
     if (formType.value === 'create') {
-      await CustomerApi.createCustomer(data)
+      savedId = await CustomerApi.createCustomer(data)
       message.success(t('common.createSuccess'))
     } else {
       await CustomerApi.updateCustomer(data)
@@ -230,7 +232,7 @@ const submitForm = async () => {
     }
     dialogVisible.value = false
     // 发送操作成功的事件
-    emit('success')
+    emit('success', savedId)
   } finally {
     formLoading.value = false
   }

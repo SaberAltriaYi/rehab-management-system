@@ -5,6 +5,7 @@ import cn.iocoder.yudao.framework.common.pojo.CommonResult;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
 import cn.iocoder.yudao.module.rehab.controller.admin.patient.vo.*;
+import cn.iocoder.yudao.module.rehab.service.app.auth.PatientAppAccessService;
 import cn.iocoder.yudao.module.rehab.service.patient.RehabPatientService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -37,6 +38,9 @@ public class RehabPatientController {
 
     @Resource
     private RehabPatientService patientService;
+
+    @Resource
+    private PatientAppAccessService patientAppAccessService;
 
     @GetMapping("/page")
     @Operation(summary = "获得患者分页")
@@ -145,6 +149,18 @@ public class RehabPatientController {
     @PreAuthorize("@ss.hasPermission('rehab:patient:detail')")
     public CommonResult<RehabPatientMemberBindingRespVO> getMemberBinding(@RequestParam("id") Long patientId) {
         return success(patientService.getMemberBinding(patientId, getLoginUserId()));
+    }
+
+    @PostMapping("/app-invitation")
+    @Operation(summary = "签发患者端一次性邀请")
+    @PreAuthorize("@ss.hasPermission('rehab:patient:app-invite')")
+    public CommonResult<RehabPatientAppInvitationRespVO> issueAppInvitation(
+            @Valid @RequestBody RehabPatientAppInvitationReqVO reqVO) {
+        patientService.validatePatientReadable(reqVO.getPatientId(), getLoginUserId());
+        String code = patientAppAccessService.issueInvitation(reqVO.getPatientId(), reqVO.getExpiresMinutes(),
+                getLoginUserId());
+        return success(new RehabPatientAppInvitationRespVO(code,
+                "患者先使用会员手机号短信登录，再在患者端输入该邀请码；邀请仅可使用一次。"));
     }
 
     @PostMapping("/check-crm-conflict")
