@@ -111,9 +111,11 @@ export function createOwnerControlServer(service, {
   if (!tlsOptions && !allowInsecureLoopbackForTests) {
     throw new Error('Owner control API requires TLS by default')
   }
-  if (permittedBrowserOrigin !== null &&
-    (typeof permittedBrowserOrigin !== 'string' ||
-    !permittedBrowserOrigin.startsWith('https://'))) {
+  const permittedOrigins = permittedBrowserOrigin === null ? null :
+    Array.isArray(permittedBrowserOrigin) ? permittedBrowserOrigin : [permittedBrowserOrigin]
+  if (permittedOrigins !== null &&
+    (permittedOrigins.length < 1 ||
+    permittedOrigins.some(origin => typeof origin !== 'string' || !origin.startsWith('https://')))) {
     throw new Error('Browser origin must be an explicit HTTPS origin')
   }
   const handle = async (req, res) => {
@@ -129,7 +131,7 @@ export function createOwnerControlServer(service, {
       if (!tlsOptions && !loopback(req.socket.remoteAddress)) {
         return writeJson(res, 403, { error: 'TLS_REQUIRED' })
       }
-      if (req.headers.origin && req.headers.origin !== permittedBrowserOrigin) {
+      if (req.headers.origin && !permittedOrigins?.includes(req.headers.origin)) {
         return writeJson(res, 403, { error: 'CROSS_ORIGIN_FORBIDDEN' })
       }
       if (req.method === 'OPTIONS') return writeJson(res, 405, { error: 'NOT_ALLOWED' })
