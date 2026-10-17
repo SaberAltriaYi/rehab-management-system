@@ -83,6 +83,12 @@ function validateEmail(value) {
   return value.trim().toLowerCase()
 }
 const hashToken = value => createHash('sha256').update(value, 'utf8').digest('hex')
+function ownerTotpUri(username, secret) {
+  const issuer = 'Rehab Owner'
+  return 'otpauth://totp/' + encodeURIComponent(issuer) + ':' + encodeURIComponent(username) +
+    '?secret=' + secret + '&issuer=' + encodeURIComponent(issuer) +
+    '&algorithm=SHA1&digits=6&period=30'
+}
 
 export class OwnerLicensingService {
   constructor(store, vault) {
@@ -150,6 +156,41 @@ export class OwnerLicensingService {
     })
     if (result.denied) deny('INVALID_OWNER_CREDENTIALS')
     return result
+  }
+
+  async recoverMfa({ username, password, confirmation, nowMs }) {
+    validMs(nowMs)
+    if (confirmation !== 'ROTATE-MFA') deny('INVALID_RECOVERY_CONFIRMATION')
+    const owner = this.db.prepare('SELECT * FROM owner_identity WHERE id = 1').get()
+    if (!owner || username !== owner.username || owner.lock_until > nowMs) {
+      deny('INVALID_OWNER_CREDENTIALS')
+    }
+    const passwordOk = await checkOwnerPassword(password, owner.password_hash)
+    if (!passwordOk) {
+      this.store.transaction(() => {
+        const latest = this.db.prepare('SELECT failure_count FROM owner_identity WHERE id=1').get()
+        const failures = latest.failure_count + 1
+        this.db.prepare('UPDATE owner_identity SET failure_count=?,lock_until=? WHERE id=1')
+          .run(failures, failures >= ATTEMPT_LIMIT ? nowMs + LOCK_MS : 0)
+        this.store.audit({ actor: 'unknown', action: 'OWNER_MFA_RECOVERY_REJECTED',
+          subject: 'owner', details: { attempt: failures }, nowMs })
+      })
+      deny('INVALID_OWNER_CREDENTIALS')
+    }
+    const secret = generateTotpSecret()
+    this.store.transaction(() => {
+      this.db.prepare('UPDATE owner_identity SET mfa_encrypted=?,last_mfa_step=-1,failure_count=0,lock_until=0 WHERE id=1')
+        .run(this.vault.encrypt(secret, 'owner-mfa-v1'))
+      this.db.prepare('DELETE FROM owner_sessions').run()
+      this.store.audit({ actor: owner.username, action: 'OWNER_MFA_RECOVERED',
+        subject: 'owner', details: { sessionsRevoked: true }, nowMs })
+    })
+    return {
+      username: owner.username,
+      secret,
+      otpauthUrl: ownerTotpUri(owner.username, secret),
+      revealExpiresAt: new Date(nowMs + 60_000).toISOString()
+    }
   }
 
   requireOwner(token, nowMs) {
