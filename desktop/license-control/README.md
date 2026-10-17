@@ -41,7 +41,7 @@
 
 运行 `node desktop/license-control/cli.mjs serve` 后，操作员应先在有证书验证的独立 HTTPS 客户端通过 `POST /owner/v1/login`（`username/password/totp`）取得短期 Bearer，再 `POST /owner/v1/signing-keys/rotate` 初始化签发者。不得将 Bearer/TOTP/签名明文记录在日志、接口测试证据或聊天中。真实域名、TLS、证书、HSM/KMS、账户恢复/灾备和网络访问策略上线前必须由软件所有者实际提供和核准。
 
-本地申请入口是 `https://127.0.0.1:9444/owner/register`（测试服务器可用随机环回 HTTP）。申请进入 `PENDING`，Owner 可改为 `NEEDS_INFO`、`APPROVED` 或 `REJECTED`；审批时在独立控制台选择 `rehab,motion,report` 等模块。主系统不再承载拥有者租户管理台；旧 `/system/saas/platform/*` 只有显式设置 `yudao.legacy.saas-platform.enabled=true` 才会启用，默认关闭。
+本地申请入口是 `https://127.0.0.1:9444/owner/register`（测试服务器可用随机环回 HTTP）。登录页提供 `/owner/recovery` 本机一次性 MFA 恢复入口；它要求所有者密码和明确确认短语，生成新的 TOTP 配置、注销旧会话并使旧密钥失效，绝不回显旧密钥。申请进入 `PENDING`，Owner 可改为 `NEEDS_INFO`、`APPROVED` 或 `REJECTED`；审批时在独立控制台选择 `rehab,motion,report` 等模块。主系统不再承载拥有者租户管理台；旧 `/system/saas/platform/*` 只有显式设置 `yudao.legacy.saas-platform.enabled=true` 才会启用，默认关闭。
 
 ### Owner 审批到主系统开通
 
@@ -57,6 +57,8 @@ L3 桌面离线许可证对接：只有软件所有者 MFA 登录并审批安装
 | --- | --- | --- |
 | POST | `/owner/v1/login` | 密码 + TOTP 获得 15 分钟会话 |
 | POST | `/owner/v1/step-up` | 新 TOTP，刷新 2 分钟高风险操作窗口 |
+| GET | `/owner/v1/mfa/recovery/challenge` | 环回一次性 MFA 恢复挑战，5 分钟有效 |
+| POST | `/owner/v1/mfa/recover` | 环回恢复并轮换 TOTP；成功响应只显示新配置一次 |
 | POST | `/owner/v1/logout` | 删除服务端会话 |
 | GET | `/owner/v1/applications` | Owner 审核申请列表 |
 | POST | `/public/v1/applications` | 机构提交基础资料和联系人，创建 PENDING 申请 |
@@ -96,7 +98,7 @@ node --test desktop/scripts/*.test.mjs
 ## 尚未满足的生产上线依赖
 
 - **密钥保管**：本地应用加密密钥由操作者通过环境变量提供；尚未接入外部 KMS/HSM 实际密钥不可导出签名接口或完成双人操作。该实现不是 HSM，不能以 AES 加密本地私钥等同真正的密钥隔离。上线前必须完成 KMS 选择、密钥恢复与轮换/应急撤销方案及实测。
-- **运维控制**：当前 SQLite 单实例，不具备跨主机高可用、WORM 审计外部锚定、受监管的备份恢复、灾备目标与正式所有者账号 MFA 恢复流程；哈希链能检测**普通数据库篡改**，但不能阻止拥有整个数据库写权限的攻击者重新计算整个链。
+- **运维控制**：当前 SQLite 单实例，不具备跨主机高可用、WORM 审计外部锚定、受监管的备份恢复、灾备目标和正式生产恢复材料托管；本地恢复页只适用于 loopback 开发环境。哈希链能检测**普通数据库篡改**，但不能阻止拥有整个数据库写权限的攻击者重新计算整个链。
 - **公网安全**：仅完成独立 loopback TLS API 与测试；没有 DNS、证书正式签发、互联网网关/WAF、机密管理、集中告警或正式网络渗透测试。远程员工访问业务系统归属于 **L6**，绝不能复用本控制面转发患者临床数据。
 - **强制拦截与端到端发布**：L2 已写入 Java API/OAuth2/员工席位和租户作业的后端签名校验，L3 已写入桌面激活与 Java 启动交接，L4 已写入独立 Owner 审批台与工作室员工界面；**仍未在真实生产库应用已编号迁移或开启强制授权**，实际 WebSocket、全部第三方入口、危险操作重新认证、合成跨租户全路径和受信任正式制品仍需 L5。不能把本地单测通过视为所有访问路径已在发布构建中安全强制。
 - **稳定性**：Node `node:sqlite` 在当前本机 Node v22.15.0 仍为实验性 API，冻结发布前应迁移/评估稳定数据库驱动及版本兼容性、恢复性。
