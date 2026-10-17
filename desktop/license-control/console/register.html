@@ -38,6 +38,20 @@
         <button type="submit" id="submit">提交申请</button>
       </form>
       <div id="result" class="register-result" role="status" aria-live="polite" hidden></div>
+      <section id="next-steps" class="register-next" hidden aria-live="polite">
+        <h3>接下来怎么做</h3>
+        <p><strong>当前状态：待审核</strong></p>
+        <ol>
+          <li>软件拥有者会核对机构申请。</li>
+          <li>审核通过后，系统会创建机构租户和机构管理员账号。</li>
+          <li>管理员会通过联系人提供登录入口、账号和临时密码。</li>
+          <li>收到管理员信息后，再进入主系统登录页；申请页本身不能直接登录。</li>
+        </ol>
+        <p>申请编号：<code id="application-id"></code></p>
+        <p class="register-login-hint">已有机构账号？请在审核通过并收到管理员账号后，进入主系统登录。</p>
+        <a class="toolbar-link" href="http://127.0.0.1:80/#/login" target="_blank" rel="noopener">打开主系统登录页</a>
+        <a class="toolbar-link" href="/owner/register">返回申请页</a>
+      </section>
       <p class="hint register-footnote">提交后状态为“待审核”。如需补充材料，拥有者会通过你提供的联系人方式联系。</p>
     </section>
   </main>
