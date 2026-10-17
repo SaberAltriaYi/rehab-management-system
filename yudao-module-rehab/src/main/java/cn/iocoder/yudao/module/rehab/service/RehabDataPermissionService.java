@@ -25,6 +25,8 @@ import java.util.stream.Collectors;
 @Service
 public class RehabDataPermissionService {
 
+    private static final String TENANT_ADMIN_ROLE = "tenant_admin";
+
     @Resource
     private PermissionApi permissionApi;
     @Resource
@@ -40,6 +42,13 @@ public class RehabDataPermissionService {
 
     public boolean isSuperAdmin(Long userId) {
         return permissionApi.hasAnyRoles(userId, RehabRoleCodeConstants.SUPER_ADMIN);
+    }
+
+    /**
+     * 租户管理员负责本租户的患者与评估业务，数据范围仍受当前租户上下文约束。
+     */
+    private boolean isTenantAdmin(Long userId) {
+        return permissionApi.hasAnyRoles(userId, TENANT_ADMIN_ROLE);
     }
 
     public boolean isClerk(Long userId) {
@@ -61,7 +70,7 @@ public class RehabDataPermissionService {
         if (userId == null || Objects.equals(WebFrameworkUtils.getLoginUserType(), UserTypeEnum.MEMBER.getValue())) {
             return Collections.emptySet();
         }
-        if (isSuperAdmin(userId)) {
+        if (isSuperAdmin(userId) || isTenantAdmin(userId)) {
             return null;
         }
         if (isClerk(userId)) {

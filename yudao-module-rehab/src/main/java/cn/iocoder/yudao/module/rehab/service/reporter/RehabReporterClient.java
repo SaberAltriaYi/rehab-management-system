@@ -43,7 +43,10 @@ public class RehabReporterClient {
         HttpHeaders headers = new HttpHeaders();
         headers.setBearerAuth(bearerToken);
         ResponseEntity<Map> response = restTemplate.exchange(
-                baseUrl + "/v1/reports/rehearsal",
+                // The engine exposes the synthetic methodology rehearsal under /v1/research/rehearsal.
+                // Keep this path aligned with the engine's published API instead of returning a 404/500
+                // from the management system's report page.
+                baseUrl + "/v1/research/rehearsal",
                 HttpMethod.GET,
                 new HttpEntity<>(headers),
                 Map.class);

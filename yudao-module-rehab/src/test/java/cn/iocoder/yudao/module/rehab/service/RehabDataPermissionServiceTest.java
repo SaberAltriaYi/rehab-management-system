@@ -47,6 +47,7 @@ class RehabDataPermissionServiceTest {
     void getVisiblePatientIds_shouldReturnOwnedAndAssignedPatientsForTherapist() {
         Long therapistUserId = 100L;
         when(permissionApi.hasAnyRoles(therapistUserId, RehabRoleCodeConstants.SUPER_ADMIN)).thenReturn(false);
+        when(permissionApi.hasAnyRoles(therapistUserId, "tenant_admin")).thenReturn(false);
         when(permissionApi.hasAnyRoles(therapistUserId, RehabRoleCodeConstants.REHAB_CLERK)).thenReturn(false);
         when(permissionApi.hasAnyRoles(therapistUserId, RehabRoleCodeConstants.REHAB_THERAPIST)).thenReturn(true);
 

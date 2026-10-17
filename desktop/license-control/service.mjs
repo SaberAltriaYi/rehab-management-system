@@ -373,7 +373,7 @@ export class OwnerLicensingService {
   #provisionMain(app, policy, credentials, nowMs) {
     const username = typeof credentials?.username === 'string' ? credentials.username.trim() : ''
     const password = typeof credentials?.password === 'string' ? credentials.password : ''
-    if (!/^[a-zA-Z0-9]{4,30}$/.test(username) || password.length < 12 || password.length > 72) {
+    if (!/^[a-zA-Z0-9]{4,30}$/.test(username) || password.length < 12 || password.length > 16) {
       const error = '初始管理员账号或密码不符合要求（密码仅转发，不写入控制面数据库）'
       this.db.prepare("UPDATE applications SET provisioning_status='FAILED',provisioning_error=? WHERE id=?").run(error, app.id)
       return Promise.resolve({ status: 'FAILED', error })
@@ -388,20 +388,24 @@ export class OwnerLicensingService {
       contactMobile: app.contact_phone,
       planId: this.provisioning.planId,
       packageId: this.provisioning.packageId,
-      expiresAt: new Date(policy.expiresAtMs).toISOString().slice(0, 19),
+      // The main system uses its global epoch-millis LocalDateTime contract.
+      expiresAt: policy.expiresAtMs,
       adminUsername: username,
       adminPassword: password
     }
-    return fetch(`${this.provisioning.baseUrl}/system/saas/internal/provisioning`, {
+    return fetch(`${this.provisioning.baseUrl}/admin-api/system/saas/internal/provisioning`, {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-rehab-provisioning-token': this.provisioning.token },
       body: JSON.stringify(body), signal: controller.signal
     }).then(async response => {
       const data = await response.json().catch(() => ({}))
-      if (!response.ok || data?.data?.status === 'FAILED' || data?.status === 'FAILED') {
-        throw new Error(data?.data?.failure_reason || data?.message || `主系统返回 HTTP ${response.status}`)
+      const result = data?.data
+      if (!response.ok ||
+        (typeof data?.code === 'number' && data.code !== 0) ||
+        !result || result.status === 'FAILED') {
+        throw new Error(result?.failure_reason || data?.msg || data?.message ||
+          `主系统返回 HTTP ${response.status}`)
       }
-      const result = data?.data ?? data
       this.db.prepare("UPDATE applications SET provisioning_status='ACTIVE',provisioning_id=?,provisioning_error=NULL,main_tenant_id=? WHERE id=?")
         .run(String(result.tenant_uuid || app.tenant_uuid), result.tenant_id ?? null, app.id)
       this.store.audit({ actor: this.db.prepare('SELECT username FROM owner_identity WHERE id=1').get().username,

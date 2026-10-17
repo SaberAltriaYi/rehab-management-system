@@ -8,6 +8,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
+import javax.annotation.security.PermitAll;
 
 import java.util.Map;
 
@@ -29,6 +30,7 @@ public class SaasProvisioningController {
     }
 
     @PostMapping("/provisioning")
+    @PermitAll
     public CommonResult<Map<String, Object>> provision(
             @RequestHeader(value = "X-Rehab-Provisioning-Token", required = false) String token,
             @RequestBody SaasProvisioningRequest request) {

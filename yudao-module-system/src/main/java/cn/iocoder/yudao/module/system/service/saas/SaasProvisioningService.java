@@ -1,9 +1,14 @@
 package cn.iocoder.yudao.module.system.service.saas;
 
 import cn.iocoder.yudao.framework.tenant.core.util.TenantUtils;
+import cn.iocoder.yudao.framework.security.core.LoginUser;
+import cn.iocoder.yudao.framework.security.core.util.SecurityFrameworkUtils;
 import cn.iocoder.yudao.module.system.controller.admin.tenant.vo.tenant.TenantSaveReqVO;
 import cn.iocoder.yudao.module.system.service.tenant.TenantService;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 
 import java.sql.Timestamp;
@@ -63,7 +68,7 @@ public class SaasProvisioningService {
                 create.setUsername(request.adminUsername);
                 create.setPassword(request.adminPassword);
                 create.setWebsites(Collections.emptyList());
-                tenantId = TenantUtils.executeIgnore(() -> tenants.createTenant(create));
+                tenantId = createTenantAsProvisioningOwner(create);
                 jdbc.update("UPDATE system_tenant SET tenant_uuid=?,registration_status='active',registration_source='owner-control-plane' WHERE id=?",
                         request.tenantUuid, tenantId);
             } else {
@@ -82,6 +87,27 @@ public class SaasProvisioningService {
         }
     }
 
+    /** TenantService relies on the normal request user for creator/updater audit fields.
+     * Provisioning is an authenticated machine-to-machine operation, so provide a
+     * short-lived internal principal without exposing it to the rest of the request.
+     */
+    private Long createTenantAsProvisioningOwner(TenantSaveReqVO create) {
+        Authentication previous = SecurityFrameworkUtils.getAuthentication();
+        try {
+            LoginUser provisioningOwner = new LoginUser();
+            provisioningOwner.setId(1L);
+            SecurityContextHolder.getContext().setAuthentication(
+                    new UsernamePasswordAuthenticationToken(provisioningOwner, null, Collections.emptyList()));
+            return TenantUtils.executeIgnore(() -> tenants.createTenant(create));
+        } finally {
+            if (previous == null) {
+                SecurityContextHolder.clearContext();
+            } else {
+                SecurityContextHolder.getContext().setAuthentication(previous);
+            }
+        }
+    }
+
     private int maxUsers(long planId) {
         List<Map<String, Object>> rows = jdbc.queryForList("SELECT max_users FROM saas_plans WHERE id=? AND status=1", planId);
         if (rows.isEmpty()) throw new IllegalArgumentException("套餐不可用");
@@ -93,7 +119,9 @@ public class SaasProvisioningService {
                 || !UUID_PATTERN.matcher(value(request.tenantUuid)).matches()) throw new IllegalArgumentException("幂等键或租户 UUID 不合法");
         if (blank(request.organizationName) || request.organizationName.length() > 120
                 || blank(request.contactName) || request.contactName.length() > 80) throw new IllegalArgumentException("机构信息不合法");
-        if (request.planId < 1 || request.packageId < 1 || request.expiresAt == null || !request.expiresAt.isAfter(LocalDateTime.now())) throw new IllegalArgumentException("套餐或到期时间不合法");
+        if (request.planId < 1) throw new IllegalArgumentException("套餐计划不合法");
+        if (request.packageId < 1) throw new IllegalArgumentException("租户套餐不合法");
+        if (request.expiresAt == null || !request.expiresAt.isAfter(LocalDateTime.now())) throw new IllegalArgumentException("到期时间不合法");
         if (!USERNAME_PATTERN.matcher(value(request.adminUsername)).matches() || request.adminPassword == null || request.adminPassword.length() < 12 || request.adminPassword.length() > 72) throw new IllegalArgumentException("初始管理员凭据不合法");
     }
 
