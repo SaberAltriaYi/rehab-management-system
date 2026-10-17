@@ -2,11 +2,13 @@
 // Does NOT proxy any patient or clinic application data.
 import http from 'node:http'
 import https from 'node:https'
+import { randomBytes } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { LicensingServiceError } from './service.mjs'
 
 const BODY_LIMIT = 16 * 1024
 const limiter = new Map()
+const recoveryChallenges = new Map()
 const PRIVATE_ENDPOINT = /^\/owner\/v1\//
 const PUBLIC_PREFIX = /^(\/license\/v1|\/public\/v1)\//
 // No authentication state, secrets or clinical records in these immutable
@@ -16,6 +18,8 @@ const CONSOLE_ASSETS = Object.freeze({
   '/owner/console/app.mjs': ['app.mjs', 'text/javascript; charset=utf-8'],
   '/owner/console/policy.mjs': ['policy.mjs', 'text/javascript; charset=utf-8'],
   '/owner/console/styles.css': ['styles.css', 'text/css; charset=utf-8'],
+  '/owner/recovery': ['recovery.html', 'text/html; charset=utf-8'],
+  '/owner/recovery.mjs': ['recovery.mjs', 'text/javascript; charset=utf-8'],
   '/owner/register': ['register.html', 'text/html; charset=utf-8'],
   '/owner/register.mjs': ['register.mjs', 'text/javascript; charset=utf-8']
 })
@@ -43,7 +47,7 @@ function restricted(ip, path, nowMs) {
   if (nowMs > v.until) { v.count = 0; v.until = nowMs + 60_000 }
   ++v.count
   limiter.set(key, v)
-  return v.count > (path.includes('/login') ? 12 : 60)
+  return v.count > (path.includes('/login') || path.includes('/mfa/recover') ? 12 : 60)
 }
 function writeJson(res, status, value) {
   res.writeHead(status, {
@@ -181,6 +185,30 @@ export function createOwnerControlServer(service, {
         const b = await readJson(req)
         fieldsOnly(b, ['username', 'password', 'totp'])
         return writeJson(res, 200, await service.login({ ...b, nowMs }))
+      }
+      if (path === '/owner/v1/mfa/recovery/challenge' && req.method === 'GET') {
+        if (!loopback(req.socket.remoteAddress)) return writeJson(res, 403, { error: 'LOOPBACK_REQUIRED' })
+        for (const [challenge, item] of recoveryChallenges) {
+          if (item.expiresAt <= nowMs) recoveryChallenges.delete(challenge)
+        }
+        const challenge = randomBytes(32).toString('base64url')
+        recoveryChallenges.set(challenge, {
+          expiresAt: nowMs + 5 * 60_000, ip: req.socket.remoteAddress
+        })
+        return writeJson(res, 200, {
+          challenge, expiresAt: new Date(nowMs + 5 * 60_000).toISOString()
+        })
+      }
+      if (path === '/owner/v1/mfa/recover' && req.method === 'POST') {
+        if (!loopback(req.socket.remoteAddress)) return writeJson(res, 403, { error: 'LOOPBACK_REQUIRED' })
+        const b = await readJson(req)
+        fieldsOnly(b, ['challenge', 'username', 'password', 'confirmation'])
+        const pending = recoveryChallenges.get(b.challenge)
+        recoveryChallenges.delete(b.challenge)
+        if (!pending || pending.expiresAt <= nowMs || pending.ip !== req.socket.remoteAddress) {
+          throw new LicensingServiceError('INVALID_RECOVERY_CHALLENGE')
+        }
+        return writeJson(res, 200, await service.recoverMfa({ ...b, nowMs }))
       }
       // Every owner operation must carry an MFA-authenticated bearer session.
       // Never accept owner flag, role or TOTP bypass from user-supplied JSON.
