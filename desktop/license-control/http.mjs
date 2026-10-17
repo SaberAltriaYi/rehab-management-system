@@ -119,7 +119,7 @@ export function createOwnerControlServer(service, {
       if (typeof path !== 'string' || path.length > 256 ||
         path.includes('?') || path.includes('#') ||
         !(PRIVATE_ENDPOINT.test(path) || PUBLIC_PREFIX.test(path) ||
-          path === '/health' || Object.hasOwn(CONSOLE_ASSETS, path))) {
+          path === '/' || path === '/health' || Object.hasOwn(CONSOLE_ASSETS, path))) {
         return writeJson(res, 404, { error: 'NOT_FOUND' })
       }
       if (!tlsOptions && !loopback(req.socket.remoteAddress)) {
@@ -131,6 +131,16 @@ export function createOwnerControlServer(service, {
       if (req.method === 'OPTIONS') return writeJson(res, 405, { error: 'NOT_ALLOWED' })
       if (restricted(req.socket.remoteAddress, path, nowMs)) {
         return writeJson(res, 429, { error: 'RATE_LIMITED' })
+      }
+      if (path === '/') {
+        if (req.method !== 'GET') return writeJson(res, 405, { error: 'NOT_ALLOWED' })
+        res.writeHead(302, {
+          Location: '/owner/console',
+          'Cache-Control': 'no-store',
+          'Referrer-Policy': 'no-referrer',
+          'X-Content-Type-Options': 'nosniff'
+        })
+        return res.end()
       }
       if (Object.hasOwn(CONSOLE_ASSETS, path)) {
         if (req.method !== 'GET') return writeJson(res, 405, { error: 'NOT_ALLOWED' })

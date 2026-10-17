@@ -53,6 +53,9 @@ async function api(path, { method = 'GET', body, token, headers = {} } = {}) {
   return { status: res.status, body: await res.json(), headers: res.headers }
 }
 test('owner console assets are same-origin, CSP-hardened and contain no secrets', async () => {
+  const root = await fetch(url + '/', { redirect: 'manual' })
+  assert.equal(root.status, 302)
+  assert.equal(root.headers.get('location'), '/owner/console')
   const html = await fetch(url + '/owner/console')
   assert.equal(html.status, 200)
   assert.match(html.headers.get('content-security-policy'), /default-src 'none'/)
