@@ -1,11 +1,22 @@
 const form = document.getElementById('register-form')
 const result = document.getElementById('result')
+const nextSteps = document.getElementById('next-steps')
+const applicationId = document.getElementById('application-id')
 const submit = document.getElementById('submit')
 
 function show(message, type = 'success') {
   result.hidden = false
   result.className = 'register-result ' + type
   result.textContent = message
+  nextSteps.hidden = true
+}
+
+function showSubmitted(id) {
+  result.hidden = false
+  result.className = 'register-result success'
+  result.textContent = '申请已提交。系统已记录你的机构申请。'
+  applicationId.textContent = String(id || '未返回')
+  nextSteps.hidden = false
 }
 
 form.addEventListener('submit', async (event) => {
@@ -24,7 +35,7 @@ form.addEventListener('submit', async (event) => {
     const body = await response.json()
     if (!response.ok) throw new Error(body.error || '申请提交失败')
     form.reset()
-    show(`申请已提交。申请编号：${body.applicationId}。请保存此编号，等待软件拥有者审核。`)
+    showSubmitted(body.applicationId)
   } catch (error) {
     show('申请未提交：' + (error instanceof Error ? error.message : '网络错误'), 'error')
   } finally {
