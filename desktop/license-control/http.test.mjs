@@ -104,7 +104,10 @@ test('HTTP API is inaccessible as an owner without TOTP session', async () => {
 test('public institution registration creates a pending owner application without clinical data', async () => {
   const page = await fetch(url + '/owner/register')
   assert.equal(page.status, 200)
-  assert.match(await page.text(), /机构申请/)
+  const pageHtml = await page.text()
+  assert.match(pageHtml, /机构申请/)
+  assert.match(pageHtml, /接下来怎么做/)
+  assert.match(pageHtml, /打开主系统登录页/)
   const submitted = await api('/public/v1/applications', {
     method: 'POST', body: {
       organization: '线上申请合成康复中心', contactName: '申请联系人',
