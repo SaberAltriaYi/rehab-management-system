@@ -21,6 +21,12 @@ export interface NotificationItem {
   severity?: string; patientName?: string; createTime?: string
 }
 
+export interface HepPlan {
+  id: number; prescriptionNo?: string; patientId?: number; currentVersionId?: number;
+  items?: Array<{ exerciseId: number; exerciseCode?: string; name?: string; trainingDayNo?: number;
+    groupCode?: string; dosageJson?: string; instructionText?: string; painLimitRule?: string }>
+}
+
 const staffBase = '/admin-api/app-admin'
 const patientBase = '/app-api/app-patient'
 
@@ -36,6 +42,8 @@ export const patientApi = {
   home: () => apiRequest<Record<string, any>>(`${patientBase}/home/summary`),
   currentPlan: () => apiRequest<Record<string, any> | null>(`${patientBase}/plan/current`),
   todayTasks: () => apiRequest<PatientTask[]>(`${patientBase}/tasks/today`),
+  hepCurrent: () => apiRequest<HepPlan | Record<string, never>>(`${patientBase}/hep/current`),
+  hepFeedback: (payload: Record<string, unknown>) => apiRequest<number>(`${patientBase}/hep/feedback`, { method: 'POST', data: payload }),
   createCheckin: (payload: Record<string, unknown>) => apiRequest<number>(`${patientBase}/checkin/create`, { method: 'POST', data: payload }),
   reports: (pageNo = 1, pageSize = 30) => apiRequest<PageResult<Record<string, any>>>(`${patientBase}/reports/page`, { data: { pageNo, pageSize } }),
   notifications: (pageNo = 1, pageSize = 50) => apiRequest<PageResult<NotificationItem>>(`${patientBase}/notifications/page`, { data: { pageNo, pageSize } }),

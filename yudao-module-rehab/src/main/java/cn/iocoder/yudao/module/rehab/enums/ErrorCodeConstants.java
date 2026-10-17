@@ -86,6 +86,8 @@ public interface ErrorCodeConstants {
     ErrorCode APP_PATIENT_DAILY_CHECKIN_EXISTS = new ErrorCode(1_011_012_004, "今日已提交打卡，请勿重复提交");
     ErrorCode APP_NOTIFICATION_NOT_EXISTS = new ErrorCode(1_011_012_005, "通知不存在或已失效");
     ErrorCode APP_PATIENT_AUTH_DISABLED = new ErrorCode(1_011_012_006, "患者端身份验证尚未启用");
+    ErrorCode APP_PATIENT_INVITATION_INVALID = new ErrorCode(1_011_012_007, "患者邀请无效、已过期或已使用");
+    ErrorCode APP_PATIENT_INVITATION_FORBIDDEN = new ErrorCode(1_011_012_008, "当前账号无权签发患者邀请");
 
     ErrorCode NOTIFICATION_NOT_EXISTS = new ErrorCode(1_011_013_000, "通知不存在");
     ErrorCode NOTIFICATION_NO_PERMISSION = new ErrorCode(1_011_013_001, "无权限操作该通知");

@@ -11,7 +11,7 @@
     </view>
     <view class="login-card">
       <text class="card-heading">{{ role === 'staff' ? '团队账号登录' : '患者登录' }}</text>
-      <text class="card-description">{{ role === 'staff' ? '使用系统中的治疗师或管理员账号。' : '患者身份认证尚未开放，请联系机构。' }}</text>
+      <text class="card-description">{{ role === 'staff' ? '使用系统中的治疗师或管理员账号。' : '使用已登记手机号、短信验证码和机构一次性邀请。' }}</text>
       <view class="field-group">
         <text class="field-label">工作室 / 租户</text>
         <input v-model="tenantName" class="field-input" placeholder="工作室内部" maxlength="80" />
@@ -21,7 +21,11 @@
         <view class="field-group"><text class="field-label">密码</text><input v-model="password" class="field-input" password placeholder="请输入密码" maxlength="128" /></view>
       </template>
       <template v-else>
-        <view class="notice-box patient-warning">将由机构线下核验身份后发放短期单次使用邀请，并核验已登记手机号。验证、限频及安全存储完成前，患者端保持关闭。</view>
+        <view class="field-group"><text class="field-label">已登记手机号</text><input v-model="patientPhone" class="field-input" type="number" placeholder="请输入手机号" maxlength="11" /></view>
+        <view class="field-group code-row"><view class="code-field"><text class="field-label">短信验证码</text><input v-model="patientCode" class="field-input" type="number" placeholder="请输入验证码" maxlength="6" /></view><button class="code-button" :disabled="busy || smsCountdown > 0" @tap="sendCode">{{ smsCountdown > 0 ? `${smsCountdown}s` : '获取验证码' }}</button></view>
+        <view class="field-group"><text class="field-label">患者编号</text><input v-model="patientNo" class="field-input" placeholder="机构提供的患者编号" maxlength="64" /></view>
+        <view class="field-group"><text class="field-label">一次性邀请</text><input v-model="invitationCode" class="field-input" placeholder="机构签发的短期邀请码" maxlength="128" /></view>
+        <view class="notice-box patient-warning">短信登录只建立会员会话；患者数据须经机构邀请绑定后才能访问。患者端不提供全量动作库或自由组课。</view>
       </template>
       <text v-if="errorMessage" class="form-error">{{ errorMessage }}</text>
       <button v-if="role === 'staff'" class="primary-button submit-button" :loading="busy" :disabled="busy" @tap="submitStaff">{{ busy ? '正在登录…' : '登录' }}</button>
@@ -36,7 +40,7 @@
 import { ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import CaptchaSlider from '@/components/CaptchaSlider.vue'
-import { loginStaff } from '@/lib/auth'
+import { loginPatient, loginStaff, sendPatientSmsCode } from '@/lib/auth'
 import { CAPTCHA_ENABLED, PATIENT_LOGIN_ENABLED } from '@/lib/config'
 import { getSession } from '@/lib/session'
 
@@ -44,6 +48,11 @@ const role = ref<'staff' | 'patient'>('staff')
 const tenantName = ref('工作室内部')
 const username = ref('')
 const password = ref('')
+const patientPhone = ref('')
+const patientCode = ref('')
+const patientNo = ref('')
+const invitationCode = ref('')
+const smsCountdown = ref(0)
 const busy = ref(false)
 const captchaVisible = ref(false)
 const errorMessage = ref('')
@@ -77,8 +86,37 @@ function onCaptchaVerified(captchaVerification: string): void {
   void finishStaffLogin(captchaVerification)
 }
 
-function submitPatient(): void {
-  errorMessage.value = '患者登录尚未开放，请联系机构完成线下身份核验。'
+async function sendCode(): Promise<void> {
+  if (!tenantName.value.trim() || !/^1\d{10}$/.test(patientPhone.value)) {
+    errorMessage.value = '请先填写正确的租户和手机号。'
+    return
+  }
+  busy.value = true
+  errorMessage.value = ''
+  try {
+    await sendPatientSmsCode(tenantName.value, patientPhone.value)
+    smsCountdown.value = 60
+    const timer = setInterval(() => { smsCountdown.value -= 1; if (smsCountdown.value <= 0) clearInterval(timer) }, 1000)
+  } catch (error) {
+    errorMessage.value = error instanceof Error ? error.message : '验证码发送失败。'
+  } finally { busy.value = false }
+}
+
+async function submitPatient(): Promise<void> {
+  if (!patientLoginEnabled) { errorMessage.value = '患者端当前未开放。'; return }
+  if (!tenantName.value.trim() || !/^1\d{10}$/.test(patientPhone.value) || !patientCode.value || !patientNo.value.trim() || !invitationCode.value.trim()) {
+    errorMessage.value = '请完整填写租户、手机号、验证码、患者编号和邀请码。'
+    return
+  }
+  busy.value = true
+  errorMessage.value = ''
+  try {
+    await loginPatient({ tenantName: tenantName.value, phone: patientPhone.value, code: patientCode.value,
+      patientNo: patientNo.value.trim(), invitationCode: invitationCode.value.trim() })
+    uni.reLaunch({ url: '/pages/home/index' })
+  } catch (error) {
+    errorMessage.value = error instanceof Error ? error.message : '患者登录失败，请检查邀请和验证码。'
+  } finally { busy.value = false }
 }
 </script>
 
@@ -98,6 +136,9 @@ function submitPatient(): void {
 .field-group { margin-top: 22rpx; }
 .field-label { display: block; margin-bottom: 10rpx; color: #39465a; font-size: 24rpx; font-weight: 600; }
 .field-input { width: 100%; height: 86rpx; padding: 0 22rpx; border: 1rpx solid #dfe5ee; border-radius: 14rpx; background: #fbfcfe; color: #182230; font-size: 26rpx; }
+.code-row { display: flex; align-items: flex-end; gap: 14rpx; }
+.code-field { flex: 1; }
+.code-button { width: 190rpx; height: 86rpx; padding: 0; border-radius: 14rpx; background: #eaf2ff; color: #1d5fb9; font-size: 23rpx; }
 .patient-warning { margin-top: 22rpx; font-size: 23rpx; }
 .form-error { display: block; margin-top: 18rpx; color: #b42318; font-size: 23rpx; line-height: 1.5; }
 .submit-button { margin-top: 24rpx; }

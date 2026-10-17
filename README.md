@@ -890,3 +890,26 @@ SFMA、FMS、NASM-CES 等方法内容目前无授权或其他使用依据，不�
 主张；软件著作权鉴别材料排除相关规则、表单和说明。继续使用、展示或分发相关内容前，应取得
 合法依据，或替换为经过审查的原创通用表达。自研代码及权利范围详见
 [COPYRIGHT.md](COPYRIGHT.md)。
+
+## 患者端与 HEP（本版新增）
+
+患者端采用“会员短信登录 + 机构一次性邀请”双步骤：治疗师在患者详情中调用
+`POST /rehab/patient/app-invitation`，只把一次性明文邀请交给患者；服务器只保存 HMAC 摘要，
+邀请默认 30 分钟且只能兑换一次。部署前必须设置至少 32 字节的
+`REHAB_PATIENT_INVITATION_SECRET`，未设置时绑定接口保持关闭。
+
+HEP 动作、模板、处方版本、训练日、训练组和执行反馈位于 `rehab-step11-hep-v1.sql`，每张表
+都带 `tenant_id`。患者端只能读取本人已签发处方并提交完成、疼痛、RPE 和异常反馈；动作库、组课
+和处方修改只在后台开放。治疗师审核反馈后才标记 Core 回传完成，AI 不得自动改方。
+
+移动端本地验证：
+
+```bash
+cd yudao-ui/yudao-ui-rehab-uniapp
+pnpm install --frozen-lockfile
+pnpm type-check
+pnpm test:security
+```
+
+数据库迁移顺序保持为 Step 1–10 后执行 Step 11；上线前应先在匿名样例租户验证邀请兑换、租户隔离、
+患者越权、处方签发和反馈审核，再配置真实短信供应商。
