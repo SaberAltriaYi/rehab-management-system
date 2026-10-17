@@ -102,7 +102,7 @@ export class OwnerLicensingService {
   // Only callable from local, interactive, private provisioning CLI, NEVER the HTTP API.
   async provisionOwner({ username, password, nowMs }) {
     validMs(nowMs)
-    if (typeof username !== 'string' || !/^[a-z][a-z0-9._-]{3,39}$/.test(username)) deny('INVALID_OWNER_USERNAME')
+    if (typeof username !== 'string' || !/^[A-Za-z][A-Za-z0-9._-]{3,39}$/.test(username)) deny('INVALID_OWNER_USERNAME')
     if (this.hasOwner) deny('OWNER_ALREADY_PROVISIONED')
     const passwordHash = await hashOwnerPassword(password)
     const secret = generateTotpSecret()
