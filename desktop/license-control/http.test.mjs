@@ -68,7 +68,7 @@ test('owner console assets are same-origin, CSP-hardened and contain no secrets'
   assert.match(body, /id="rotate"[^>]*disabled/, 'UI must not rotate an undistributed signer')
   assert.doesNotMatch(body, /<script(?![^>]*src=)/)
   for (const asset of ['/owner/console/app.mjs', '/owner/console/policy.mjs',
-    '/owner/console/styles.css']) {
+    '/owner/console/styles.css', '/owner/recovery', '/owner/recovery.mjs']) {
     const result = await fetch(url + asset)
     assert.equal(result.status, 200, asset)
     assert.equal(result.headers.get('x-content-type-options'), 'nosniff')
@@ -284,6 +284,33 @@ test('checkpoint API is owner-only, emergency key revocation removes issuer imme
 test('owner logout invalidates bearer', async () => {
   const end = await api('/owner/v1/logout', { method: 'POST', token: sessionToken, body: {} })
   assert.equal(end.status, 200)
+  assert.equal((await api('/owner/v1/audit', { token: sessionToken })).status, 401)
+})
+test('loopback MFA recovery challenge is one-time and revokes the old owner session', async () => {
+  const challenge = await api('/owner/v1/mfa/recovery/challenge')
+  assert.equal(challenge.status, 200)
+  assert.match(challenge.body.challenge, /^[A-Za-z0-9_-]{43}$/)
+  const recovered = await api('/owner/v1/mfa/recover', {
+    method: 'POST',
+    body: {
+      challenge: challenge.body.challenge,
+      username: 'owneradmin',
+      password: ADMIN_PASSWORD,
+      confirmation: 'ROTATE-MFA'
+    }
+  })
+  assert.equal(recovered.status, 200, JSON.stringify(recovered.body))
+  assert.match(recovered.body.secret, /^[A-Z2-7]{32}$/)
+  assert.match(recovered.body.otpauthUrl, /^otpauth:\/\/totp\//)
+  assert.equal((await api('/owner/v1/mfa/recover', {
+    method: 'POST',
+    body: {
+      challenge: challenge.body.challenge,
+      username: 'owneradmin',
+      password: ADMIN_PASSWORD,
+      confirmation: 'ROTATE-MFA'
+    }
+  })).status, 400)
   assert.equal((await api('/owner/v1/audit', { token: sessionToken })).status, 401)
 })
 test('actual TLS listener authenticates a pinned self-signed test certificate', async () => {
