@@ -33,4 +33,3 @@ WHERE r.code = 'tenant_admin'
   AND r.deleted = b'0'
   AND r.tenant_id > 0
   AND rm.id IS NULL;
-
