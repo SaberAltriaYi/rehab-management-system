@@ -29,7 +29,7 @@
 
 - `REHAB_OWNER_DB_PATH`：操作员可写的**独立专用** SQLite 文件路径，不允许使用既有患者 DB、项目源码目录、Docker volumes。
 - `REHAB_OWNER_VAULT_KEY_B64`：用安全随机数产生的 32 字节 key 的 base64url（43 字符）编码，**必须在独立保密存储做备份**；不能硬编码、提交到 Git、复制进 runtime 或记录到普通 shell 历史。
-- `REHAB_OWNER_USERNAME`：首次初始化时的唯一所有者账号 ID，格式是 4–40 位小写字母起始的安全字符。
+- `REHAB_OWNER_USERNAME`：首次初始化时的唯一所有者账号 ID，格式是 4–40 位字母起始的安全字符。
 
 在 operator 本机终端，使用 `node desktop/license-control/cli.mjs bootstrap`。密码仅从交互式终端隐藏输入，不通过参数传递；首次唯一 TOTP 种子只显示一次，需**立即加入受控 MFA 管理器和安全恢复保管**。重复 bootstrap 会被阻断。此步骤**不自动创建签名密钥**；首次登录 owner MFA 后通过授权 API 初始化/轮换活动签名 key。
 
