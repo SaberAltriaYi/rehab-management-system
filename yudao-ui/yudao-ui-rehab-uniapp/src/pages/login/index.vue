@@ -21,11 +21,14 @@
         <view class="field-group"><text class="field-label">密码</text><input v-model="password" class="field-input" password placeholder="请输入密码" maxlength="128" /></view>
       </template>
       <template v-else>
-        <view class="field-group"><text class="field-label">已登记手机号</text><input v-model="patientPhone" class="field-input" type="number" placeholder="请输入手机号" maxlength="11" /></view>
-        <view class="field-group code-row"><view class="code-field"><text class="field-label">短信验证码</text><input v-model="patientCode" class="field-input" type="number" placeholder="请输入验证码" maxlength="6" /></view><button class="code-button" :disabled="busy || smsCountdown > 0" @tap="sendCode">{{ smsCountdown > 0 ? `${smsCountdown}s` : '获取验证码' }}</button></view>
-        <view class="field-group"><text class="field-label">患者编号</text><input v-model="patientNo" class="field-input" placeholder="机构提供的患者编号" maxlength="64" /></view>
-        <view class="field-group"><text class="field-label">一次性邀请</text><input v-model="invitationCode" class="field-input" placeholder="机构签发的短期邀请码" maxlength="128" /></view>
-        <view class="notice-box patient-warning">短信登录只建立会员会话；患者数据须经机构邀请绑定后才能访问。患者端不提供全量动作库或自由组课。</view>
+        <template v-if="patientLoginEnabled">
+          <view class="field-group"><text class="field-label">已登记手机号</text><input v-model="patientPhone" class="field-input" type="number" placeholder="请输入手机号" maxlength="11" /></view>
+          <view class="field-group code-row"><view class="code-field"><text class="field-label">短信验证码</text><input v-model="patientCode" class="field-input" type="number" placeholder="请输入验证码" maxlength="6" /></view><button class="code-button" :disabled="busy || smsCountdown > 0" @tap="sendCode">{{ smsCountdown > 0 ? `${smsCountdown}s` : '获取验证码' }}</button></view>
+          <view class="field-group"><text class="field-label">患者编号</text><input v-model="patientNo" class="field-input" placeholder="机构提供的患者编号" maxlength="64" /></view>
+          <view class="field-group"><text class="field-label">一次性邀请</text><input v-model="invitationCode" class="field-input" placeholder="机构签发的短期邀请码" maxlength="128" /></view>
+          <view class="notice-box patient-warning">短信登录只建立会员会话；患者数据须经机构邀请绑定后才能访问。患者端不提供全量动作库或自由组课。</view>
+        </template>
+        <view v-else class="notice-box patient-warning patient-login-closed">患者端登录暂未开放。完成短信服务、邀请绑定、令牌安全存储和安全验收后才会开放。</view>
       </template>
       <text v-if="errorMessage" class="form-error">{{ errorMessage }}</text>
       <button v-if="role === 'staff'" class="primary-button submit-button" :loading="busy" :disabled="busy" @tap="submitStaff">{{ busy ? '正在登录…' : '登录' }}</button>
