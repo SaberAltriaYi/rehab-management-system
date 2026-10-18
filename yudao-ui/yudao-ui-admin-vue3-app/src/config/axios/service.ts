@@ -258,7 +258,10 @@ service.interceptors.response.use(
 )
 
 const refreshToken = async () => {
-  axios.defaults.headers.common['tenant-id'] = getTenantId()
+  // Refresh requests use the global axios instance, so apply the same hidden
+  // owner-tenant context that the service interceptor applies to admin calls.
+  axios.defaults.headers.common['tenant-id'] =
+    ownerPortal && ownerTenantId > 0 ? ownerTenantId : getTenantId()
   return await axios.post(base_url + '/system/auth/refresh-token?refreshToken=' + getRefreshToken())
 }
 const handleAuthorized = () => {
