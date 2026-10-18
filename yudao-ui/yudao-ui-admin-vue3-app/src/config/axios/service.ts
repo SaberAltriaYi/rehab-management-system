@@ -18,6 +18,8 @@ import { deleteUserCache } from '@/hooks/web/useCache'
 import { ApiEncrypt } from '@/utils/encrypt'
 
 const tenantEnable = import.meta.env.VITE_APP_TENANT_ENABLE
+const ownerPortal = import.meta.env.VITE_PORTAL_MODE === 'owner'
+const ownerTenantId = Number(import.meta.env.VITE_OWNER_TENANT_ID || 0)
 const { result_code, base_url, request_timeout } = config
 
 // 需要忽略的提示。忽略后，自动 Promise.reject('error')
@@ -74,6 +76,11 @@ service.interceptors.request.use(
       if (config.headers.Authorization && visitTenantId) {
         config.headers['visit-tenant-id'] = visitTenantId
       }
+    }
+    // The owner portal hides tenant selection from the user, but the backend
+    // still requires the system-owner tenant context on every admin request.
+    if (ownerPortal && ownerTenantId > 0) {
+      config.headers['tenant-id'] = ownerTenantId
     }
     const method = config.method?.toUpperCase()
     // 防止 GET 请求缓存
