@@ -46,20 +46,21 @@ const parseURL = (
   return { basePath, paramsObject }
 }
 
+const isOwnerPortal = import.meta.env.VITE_PORTAL_MODE === 'owner'
+const isOwnerRoute = (path: string) => path === '/owner' || path.startsWith('/owner/')
+
 // 路由不重定向白名单
 const whiteList = [
   '/saas/register',
   '/saas/join',
   '/login',
+  ...(isOwnerPortal ? ['/owner/login'] : []),
   '/social-login',
   '/auth-redirect',
   '/bind',
   '/register',
   '/oauthLogin/gitee'
 ]
-
-const isOwnerPortal = import.meta.env.VITE_PORTAL_MODE === 'owner'
-const isOwnerRoute = (path: string) => path === '/owner' || path.startsWith('/owner/')
 
 // 路由加载前
 router.beforeEach(async (to, from, next) => {
