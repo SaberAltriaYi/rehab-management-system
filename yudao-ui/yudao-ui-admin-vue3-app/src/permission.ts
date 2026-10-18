@@ -51,7 +51,6 @@ const whiteList = [
   '/saas/register',
   '/saas/join',
   '/login',
-  '/owner/login',
   '/social-login',
   '/auth-redirect',
   '/bind',
@@ -59,10 +58,21 @@ const whiteList = [
   '/oauthLogin/gitee'
 ]
 
+const isOwnerPortal = import.meta.env.VITE_PORTAL_MODE === 'owner'
+const isOwnerRoute = (path: string) => path === '/owner' || path.startsWith('/owner/')
+
 // 路由加载前
 router.beforeEach(async (to, from, next) => {
   start()
   loadStart()
+  if (isOwnerPortal && !isOwnerRoute(to.path)) {
+    next('/owner/login')
+    return
+  }
+  if (!isOwnerPortal && isOwnerRoute(to.path)) {
+    next('/login')
+    return
+  }
   if (getAccessToken()) {
     if (to.path === '/login') {
       next({ path: '/' })

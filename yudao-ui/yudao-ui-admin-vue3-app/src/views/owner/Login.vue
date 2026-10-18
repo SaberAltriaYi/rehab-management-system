@@ -6,13 +6,15 @@
       <p>仅用于平台租户审核、授权、套餐和机构生命周期管理。</p>
       <el-alert title="此入口不授予机构管理员平台权限" type="warning" :closable="false" />
       <LoginForm class="owner-form" default-redirect="/owner" />
-      <router-link class="back-link" to="/login">返回机构员工登录</router-link>
+      <a class="back-link" :href="mainAppLoginUrl">返回机构员工登录</a>
     </section>
   </main>
 </template>
 
 <script setup lang="ts">
 import LoginForm from '@/views/Login/components/LoginForm.vue'
+
+const mainAppLoginUrl = `${import.meta.env.VITE_MAIN_APP_URL || 'http://127.0.0.1:5173'}/login`
 </script>
 
 <style scoped>
