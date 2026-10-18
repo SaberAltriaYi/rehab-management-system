@@ -32,10 +32,14 @@ const { t } = useI18n()
  canTo: true               设置为true即使hidden为true，也依然可以进行路由跳转(默认 false)
  }
  **/
-const remainingRouter: AppRouteRecordRaw[] = [
-  { path: '/saas/register', name: 'SaasRegister', redirect: '/login?mode=register', meta: { hidden: true, noTagsView: true, title: '机构入驻' } },
+const ownerPortalRoutes: AppRouteRecordRaw[] = import.meta.env.VITE_PORTAL_MODE === 'owner' ? [
   { path: '/owner/login', name: 'OwnerLogin', component: () => import('@/views/owner/Login.vue'), meta: { hidden: true, noTagsView: true, title: '拥有者登录' } },
-  { path: '/owner', name: 'OwnerConsole', component: () => import('@/views/owner/Console.vue'), meta: { hidden: true, noTagsView: true, title: '拥有者控制台' } },
+  { path: '/owner', name: 'OwnerConsole', component: () => import('@/views/owner/Console.vue'), meta: { hidden: true, noTagsView: true, title: '拥有者控制台' } }
+] : []
+
+const remainingRouter: AppRouteRecordRaw[] = [
+  ...ownerPortalRoutes,
+  { path: '/saas/register', name: 'SaasRegister', redirect: '/login?mode=register', meta: { hidden: true, noTagsView: true, title: '机构入驻' } },
   ...(import.meta.env.VITE_SAAS_ENABLE === 'true' ? [
     { path: '/saas/join', name: 'SaasJoin', component: () => import('@/views/saas/Join.vue'), meta: { hidden: true, noTagsView: true, title: '接受团队邀请' } },
     { path: '/saas/staff', name: 'SaasStaff', component: Layout, meta: { hidden: true }, children: [
@@ -176,7 +180,7 @@ const remainingRouter: AppRouteRecordRaw[] = [
         component: () => import('@/views/rehab/assessment/create/index.vue'),
         name: 'RehabAssessmentCreate',
         meta: {
-          title: '新建评估',
+          title: '新建评估',
           noCache: true,
           hidden: true,
           canTo: true,
@@ -837,7 +841,7 @@ const remainingRouter: AppRouteRecordRaw[] = [
           title: '产品详情',
           noCache: true,
           hidden: true,
-          activeMenu: '/iot/device/product'
+          activeMenu: '/iot/device/product'
         },
         component: () => import('@/views/iot/product/product/detail/index.vue')
       },
