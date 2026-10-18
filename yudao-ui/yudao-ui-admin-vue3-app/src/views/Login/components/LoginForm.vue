@@ -94,6 +94,10 @@ import { LoginStateEnum, useFormValid, useLoginState } from './useLogin'
 
 defineOptions({ name: 'LoginForm' })
 
+const props = withDefaults(defineProps<{ defaultRedirect?: string }>(), {
+  defaultRedirect: '/'
+})
+
 const { t } = useI18n()
 const iconHouse = useIcon({ icon: 'ep:house' })
 const iconAvatar = useIcon({ icon: 'ep:avatar' })
@@ -195,7 +199,7 @@ const handleLogin = async (params: any) => {
     }
     authUtil.setToken(res)
     if (!redirect.value) {
-      redirect.value = '/'
+      redirect.value = props.defaultRedirect
     }
     // 判断是否为SSO登录
     if (redirect.value.indexOf('sso') !== -1) {

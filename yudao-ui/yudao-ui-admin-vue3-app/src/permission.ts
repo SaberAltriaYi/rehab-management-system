@@ -51,6 +51,7 @@ const whiteList = [
   '/saas/register',
   '/saas/join',
   '/login',
+  '/owner/login',
   '/social-login',
   '/auth-redirect',
   '/bind',
@@ -97,7 +98,8 @@ router.beforeEach(async (to, from, next) => {
     if (whiteList.indexOf(to.path) !== -1) {
       next()
     } else {
-      next(`/login?redirect=${to.fullPath}`) // 否则全部重定向到登录页
+      const loginPath = to.path.startsWith('/owner') ? '/owner/login' : '/login'
+      next(`${loginPath}?redirect=${encodeURIComponent(to.fullPath)}`) // 否则重定向到对应登录入口
     }
   }
 })

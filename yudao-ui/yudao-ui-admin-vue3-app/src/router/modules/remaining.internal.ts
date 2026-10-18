@@ -10,12 +10,14 @@ const { t } = useI18n()
  * 等已停用模块不会因为上游固定路由而被编译进发布产物。
  */
 const remainingRouter: AppRouteRecordRaw[] = [
+  { path: '/saas/register', name: 'SaasRegister', redirect: '/login?mode=register', meta: { hidden: true, noTagsView: true, title: '机构入驻' } },
+  { path: '/owner/login', name: 'OwnerLogin', component: () => import('@/views/owner/Login.vue'), meta: { hidden: true, noTagsView: true, title: '拥有者登录' } },
+  { path: '/owner', name: 'OwnerConsole', component: () => import('@/views/owner/Console.vue'), meta: { hidden: true, noTagsView: true, title: '拥有者控制台' } },
   ...(import.meta.env.VITE_SAAS_ENABLE === 'true' ? [
     { path: '/saas/join', name: 'SaasJoin', component: () => import('@/views/saas/Join.vue'), meta: { hidden: true, noTagsView: true, title: '接受团队邀请' } },
     { path: '/saas/staff', name: 'SaasStaff', component: Layout, meta: { hidden: true }, children: [
       { path: '', name: 'SaasStaffInvitations', component: () => import('@/views/saas/Staff.vue'), meta: { title: '治疗师邀请', noCache: true } }
     ] },
-    { path: '/saas/register', name: 'SaasRegister', component: () => import('@/views/saas/Register.vue'), meta: { hidden: true, noTagsView: true, title: '机构入驻' } },
     { path: '/saas/platform', name: 'SaasPlatform', component: Layout, meta: { hidden: true }, children: [
       { path: '', name: 'SaasPlatformConsole', component: () => import('@/views/saas/Platform.vue'), meta: { title: '平台管理', noCache: true } }
     ] }
