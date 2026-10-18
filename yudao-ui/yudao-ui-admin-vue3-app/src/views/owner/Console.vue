@@ -7,8 +7,7 @@
         <p>集中审核机构申请、分配套餐、授权租户并查看平台运行状态。</p>
       </div>
       <div class="owner-actions">
-        <el-button @click="router.push('/system/tenant')">打开租户总览</el-button>
-        <el-button type="primary" plain @click="router.push('/index')">返回主系统</el-button>
+        <el-button type="primary" plain @click="openMainSystem">打开主系统</el-button>
       </div>
     </header>
     <Platform />
@@ -16,10 +15,13 @@
 </template>
 
 <script setup lang="ts">
-import { useRouter } from 'vue-router'
 import Platform from '@/views/saas/Platform.vue'
 
-const router = useRouter()
+const mainAppUrl = import.meta.env.VITE_MAIN_APP_URL || 'http://127.0.0.1:5173'
+
+const openMainSystem = () => {
+  window.location.assign(`${mainAppUrl}/index`)
+}
 </script>
 
 <style scoped>
