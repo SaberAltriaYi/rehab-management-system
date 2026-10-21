@@ -5,11 +5,11 @@
       <h1>系统拥有者控制台</h1>
       <p>仅用于平台租户审核、授权、套餐和机构生命周期管理。</p>
       <el-alert
-        title="拥有者授权管理已迁移到独立 HTTPS 控制面，此页面不再加载旧版 SaaS 接口。"
-        type="warning"
+        title="Owner 兼容入口将统一跳转到独立 HTTPS 控制台。"
+        type="success"
         :closable="false"
       />
-      <a class="console-link" :href="ownerControlUrl">进入独立 Owner 控制台</a>
+      <a class="console-link" :href="ownerControlUrl">进入 Owner 控制台</a>
       <p class="console-hint"
         >本地地址：{{ ownerControlUrl }}。独立控制面使用自己的 Owner
         MFA，不复用主系统租户登录状态。</p
@@ -20,9 +20,13 @@
 </template>
 
 <script setup lang="ts">
+import { onMounted } from 'vue'
 const mainAppLoginUrl = `${import.meta.env.VITE_MAIN_APP_URL || 'http://127.0.0.1:5173'}/login`
 const ownerControlUrl =
   import.meta.env.VITE_OWNER_CONTROL_URL || 'https://127.0.0.1:9444/owner/console'
+onMounted(() => {
+  window.location.replace(ownerControlUrl)
+})
 </script>
 
 <style scoped>

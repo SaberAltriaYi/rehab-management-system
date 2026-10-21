@@ -93,7 +93,7 @@
         @success="handleRegister"
       />
     </el-row>
-    <XButton :title="t('login.hasUser')" class="w-full" @click="handleBackLogin()" />
+    <XButton :title="t('login.hasUser')" class="w-full" @click="backToLogin()" />
   </el-form>
 </template>
 <script lang="ts" setup>
@@ -107,6 +107,8 @@ import * as LoginApi from '@/api/login'
 import { LoginStateEnum, useLoginState, useFormValid } from './useLogin'
 
 defineOptions({ name: 'RegisterForm' })
+
+const emit = defineEmits<{ (event: 'back-login'): void }>()
 
 const { t } = useI18n()
 const iconHouse = useIcon({ icon: 'ep:house' })
@@ -123,6 +125,11 @@ const verify = ref()
 const captchaType = ref('blockPuzzle') // blockPuzzle 滑块 clickWord 点击文字 pictureWord 文字验证码
 
 const getShow = computed(() => unref(getLoginState) === LoginStateEnum.REGISTER)
+
+function backToLogin() {
+  handleBackLogin()
+  emit('back-login')
+}
 
 const equalToPassword = (_rule, value, callback) => {
   if (registerData.registerForm.password !== value) {
