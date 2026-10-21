@@ -35,6 +35,7 @@
       <a class="toolbar-link" href="/owner/register" target="_blank" rel="noopener">打开机构注册页</a>
       <button id="logout" type="button" class="outline">注销会话</button>
     </nav>
+    <p id="workflow-status" class="workflow-status" role="status"></p>
     <section class="panel">
       <div class="section-heading"><h2>待审批工作室</h2><span id="application-count" aria-live="polite">—</span></div>
       <div class="table-scroll"><table><thead><tr><th>工作室</th><th>租户 / 设备编号</th><th>申请状态</th><th>操作</th></tr></thead><tbody id="applications"></tbody></table></div>
@@ -43,16 +44,20 @@
     <section class="grid2">
       <section class="panel">
         <h2>审批、续费、扩容策略</h2>
+        <p id="selection-status" class="selection-status" role="status">先在上方申请列表选择“审核”或“维护”。系统会自动带入租户和当前策略。</p>
+        <button id="use-default-policy" type="button" class="outline">填入标准策略（可修改）</button>
         <form id="policy-form">
           <label>到期日期 <input name="expiry" type="datetime-local" required /></label>
           <label>员工席位数 <input name="seats" type="number" min="1" max="2147483647" value="6" required /></label>
           <label class="check"><input name="unlimited" type="checkbox" checked/> 许可证明确签署无限员工席位（默认；定额合同可取消勾选）</label>
           <label>最大部署实例数 <input name="installations" type="number" min="1" max="100000" value="1" required /></label>
           <label>授权模块（逗号分隔） <input name="modules" value="rehab,motion,report" maxlength="2100" required /></label>
-          <label>首位机构管理员账号（仅本次转发） <input name="adminUsername" pattern="[a-zA-Z0-9]{4,30}" autocomplete="off" placeholder="例如 rehabadmin" /></label>
-          <label>首位机构管理员临时密码（仅本次转发） <input name="adminPassword" type="password" minlength="12" maxlength="16" autocomplete="new-password" placeholder="12-16 位" /></label>
+          <div id="provisioning-fields">
+            <label>首位机构管理员账号（仅本次转发） <input name="adminUsername" pattern="[a-zA-Z0-9]{4,30}" autocomplete="off" placeholder="例如 rehabadmin" /></label>
+            <label>首位机构管理员临时密码（仅本次转发） <input name="adminPassword" type="password" minlength="12" maxlength="16" autocomplete="new-password" placeholder="12-16 位" /></label>
+          </div>
           <label>人工审核理由 <textarea name="reason" maxlength="240" rows="3" placeholder="填写审批或变更理由"></textarea></label>
-          <p class="hint">审批会先签发授权，再异步开通主系统租户。管理员凭据只通过加密连接转发，不写入授权控制面；开通失败可重试。</p>
+          <p class="hint">主系统自动开通已配置时，审批会先签发授权再异步开通租户；管理员凭据只通过加密连接转发，不写入授权控制面。未配置时只保存许可，不会伪造主系统开通结果。</p>
           <button id="approve" type="button" disabled>批准当前选中的申请</button>
           <button id="reject" type="button" class="danger" disabled>拒绝当前选中的申请</button>
         </form>
@@ -63,7 +68,7 @@
           <label>租户 UUID <input name="tenantId" required placeholder="从申请列表复制小写 UUID"/></label>
           <button type="submit" class="outline">查询当前许可</button>
           <div id="tenant-status" aria-live="polite"></div>
-          <button type="button" id="update-policy">按左侧策略续期/扩容</button>
+          <button type="button" id="update-policy">按左侧策略续期 / 扩容</button>
           <button type="button" id="suspend" class="warning">暂停此租户</button>
           <button type="button" id="resume" class="outline">恢复此租户</button>
           <button type="button" id="revoke" class="danger">永久撤销此租户</button>

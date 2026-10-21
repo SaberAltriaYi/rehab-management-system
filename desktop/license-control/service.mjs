@@ -603,10 +603,12 @@ export class OwnerLicensingService {
     return `${prefix}.${sign(null, Buffer.from(prefix, 'ascii'), signer).toString('base64url')}`
   }
 
-  updateEntitlement({ token, tenantId, policy, nowMs }) {
+  updateEntitlement({ token, tenantId, policy, reason = '', nowMs }) {
     const actor = this.requireStrongOwner(token, nowMs)
     validUuid(tenantId)
     validatePolicy({ ...policy, nowMs })
+    if (typeof reason !== 'string' || reason.length > 240) deny('INVALID_REASON')
+    const auditReason = reason.trim()
     return this.store.transaction(() => {
       const entitlement = this.db.prepare('SELECT * FROM entitlements WHERE tenant_uuid=?').get(tenantId)
       if (!entitlement || entitlement.status !== 'ACTIVE') deny('TENANT_NOT_APPROVED')
@@ -617,7 +619,8 @@ export class OwnerLicensingService {
           JSON.stringify([...policy.modules].sort()), newEpoch, nowMs, tenantId)
       this.db.prepare('DELETE FROM renewal_challenges WHERE tenant_uuid=?').run(tenantId)
       this.store.audit({ actor, action: 'ENTITLEMENT_UPDATED', subject: tenantId,
-        details: { revocationEpoch: newEpoch, ...policy }, nowMs })
+        details: { revocationEpoch: newEpoch, ...policy,
+          ...(auditReason ? { reason: auditReason } : {}) }, nowMs })
       return { tenantId, revocationEpoch: newEpoch }
     })
   }

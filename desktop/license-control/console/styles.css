@@ -12,6 +12,7 @@ main{max-width:1320px;margin:auto;padding:30px 26px 60px}
 .grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}
 .grid2 .panel{min-width:0}
 form{display:grid;gap:12px}
+#provisioning-fields{display:grid;gap:12px}
 label{display:grid;gap:5px;font-size:13px;font-weight:600}
 label.check{display:flex;align-items:center;gap:10px}
 input,textarea,button{font:inherit}
@@ -38,6 +39,11 @@ td button{white-space:nowrap;margin-right:5px;margin-bottom:6px;font-size:12px;p
 .toolbar{justify-content:flex-start}
 .toolbar-link{display:inline-flex;align-items:center;color:#246b5b;font-weight:600;text-decoration:none;padding:9px 12px;border:1px solid #9fcabb;border-radius:9px;background:#f5faf8}
 .toolbar-link:hover{background:#e6f5ee}
+.workflow-status{margin:0 0 18px;padding:12px 14px;border:1px solid #c4dcd2;border-radius:10px;background:#f2faf6;color:#245f50;font-size:13px}
+.workflow-status.warning{border-color:#e6c783;background:#fff4df;color:#754f17}
+.selection-status{margin:0 0 10px;padding:10px 12px;border-radius:9px;background:#f5f8f7;color:#637972;font-size:13px}
+.selection-status.ready{background:#e7f6ed;color:#1e684d}
+.selection-status.warning{background:#fff4df;color:#754f17}
 #feedback{display:block;white-space:pre-wrap;overflow-wrap:anywhere;padding:16px 4px;color:#235b50;min-height:48px}
 #feedback.error{color:#a42f30}
 footer{color:#687c77;font-size:12px;text-align:center}

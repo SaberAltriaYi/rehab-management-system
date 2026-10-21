@@ -227,7 +227,12 @@ export function createOwnerControlServer(service, {
         return writeJson(res, 200, service.stepUp({ token, totp: b.totp, nowMs }))
       }
       if (path === '/owner/v1/applications' && req.method === 'GET') {
-        return writeJson(res, 200, { applications: service.applicationList({ token, nowMs }) })
+        return writeJson(res, 200, {
+          applications: service.applicationList({ token, nowMs }),
+          // This is only a capability flag. Never expose the provisioning URL,
+          // token or plan/package identifiers to the browser.
+          provisioningConfigured: service.provisioningConfigured()
+        })
       }
       if (path === '/owner/v1/signing-keys/rotate' && req.method === 'POST') {
         const b = await readJson(req)
@@ -273,9 +278,9 @@ export function createOwnerControlServer(service, {
       const change = /^\/owner\/v1\/tenants\/([0-9a-f-]{36})\/(policy|status)$/.exec(path)
       if (change && req.method === 'POST') {
         const b = await readJson(req)
-        fieldsOnly(b, change[2] === 'policy' ? ['policy'] : ['status'])
+        fieldsOnly(b, change[2] === 'policy' ? ['policy', 'reason'] : ['status'])
         return writeJson(res, 200, change[2] === 'policy'
-          ? service.updateEntitlement({ token, tenantId: change[1], policy: policy(b), nowMs })
+          ? service.updateEntitlement({ token, tenantId: change[1], policy: policy(b), reason: b.reason, nowMs })
           : service.setTenantStatus({ token, tenantId: change[1], status: b.status, nowMs }))
       }
       if (path === '/owner/v1/installations/replace' && req.method === 'POST') {
