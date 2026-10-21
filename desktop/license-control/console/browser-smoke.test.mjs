@@ -54,7 +54,9 @@ test('Chrome renders owner login and responsive console over synthetic TLS witho
       await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
       const url = 'https://127.0.0.1:' + server.address().port + '/owner/console'
       const common = [
-        '--headless=new', '--disable-gpu', '--disable-extensions',
+        '--headless=new', '--no-sandbox', '--disable-gpu',
+        '--disable-software-rasterizer', '--disable-dev-shm-usage',
+        '--disable-extensions',
         '--disable-background-networking', '--no-first-run',
         // Synthetic one-day test-only CA; never used for the real owner URL.
         '--ignore-certificate-errors',
