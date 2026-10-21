@@ -6,6 +6,7 @@ import cn.iocoder.yudao.framework.common.util.servlet.ServletUtils;
 import cn.iocoder.yudao.module.rehab.controller.admin.audit.vo.RehabAuditLogRespVO;
 import cn.iocoder.yudao.module.rehab.controller.admin.report.vo.*;
 import cn.iocoder.yudao.module.rehab.service.report.RehabReportService;
+import cn.iocoder.yudao.module.rehab.service.reporter.RehabReporterClient;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -18,6 +19,7 @@ import javax.servlet.http.HttpServletResponse;
 import javax.validation.Valid;
 import java.io.IOException;
 import java.util.List;
+import java.util.Map;
 
 import static cn.iocoder.yudao.framework.common.pojo.CommonResult.success;
 import static cn.iocoder.yudao.framework.security.core.util.SecurityFrameworkUtils.getLoginUserId;
@@ -30,6 +32,9 @@ public class RehabReportController {
 
     @Resource
     private RehabReportService reportService;
+
+    @Resource
+    private RehabReporterClient reporterClient;
 
     @GetMapping("/page")
     @Operation(summary = "获得报告分页")
@@ -52,6 +57,13 @@ public class RehabReportController {
     @PreAuthorize("@ss.hasPermission('rehab:report:detail')")
     public CommonResult<RehabReportRespVO> getReport(@RequestParam("id") Long id) {
         return success(reportService.getReport(id, getLoginUserId()));
+    }
+
+    @GetMapping("/engine-rehearsal")
+    @Operation(summary = "获得评估引擎报告演练结果")
+    @PreAuthorize("@ss.hasPermission('rehab:assessment:detail')")
+    public CommonResult<Map<String, Object>> getEngineRehearsalReport() {
+        return success(reporterClient.fetchRehearsalReport());
     }
 
     @PostMapping("/generate")

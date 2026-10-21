@@ -139,16 +139,7 @@ public class CrmStatisticsFunnelServiceImpl implements CrmStatisticsFunnelServic
      * @return 用户编号数组
      */
     private List<Long> getUserIds(CrmStatisticsFunnelReqVO reqVO) {
-        // 情况一：选中某个用户
-        if (ObjUtil.isNotNull(reqVO.getUserId())) {
-            return ListUtil.of(reqVO.getUserId());
-        }
-        // 情况二：选中某个部门
-        // 2.1 获得部门列表
-        List<Long> deptIds = convertList(deptApi.getChildDeptList(reqVO.getDeptId()), DeptRespDTO::getId);
-        deptIds.add(reqVO.getDeptId());
-        // 2.2 获得用户编号
-        return convertList(adminUserApi.getUserListByDeptIds(deptIds), AdminUserRespDTO::getId);
+        return CrmStatisticsScope.users(reqVO.getDeptId(), reqVO.getUserId(), adminUserApi, deptApi);
     }
 
 }

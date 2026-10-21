@@ -23,6 +23,10 @@ public interface TenantMapper extends BaseMapperX<TenantDO> {
                 .orderByDesc(TenantDO::getId));
     }
 
+    default List<TenantDO> selectListAll() {
+        return selectList();
+    }
+
     default TenantDO selectByName(String name) {
         return selectOne(TenantDO::getName, name);
     }

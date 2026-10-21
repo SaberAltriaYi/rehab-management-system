@@ -185,7 +185,7 @@ deploy/internal/migrate.sh status
 版本为 020+；更早版本均已登记；脚本只包含 `CREATE TABLE`；数据库中每张表的列名与顺序与脚本完全一致。
 任一条件不满足即失败且不写账本。包含 INSERT/ALTER 的迁移（如 024）不能 adopt，只能 `apply`。
 
-当前清单为 001–029（以 `migrations.manifest` 为准：024 运动评估、025 审计列、026 签名工作室许可证绑定、027 SaaS 平台套餐与用量、028 机构注册与审计）。已有业务库执行任何增量迁移前，先在隔离副本核验数据库与附件备份、迁移和权限，再用 `migrate.sh apply`
+当前清单为 001–031（以 `migrations.manifest` 为准：024 运动评估、025 审计列、026 签名工作室许可证绑定、027 SaaS 平台套餐与用量、028 机构注册与审计、030 系统拥有者租户总览、031 CRM 部门客户工作台与公海事件账本）。已有业务库执行任何增量迁移前，先在隔离副本核验数据库与附件备份、迁移和权限，再用 `migrate.sh apply`
 （或上文 `adopt`）；`migrate.sh status` 仍有 PENDING 或校验和不一致时，不得记为发布通过。
 
 不要对已有业务库手工执行 `clean-demo-rehab-data.sql` 或 `internal-hardening.sql`；这两个脚本只用于
@@ -313,3 +313,10 @@ docker compose --env-file deploy/internal/.env \
    将 JDK 17 / Spring Boot 3 迁移列入下一技术周期。
 
 可直接使用 `deploy/internal/manual/` 中的表单，不得用自动测试结果代替人员姓名、日期和签字。
+
+
+### 系统拥有者租户总览（迁移 030）
+
+迁移 030 为系统租户的 `system_owner` / `super_admin` 提供跨租户运营指标接口
+`GET /system/tenant/owner/overview`。该接口固定校验登录用户的系统租户身份和拥有者角色，
+不会接受请求头伪造租户范围；启用前须先执行 030 并通过 `migrate.sh status` 校验清单与校验和。

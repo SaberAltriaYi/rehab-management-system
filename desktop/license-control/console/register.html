@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="referrer" content="no-referrer" />
+  <title>申请使用 Rehab 康复平台</title>
+  <link rel="stylesheet" href="/owner/console/styles.css" />
+  <script type="module" src="/owner/register.mjs"></script>
+</head>
+<body class="register-page">
+  <main class="register-shell">
+    <section class="register-hero">
+      <div class="eyebrow">REHAB PLATFORM · INSTITUTION ONBOARDING</div>
+      <h1>申请使用康复管理与动作评估平台</h1>
+      <p>提交机构基础信息后，软件拥有者会人工审核申请。审核通过后，你将收到机构管理员开通方式和已授权功能。</p>
+      <div class="register-points">
+        <span>主系统租户隔离</span><span>动作评估模块按授权开启</span><span>不上传患者资料</span>
+      </div>
+    </section>
+    <section class="panel register-card" aria-labelledby="register-title">
+      <div class="section-heading">
+        <div><h2 id="register-title">机构申请</h2><p class="hint">请填写真实的机构联系人信息，患者资料不要在此提交。</p></div>
+        <span class="register-step">01 / 01</span>
+      </div>
+      <form id="register-form">
+        <label>机构名称 <input name="organization" required minlength="2" maxlength="120" placeholder="例如：杭州启航运动康复中心" /></label>
+        <div class="register-grid">
+          <label>联系人 <input name="contactName" required minlength="2" maxlength="80" placeholder="姓名" /></label>
+          <label>联系电话 <input name="contactPhone" required maxlength="40" placeholder="手机号或座机" /></label>
+        </div>
+        <div class="register-grid">
+          <label>工作邮箱 <input name="contactEmail" type="email" maxlength="160" placeholder="用于接收审核结果（可选）" /></label>
+          <label>所在地区 <input name="region" maxlength="80" placeholder="省 / 市" /></label>
+        </div>
+        <label>补充说明 <textarea name="note" maxlength="500" rows="4" placeholder="机构类型、预计使用人数、是否需要动作评估等（可选）"></textarea></label>
+        <label class="register-consent"><input name="consent" type="checkbox" required /> <span>我确认提交的是机构联系信息，不包含患者姓名、病历、视频或其他健康资料。</span></label>
+        <button type="submit" id="submit">提交申请</button>
+      </form>
+      <div id="result" class="register-result" role="status" aria-live="polite" hidden></div>
+      <section id="next-steps" class="register-next" hidden aria-live="polite">
+        <h3>接下来怎么做</h3>
+        <p><strong>当前状态：待审核</strong></p>
+        <ol>
+          <li>软件拥有者会核对机构申请。</li>
+          <li>审核通过后，系统会创建机构租户和机构管理员账号。</li>
+          <li>管理员会通过联系人提供登录入口、账号和临时密码。</li>
+          <li>收到管理员信息后，再进入主系统登录页；申请页本身不能直接登录。</li>
+        </ol>
+        <p>申请编号：<code id="application-id"></code></p>
+        <p class="register-login-hint">已有机构账号？请在审核通过并收到管理员账号后，进入主系统登录。</p>
+        <a class="toolbar-link" href="http://127.0.0.1:80/#/login" target="_blank" rel="noopener">打开主系统登录页</a>
+        <a class="toolbar-link" href="/owner/register">返回申请页</a>
+      </section>
+      <p class="hint register-footnote">提交后状态为“待审核”。如需补充材料，拥有者会通过你提供的联系人方式联系。</p>
+    </section>
+  </main>
+</body>
+</html>

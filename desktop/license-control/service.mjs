@@ -67,12 +67,40 @@ function validateOrganization(name) {
     name.length > 120 || /[\u0000-\u001f]/.test(name)) deny('INVALID_ORGANIZATION')
   return name.trim()
 }
+function validateContact(value, { required = false, max = 120 } = {}) {
+  if (value === undefined || value === null || value === '') {
+    if (required) deny('INVALID_CONTACT')
+    return null
+  }
+  if (typeof value !== 'string' || value.trim().length < 2 || value.length > max || /[\u0000-\u001f]/.test(value)) {
+    deny('INVALID_CONTACT')
+  }
+  return value.trim()
+}
+function validateEmail(value) {
+  if (value === undefined || value === null || value === '') return null
+  if (typeof value !== 'string' || value.length > 160 || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(value)) deny('INVALID_EMAIL')
+  return value.trim().toLowerCase()
+}
 const hashToken = value => createHash('sha256').update(value, 'utf8').digest('hex')
+function ownerTotpUri(username, secret) {
+  const issuer = 'Rehab Owner'
+  return 'otpauth://totp/' + encodeURIComponent(issuer) + ':' + encodeURIComponent(username) +
+    '?secret=' + secret + '&issuer=' + encodeURIComponent(issuer) +
+    '&algorithm=SHA1&digits=6&period=30'
+}
 
 export class OwnerLicensingService {
   constructor(store, vault) {
     this.store = store
     this.vault = vault
+    this.provisioning = {
+      baseUrl: String(process.env.REHAB_MAIN_PROVISIONING_URL ?? '').replace(/\/$/, ''),
+      token: process.env.REHAB_MAIN_PROVISIONING_TOKEN ?? '',
+      planId: Number(process.env.REHAB_MAIN_PROVISIONING_PLAN_ID ?? 0),
+      packageId: Number(process.env.REHAB_MAIN_PROVISIONING_PACKAGE_ID ?? 0),
+      timeoutMs: Math.min(30_000, Math.max(1_000, Number(process.env.REHAB_MAIN_PROVISIONING_TIMEOUT_MS ?? 10_000)))
+    }
   }
   get db() { return this.store.db }
   get hasOwner() { return Boolean(this.db.prepare('SELECT id FROM owner_identity WHERE id = 1').get()) }
@@ -80,7 +108,7 @@ export class OwnerLicensingService {
   // Only callable from local, interactive, private provisioning CLI, NEVER the HTTP API.
   async provisionOwner({ username, password, nowMs }) {
     validMs(nowMs)
-    if (typeof username !== 'string' || !/^[a-z][a-z0-9._-]{3,39}$/.test(username)) deny('INVALID_OWNER_USERNAME')
+    if (typeof username !== 'string' || !/^[A-Za-z][A-Za-z0-9._-]{3,39}$/.test(username)) deny('INVALID_OWNER_USERNAME')
     if (this.hasOwner) deny('OWNER_ALREADY_PROVISIONED')
     const passwordHash = await hashOwnerPassword(password)
     const secret = generateTotpSecret()
@@ -128,6 +156,41 @@ export class OwnerLicensingService {
     })
     if (result.denied) deny('INVALID_OWNER_CREDENTIALS')
     return result
+  }
+
+  async recoverMfa({ username, password, confirmation, nowMs }) {
+    validMs(nowMs)
+    if (confirmation !== 'ROTATE-MFA') deny('INVALID_RECOVERY_CONFIRMATION')
+    const owner = this.db.prepare('SELECT * FROM owner_identity WHERE id = 1').get()
+    if (!owner || username !== owner.username || owner.lock_until > nowMs) {
+      deny('INVALID_OWNER_CREDENTIALS')
+    }
+    const passwordOk = await checkOwnerPassword(password, owner.password_hash)
+    if (!passwordOk) {
+      this.store.transaction(() => {
+        const latest = this.db.prepare('SELECT failure_count FROM owner_identity WHERE id=1').get()
+        const failures = latest.failure_count + 1
+        this.db.prepare('UPDATE owner_identity SET failure_count=?,lock_until=? WHERE id=1')
+          .run(failures, failures >= ATTEMPT_LIMIT ? nowMs + LOCK_MS : 0)
+        this.store.audit({ actor: 'unknown', action: 'OWNER_MFA_RECOVERY_REJECTED',
+          subject: 'owner', details: { attempt: failures }, nowMs })
+      })
+      deny('INVALID_OWNER_CREDENTIALS')
+    }
+    const secret = generateTotpSecret()
+    this.store.transaction(() => {
+      this.db.prepare('UPDATE owner_identity SET mfa_encrypted=?,last_mfa_step=-1,failure_count=0,lock_until=0 WHERE id=1')
+        .run(this.vault.encrypt(secret, 'owner-mfa-v1'))
+      this.db.prepare('DELETE FROM owner_sessions').run()
+      this.store.audit({ actor: owner.username, action: 'OWNER_MFA_RECOVERED',
+        subject: 'owner', details: { sessionsRevoked: true }, nowMs })
+    })
+    return {
+      username: owner.username,
+      secret,
+      otpauthUrl: ownerTotpUri(owner.username, secret),
+      revealExpiresAt: new Date(nowMs + 60_000).toISOString()
+    }
   }
 
   requireOwner(token, nowMs) {
@@ -265,23 +328,54 @@ export class OwnerLicensingService {
     return { applicationId, status: 'PENDING' }
   }
 
+  submitPublicApplication({ organization, contactName, contactPhone, contactEmail, region, note, nowMs }) {
+    validMs(nowMs)
+    const name = validateOrganization(organization)
+    const contact = validateContact(contactName, { required: true, max: 80 })
+    const phone = validateContact(contactPhone, { required: true, max: 40 })
+    const email = validateEmail(contactEmail)
+    const area = validateContact(region, { max: 80 })
+    const memo = validateContact(note, { max: 500 })
+    const tenantId = randomUUID()
+    const installationId = randomUUID()
+    const { publicKey } = generateKeyPairSync('ed25519')
+    const publicPem = publicKey.export({ type: 'spki', format: 'pem' })
+    const applicationId = randomUUID()
+    this.store.transaction(() => {
+      this.db.prepare(`INSERT INTO applications
+        (id,tenant_uuid,installation_uuid,installation_public_pem,organization,status,submitted_at,
+         source,contact_name,contact_phone,contact_email,region,note)
+        VALUES(?,?,?,?,?,'PENDING',?,'public',?,?,?,?,?)`).run(applicationId, tenantId, installationId,
+        publicPem, name, nowMs, contact, phone, email, area, memo)
+      this.store.audit({ actor: 'public-registration', action: 'PUBLIC_APPLICATION_SUBMITTED',
+        subject: tenantId, details: { applicationId, organization: name, region: area }, nowMs })
+    })
+    return { applicationId, tenantId, status: 'PENDING', message: '申请已提交，等待软件拥有者审核' }
+  }
+
   applicationList({ token, nowMs }) {
     this.requireOwner(token, nowMs)
     return this.db.prepare(`SELECT id,tenant_uuid AS tenantId,installation_uuid AS installationId,
       organization,status,submitted_at AS submittedAt,decision_at AS decisionAt,
-      decision_reason AS decisionReason FROM applications ORDER BY submitted_at,id`).all()
+      decision_reason AS decisionReason,source,contact_name AS contactName,
+      contact_phone AS contactPhone,contact_email AS contactEmail,region,note,
+      provisioning_status AS provisioningStatus,provisioning_id AS provisioningId,
+      provisioning_error AS provisioningError,main_tenant_id AS mainTenantId
+      FROM applications ORDER BY submitted_at,id`).all()
   }
 
-  decideApplication({ token, applicationId, decision, reason = '', policy, nowMs }) {
+  decideApplication({ token, applicationId, decision, reason = '', policy, credentials = {}, nowMs }) {
     const actor = this.requireStrongOwner(token, nowMs)
-    if (decision !== 'APPROVED' && decision !== 'REJECTED') deny('INVALID_DECISION')
+    if (!['APPROVED', 'REJECTED', 'NEEDS_INFO'].includes(decision)) deny('INVALID_DECISION')
     if (typeof reason !== 'string' || reason.length > 240) deny('INVALID_REASON')
     if (decision === 'APPROVED') validatePolicy({ ...policy, nowMs })
-    this.store.transaction(() => {
+    const app = this.store.transaction(() => {
       const app = this.db.prepare('SELECT * FROM applications WHERE id=?').get(applicationId)
-      if (!app || app.status !== 'PENDING') deny('APPLICATION_NOT_PENDING')
+      if (!app || !['PENDING', 'NEEDS_INFO'].includes(app.status)) deny('APPLICATION_NOT_PENDING')
       this.db.prepare(`UPDATE applications SET status=?,decision_at=?,decision_reason=? WHERE id=?`)
         .run(decision, nowMs, reason, applicationId)
+      this.db.prepare(`UPDATE applications SET provisioning_status=? WHERE id=?`)
+        .run(decision === 'APPROVED' ? (this.provisioningConfigured() ? 'PROVISIONING' : 'NOT_CONFIGURED') : 'NOT_CONFIGURED', applicationId)
       if (decision === 'APPROVED') {
         this.db.prepare(`INSERT INTO entitlements
           (tenant_uuid,expires_at,seat_limit,max_installations,modules_json,revocation_epoch,status,updated_at)
@@ -302,8 +396,80 @@ export class OwnerLicensingService {
             maxInstallations: policy.maxInstallations, modules: [...policy.modules].sort()
           } : {})
         }, nowMs })
+      return this.db.prepare('SELECT * FROM applications WHERE id=?').get(applicationId)
     })
-    return { applicationId, status: decision }
+    if (decision === 'APPROVED' && this.provisioningConfigured()) {
+      void this.#provisionMain(app, policy, credentials, nowMs)
+      return { applicationId, status: decision, provisioning: 'PROVISIONING' }
+    }
+    return { applicationId, status: decision, provisioning: app.provisioning_status }
+  }
+
+  provisioningConfigured() {
+    return Boolean(this.provisioning.baseUrl && this.provisioning.token &&
+      Number.isSafeInteger(this.provisioning.planId) && this.provisioning.planId > 0 &&
+      Number.isSafeInteger(this.provisioning.packageId) && this.provisioning.packageId > 0)
+  }
+
+  #provisionMain(app, policy, credentials, nowMs) {
+    const username = typeof credentials?.username === 'string' ? credentials.username.trim() : ''
+    const password = typeof credentials?.password === 'string' ? credentials.password : ''
+    if (!/^[a-zA-Z0-9]{4,30}$/.test(username) || password.length < 12 || password.length > 16) {
+      const error = '初始管理员账号或密码不符合要求（密码仅转发，不写入控制面数据库）'
+      this.db.prepare("UPDATE applications SET provisioning_status='FAILED',provisioning_error=? WHERE id=?").run(error, app.id)
+      return Promise.resolve({ status: 'FAILED', error })
+    }
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), this.provisioning.timeoutMs)
+    const body = {
+      idempotencyKey: app.id,
+      tenantUuid: app.tenant_uuid,
+      organizationName: app.organization,
+      contactName: app.contact_name || '机构管理员',
+      contactMobile: app.contact_phone,
+      planId: this.provisioning.planId,
+      packageId: this.provisioning.packageId,
+      // The main system uses its global epoch-millis LocalDateTime contract.
+      expiresAt: policy.expiresAtMs,
+      adminUsername: username,
+      adminPassword: password
+    }
+    return fetch(`${this.provisioning.baseUrl}/admin-api/system/saas/internal/provisioning`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-rehab-provisioning-token': this.provisioning.token },
+      body: JSON.stringify(body), signal: controller.signal
+    }).then(async response => {
+      const data = await response.json().catch(() => ({}))
+      const result = data?.data
+      if (!response.ok ||
+        (typeof data?.code === 'number' && data.code !== 0) ||
+        !result || result.status === 'FAILED') {
+        throw new Error(result?.failure_reason || data?.msg || data?.message ||
+          `主系统返回 HTTP ${response.status}`)
+      }
+      this.db.prepare("UPDATE applications SET provisioning_status='ACTIVE',provisioning_id=?,provisioning_error=NULL,main_tenant_id=? WHERE id=?")
+        .run(String(result.tenant_uuid || app.tenant_uuid), result.tenant_id ?? null, app.id)
+      this.store.audit({ actor: this.db.prepare('SELECT username FROM owner_identity WHERE id=1').get().username,
+        action: 'APPLICATION_PROVISIONED', subject: app.tenant_uuid,
+        details: { applicationId: app.id, mainTenantId: result.tenant_id ?? null }, nowMs })
+      return { status: 'ACTIVE', tenantId: result.tenant_id ?? null, tenantUuid: result.tenant_uuid ?? app.tenant_uuid }
+    }).catch(error => {
+      const message = error?.name === 'AbortError' ? '主系统开通请求超时' : String(error?.message || error).slice(0, 500)
+      this.db.prepare("UPDATE applications SET provisioning_status='FAILED',provisioning_error=? WHERE id=?").run(message, app.id)
+      return { status: 'FAILED', error: message }
+    }).finally(() => clearTimeout(timer))
+  }
+
+  retryProvision({ token, applicationId, credentials = {}, nowMs }) {
+    this.requireStrongOwner(token, nowMs)
+    if (!this.provisioningConfigured()) deny('PROVISIONING_NOT_CONFIGURED')
+    const app = this.db.prepare('SELECT * FROM applications WHERE id=?').get(applicationId)
+    if (!app || app.status !== 'APPROVED') deny('APPLICATION_NOT_APPROVED')
+    this.db.prepare("UPDATE applications SET provisioning_status='PROVISIONING',provisioning_error=NULL WHERE id=?").run(applicationId)
+    const policy = this.db.prepare('SELECT expires_at FROM entitlements WHERE tenant_uuid=?').get(app.tenant_uuid)
+    if (!policy) deny('ENTITLEMENT_NOT_FOUND')
+    void this.#provisionMain(app, { expiresAtMs: policy.expires_at }, credentials, nowMs)
+    return { applicationId, status: 'PROVISIONING' }
   }
 
   #active(tenantId, installationId, nowMs) {

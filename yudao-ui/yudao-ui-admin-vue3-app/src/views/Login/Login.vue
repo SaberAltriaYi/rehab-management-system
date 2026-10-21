@@ -55,8 +55,30 @@
           <div
             class="m-auto h-[calc(100%-60px)] w-[100%] flex items-center at-2xl:max-w-500px at-lg:max-w-500px at-md:max-w-500px at-xl:max-w-500px"
           >
-            <!-- 账号登录 -->
-            <LoginForm class="m-auto h-auto p-20px lt-xl:(rounded-3xl light:bg-white)" />
+            <div class="auth-panel m-auto h-auto w-full p-20px lt-xl:(rounded-3xl light:bg-white)">
+              <div class="entry-switcher" role="tablist" aria-label="入口选择">
+                <el-button :type="activeMode === 'system' ? 'primary' : 'default'" @click="selectMode('system')">
+                  主系统登录
+                </el-button>
+                <el-button :type="activeMode === 'assessment' ? 'primary' : 'default'" @click="selectMode('assessment')">
+                  运动评估登录
+                </el-button>
+                <el-button :type="activeMode === 'register' ? 'primary' : 'default'" @click="selectMode('register')">
+                  机构申请／入驻
+                </el-button>
+              </div>
+              <div v-if="activeMode === 'register'" class="registration-card">
+                <RegistrationForm @back-login="selectMode('system')" />
+              </div>
+              <LoginForm
+                v-else
+                class="login-card"
+                :default-redirect="activeMode === 'assessment' ? '/rehab/assessment' : '/index'"
+              />
+              <p v-if="activeMode !== 'register'" class="entry-hint">
+                {{ activeMode === 'assessment' ? '登录后进入运动评估工作台，权限仍由机构账号控制。' : '机构员工使用统一账号登录主系统。' }}
+              </p>
+            </div>
           </div>
         </Transition>
       </div>
@@ -64,6 +86,7 @@
   </div>
 </template>
 <script lang="ts" setup>
+import { computed } from 'vue'
 import { underlineToHump } from '@/utils'
 
 import { useDesign } from '@/hooks/web/useDesign'
@@ -72,6 +95,7 @@ import { ThemeSwitch } from '@/layout/components/ThemeSwitch'
 import { LocaleDropdown } from '@/layout/components/LocaleDropdown'
 
 import { LoginForm } from './components'
+import RegistrationForm from '@/views/saas/RegistrationForm.vue'
 
 defineOptions({ name: 'Login' })
 
@@ -80,6 +104,24 @@ const appStore = useAppStore()
 const { getPrefixCls } = useDesign()
 const softwareVersion = import.meta.env.VITE_APP_VERSION || 'V1.0'
 const prefixCls = getPrefixCls('login')
+const { currentRoute, replace } = useRouter()
+type EntryMode = 'system' | 'assessment' | 'register'
+const activeMode = computed<EntryMode>(() => {
+  if (currentRoute.value.query.mode === 'register') return 'register'
+  if (currentRoute.value.query.entry === 'assessment' || currentRoute.value.query.redirect === '/rehab/assessment') return 'assessment'
+  return 'system'
+})
+
+function selectMode(mode: EntryMode) {
+  if (mode === 'register') {
+    replace({ path: '/login', query: { mode: 'register' } })
+    return
+  }
+  replace({
+    path: '/login',
+    query: { entry: mode, redirect: mode === 'assessment' ? '/rehab/assessment' : '/index' }
+  })
+}
 </script>
 
 <style lang="scss" scoped>
@@ -104,6 +146,20 @@ $prefix-cls: #{$namespace}-login;
   }
 }
 </style>
+
+.auth-panel {
+  max-width: 520px;
+  border-radius: 24px;
+  background: color-mix(in srgb, var(--el-bg-color) 94%, transparent);
+  box-shadow: 0 20px 60px rgb(26 65 59 / 10%);
+}
+
+.entry-switcher { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-bottom: 22px; }
+.entry-switcher .el-button { margin-left: 0; min-height: 40px; white-space: normal; }
+.login-card { padding: 0 !important; }
+.registration-card { padding: 4px 2px; }
+.entry-hint { margin: 14px 0 0; color: var(--el-text-color-secondary); font-size: 13px; text-align: center; }
+@media (max-width: 520px) { .entry-switcher { grid-template-columns: 1fr; } }
 
 <style lang="scss">
 .dark .login-form {

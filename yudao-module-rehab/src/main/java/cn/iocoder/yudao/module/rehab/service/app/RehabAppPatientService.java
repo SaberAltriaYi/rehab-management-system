@@ -11,6 +11,8 @@ public interface RehabAppPatientService {
 
     Long bindPatient(AppPatientAuthBindReqVO reqVO, Long appUserId);
 
+    void validatePatientSession(Long appUserId);
+
     AppPatientHomeSummaryRespVO getHomeSummary(Long appUserId);
 
     PageResult<AppPatientReportRespVO> getReportPage(Integer pageNo, Integer pageSize, Long appUserId);

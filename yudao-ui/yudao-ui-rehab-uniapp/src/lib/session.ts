@@ -38,13 +38,20 @@ function isValidStaffSession(value: unknown): value is MobileSession {
   return true
 }
 
+function isValidPatientSession(value: unknown): value is MobileSession {
+  if (!isRecord(value) || value.mode !== 'patient' || !isToken(value.accessToken) ||
+      !isPositiveId(value.tenantId) || typeof value.expiresTime !== 'string' || !value.expiresTime.trim()) return false
+  if (value.refreshToken !== undefined) return false
+  const expiresAt = new Date(value.expiresTime).getTime()
+  return Number.isFinite(expiresAt) && expiresAt > Date.now()
+}
+
 export function getSession(): MobileSession | null {
   try {
     const value: unknown = uni.getStorageSync(STORAGE_KEY)
     if (value === '' || value === null || value === undefined) return null
-    // Storage is untrusted. Legacy patient sessions and malformed staff values
-    // are discarded before any request can reuse their credentials.
-    if (!isValidStaffSession(value)) {
+    // Storage is untrusted. Patient sessions are short-lived and never carry a refresh token.
+    if (!isValidStaffSession(value) && !isValidPatientSession(value)) {
       clearSession()
       return null
     }
@@ -56,11 +63,11 @@ export function getSession(): MobileSession | null {
 }
 
 export function saveSession(session: MobileSession): void {
-  if (!isRecord(session) || session.mode !== 'staff') {
+  if (!isRecord(session) || (session.mode !== 'staff' && session.mode !== 'patient')) {
     clearSession()
-    throw new Error('患者凭据尚无安全存储方案，禁止持久化。')
+    throw new Error('会话类型不受支持。')
   }
-  if (!isValidStaffSession(session)) {
+  if (!isValidStaffSession(session) && !isValidPatientSession(session)) {
     clearSession()
     throw new Error('会话无效或已过期，请重新登录。')
   }

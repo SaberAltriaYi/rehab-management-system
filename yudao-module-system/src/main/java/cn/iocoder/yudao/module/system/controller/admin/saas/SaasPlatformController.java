@@ -21,7 +21,7 @@ import static cn.iocoder.yudao.framework.common.pojo.CommonResult.success;
 @RestController
 @RequestMapping("/system/saas")
 @Validated
-@ConditionalOnProperty(name="yudao.deployment.mode", havingValue="saas")
+@ConditionalOnProperty(name="yudao.legacy.saas-platform.enabled", havingValue="true")
 public class SaasPlatformController {
     private final SaasPlatformService service;
     public SaasPlatformController(SaasPlatformService service) { this.service=service; }

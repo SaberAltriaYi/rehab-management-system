@@ -5,23 +5,32 @@
         <p class="eyebrow">MOTION ASSESSMENT / 评估详情</p>
         <div class="title">
           动作评估 #{{ a.id }} · {{ a.patientName || '患者 ' + a.patientId }}
-          <el-tag :type="(STATE_TAG[a.status] as any) || 'info'" class="ml-8px">{{ a.statusLabel || a.status }}</el-tag>
+          <el-tag :type="(STATE_TAG[a.status] as any) || 'info'" class="ml-8px">{{
+            a.statusLabel || a.status
+          }}</el-tag>
           <el-tag v-if="a.stale" type="warning" class="ml-4px">输入已修改，需重新计算</el-tag>
         </div>
         <div class="sub">
-          {{ visitLabel(a.visitType) }} · {{ (a.protocolFamilies || []).join(' / ') }} · 相机 {{ a.cameraCount }} 台 ·
-          模型 {{ a.modelName || 'LaiUhlrich2022' }} · 视频授权 {{ a.videoConsent ? '是' : '否' }} · AI
+          {{ visitLabel(a.visitType) }} · {{ (a.protocolFamilies || []).join(' / ') }} · 相机
+          {{ a.cameraCount }} 台 · 模型 {{ a.modelName || 'LaiUhlrich2022' }} · 视频授权
+          {{ a.videoConsent ? '是' : '否' }} · AI
           {{ a.aiAllowed ? '允许' : '关闭' }}
         </div>
         <div class="sub" v-if="a.engineVersion">
-          引擎 {{ a.engineVersion }} · 规则 {{ a.ruleVersion }} · 结果格式 {{ a.resultSchemaVersion }} · 分析版本
-          {{ a.analyzedRevision }} / 输入版本 {{ a.inputRevision }}
+          引擎 {{ a.engineVersion }} · 规则 {{ a.ruleVersion }} · 结果格式
+          {{ a.resultSchemaVersion }} · 分析版本 {{ a.analyzedRevision }} / 输入版本
+          {{ a.inputRevision }}
         </div>
       </div>
       <div class="head-actions">
         <el-button @click="back"><Icon icon="ep:arrow-left" class="mr-4px" />返回列表</el-button>
-        <el-button :loading="loading" @click="reload"><Icon icon="ep:refresh" class="mr-4px" />刷新</el-button>
-        <el-button type="primary" plain @click="tab = 'review'">查看审核</el-button>
+        <el-button v-if="a" @click="openPatient"
+          ><Icon icon="ep:user" class="mr-4px" />患者档案</el-button
+        >
+        <el-button :loading="loading" @click="reload"
+          ><Icon icon="ep:refresh" class="mr-4px" />刷新</el-button
+        >
+        <el-button type="primary" plain @click="goNext">{{ nextAction.label }}</el-button>
       </div>
     </div>
     <el-alert
@@ -30,7 +39,11 @@
       :closable="false"
       show-icon
       class="assessment-notice"
-      :title="a.status === 'FAILED' ? '本次处理失败，请检查任务信息与输入数据；不要将未通过的计算视为有效结果。' : '本次处理已取消，当前状态不代表评估完成。'"
+      :title="
+        a.status === 'FAILED'
+          ? '本次处理失败，请检查任务信息与输入数据；不要将未通过的计算视为有效结果。'
+          : '本次处理已取消，当前状态不代表评估完成。'
+      "
     />
     <el-alert
       v-else-if="a?.stale"
@@ -49,7 +62,13 @@
       title="当前评估尚未签署；系统分析与 AI 草稿不能替代治疗师的人工确认。"
     />
     <p v-if="a" class="steps-swipe-hint">流程共有六个阶段，窄屏可向右滑动查看后续步骤。</p>
-    <div v-if="a" class="steps-scroll" aria-label="评估流程进度（可水平滚动）" role="region" tabindex="0">
+    <div
+      v-if="a"
+      class="steps-scroll"
+      aria-label="评估流程进度（可水平滚动）"
+      role="region"
+      tabindex="0"
+    >
       <el-steps :active="stepIndex" finish-status="success" simple class="assessment-steps">
         <el-step title="待上传" />
         <el-step :title="a.dataSource === 'opencap' ? 'OpenCap处理' : '上传'" />
@@ -58,6 +77,28 @@
         <el-step title="治疗师审核" />
         <el-step title="已签署" />
       </el-steps>
+    </div>
+    <div v-if="a" class="detail-summary" role="region" aria-label="评估状态摘要">
+      <div class="detail-summary-card"
+        ><span class="summary-kicker">当前状态</span><strong>{{ a.statusLabel || a.status }}</strong
+        ><small>{{ nextAction.hint }}</small></div
+      >
+      <div class="detail-summary-card"
+        ><span class="summary-kicker">数据质量</span
+        ><strong :class="qualityTone">{{ qualityLabel }}</strong
+        ><small>{{ result?.sessionQuality?.issues?.length || 0 }} 项质控记录</small></div
+      >
+      <div class="detail-summary-card"
+        ><span class="summary-kicker">OpenSim / 动力学</span><strong>{{ dynamicsLabel }}</strong
+        ><small>{{ dynamicsHint }}</small></div
+      >
+      <div class="detail-summary-card"
+        ><span class="summary-kicker">报告签发</span
+        ><strong>{{ a.signedTime ? '已签署' : '待治疗师签署' }}</strong
+        ><small>{{
+          a.signedTime ? formatDate(a.signedTime) : 'AI 草稿不能代替正式报告'
+        }}</small></div
+      >
     </div>
     <el-empty v-else-if="!loading" :description="errorMessage || '评估记录不存在或无权查看'">
       <el-button type="primary" @click="back">返回列表</el-button>
@@ -107,6 +148,7 @@
 
 <script lang="ts" setup>
 import { MotionApi, MotionAssessmentVO } from '@/api/rehab/motion'
+import { formatDate } from '@/utils/formatTime'
 import { STATE_TAG, visitLabel } from '../constants'
 import UploadPanel from '../components/UploadPanel.vue'
 import TrialPanel from '../components/TrialPanel.vue'
@@ -141,8 +183,63 @@ const stepIndex = computed(() => {
   return 1
 })
 const pendingCount = computed(
-  () => (result.value?.scores || []).filter((s: any) => !['confirmed', 'modified', 'not_applicable'].includes(s.finalStatus)).length
+  () =>
+    (result.value?.scores || []).filter(
+      (s: any) => !['confirmed', 'modified', 'not_applicable'].includes(s.finalStatus)
+    ).length
 )
+const qualityLabel = computed(
+  () =>
+    (({ pass: '通过', warn: '需关注', fail: '未通过' }) as Record<string, string>)[
+      result.value?.sessionQuality?.status
+    ] || '待检查'
+)
+const qualityTone = computed(
+  () =>
+    (
+      ({ pass: 'tone-success', warn: 'tone-warning', fail: 'tone-danger' }) as Record<
+        string,
+        string
+      >
+    )[result.value?.sessionQuality?.status] || ''
+)
+const dynamicsLabel = computed(() =>
+  result.value?.opensim_dynamics?.status === 'pass'
+    ? '已完成'
+    : result.value?.opensim_dynamics?.status === 'blocked'
+      ? '等待载荷'
+      : result.value?.opensim?.status === 'pass'
+        ? '模型已校验'
+        : '未请求'
+)
+const dynamicsHint = computed(() =>
+  result.value?.opensim_dynamics?.reason === 'EXTERNAL_LOADS_MISSING'
+    ? '缺少外部载荷，不生成力矩或肌肉力'
+    : '仅作为辅助分析证据，不进入正式评分'
+)
+const nextAction = computed(() => {
+  if (!a.value) return { label: '查看审核', hint: '等待评估记录加载', tab: 'review' }
+  if (a.value.status === 'WAITING_UPLOAD')
+    return { label: '开始上传', hint: '先上传 OpenCap 导出文件或读取会话 Trial', tab: 'upload' }
+  if (
+    [
+      'UPLOADING',
+      'OPENCAP_PROCESSING',
+      'DOWNLOADING',
+      'PARSING',
+      'RULES',
+      'AI_GENERATING'
+    ].includes(a.value.status)
+  )
+    return { label: '查看任务', hint: '异步任务正在运行，关闭页面后仍会继续', tab: 'tasks' }
+  if (a.value.status === 'PENDING_REVIEW')
+    return { label: '进入审核', hint: '系统建议分和 AI 草稿都需要治疗师确认', tab: 'review' }
+  return {
+    label: '查看报告',
+    hint: a.value.signedTime ? '正式报告已经签署，可查看和导出' : '报告仍需治疗师审核后签署',
+    tab: a.value.signedTime ? 'reports' : 'review'
+  }
+})
 
 const reload = async () => {
   loading.value = true
@@ -167,7 +264,12 @@ const reload = async () => {
     loading.value = false
   }
 }
-const back = () => (a.value ? push(`/rehab/motion?patientId=${a.value.patientId}`) : push('/rehab/motion'))
+const back = () =>
+  a.value ? push(`/rehab/motion?patientId=${a.value.patientId}`) : push('/rehab/motion')
+const openPatient = () => a.value?.patientId && push(`/rehab/patient/detail/${a.value.patientId}`)
+const goNext = () => {
+  tab.value = nextAction.value.tab
+}
 
 onMounted(reload)
 </script>
@@ -184,7 +286,7 @@ onMounted(reload)
   color: var(--el-color-primary);
   font-size: 11px;
   font-weight: 700;
-  letter-spacing: .08em;
+  letter-spacing: 0.08em;
 }
 .head-actions {
   display: flex;
@@ -209,13 +311,63 @@ onMounted(reload)
 .assessment-notice {
   margin-top: 16px;
 }
+.detail-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 16px;
+}
+.detail-summary-card {
+  min-height: 94px;
+  padding: 13px 14px;
+  border: 1px solid var(--el-border-color-light);
+  border-radius: 11px;
+  background: var(--el-fill-color-lighter);
+}
+.detail-summary-card strong,
+.detail-summary-card small,
+.summary-kicker {
+  display: block;
+}
+.summary-kicker {
+  color: var(--el-text-color-secondary);
+  font-size: 11px;
+}
+.detail-summary-card strong {
+  margin-top: 8px;
+  color: var(--el-text-color-primary);
+  font-size: 16px;
+}
+.detail-summary-card small {
+  margin-top: 6px;
+  color: var(--el-text-color-secondary);
+  font-size: 11px;
+  line-height: 1.45;
+}
+.detail-summary-card .tone-success {
+  color: var(--el-color-success);
+}
+.detail-summary-card .tone-warning {
+  color: var(--el-color-warning);
+}
+.detail-summary-card .tone-danger {
+  color: var(--el-color-danger);
+}
 .steps-scroll {
   overflow-x: auto;
   margin-top: 16px;
   overscroll-behavior-inline: contain;
 }
-.steps-scroll:focus-visible { outline: 2px solid var(--el-color-primary); outline-offset: 3px; }
-.steps-swipe-hint { display: none; margin: 12px 0 -8px; color: var(--el-text-color-secondary); font-size: 12px; }
+.steps-scroll:focus-visible {
+  outline: 2px solid var(--el-color-primary);
+  outline-offset: 3px;
+}
+.steps-swipe-hint {
+  display: none;
+  margin: 12px 0 -8px;
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+}
 .assessment-steps {
   min-width: 740px;
 }
@@ -223,7 +375,12 @@ onMounted(reload)
   min-width: 0;
 }
 @media (max-width: 850px) {
-  .steps-swipe-hint { display: block; }
+  .steps-swipe-hint {
+    display: block;
+  }
+  .detail-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
   .head {
     flex-direction: column;
   }
@@ -232,6 +389,9 @@ onMounted(reload)
   }
 }
 @media (max-width: 520px) {
+  .detail-summary {
+    grid-template-columns: 1fr;
+  }
   .head-actions :deep(.el-button) {
     flex: 1 1 auto;
   }

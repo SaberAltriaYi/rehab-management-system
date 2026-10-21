@@ -7,11 +7,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # An explicitly selected sibling worktree can be tested without changing either
 # checkout or using any of its persistent Docker/SQL resources.
 PROJECT_ROOT="${REHAB_MIGRATION_SOURCE_ROOT:-$(cd "${SCRIPT_DIR}/../.." && pwd)}"
-BOOTSTRAP="${REHAB_SYNTHETIC_BOOTSTRAP:-${SCRIPT_DIR}/../../desktop/build/desktop-bootstrap.sql}"
+BOOTSTRAP="${REHAB_SYNTHETIC_BOOTSTRAP:-}"
 MANIFEST="${PROJECT_ROOT}/deploy/internal/migrations.manifest"
 IMAGE='mysql:8.4.10@sha256:8dbcf531a03aade657e181b9cf2f1d1803ce621a1d55610cb44cb531ab7d7db6'
 
-[[ -s "${BOOTSTRAP}" ]] || { echo 'FAIL: missing sanitized bootstrap SQL' >&2; exit 1; }
 command -v docker >/dev/null
 command -v openssl >/dev/null
 
@@ -36,6 +35,16 @@ cleanup() {
   esac
 }
 trap cleanup EXIT
+
+if [[ -z "${BOOTSTRAP}" ]]; then
+  # The installer's default bootstrap already includes every migration. This
+  # upgrade rehearsal needs its own 001-019 fixture, never the shipped dump.
+  command -v node >/dev/null
+  BOOTSTRAP="${STAGE}/baseline-only.sql"
+  node "${PROJECT_ROOT}/desktop/scripts/build-sanitized-bootstrap.mjs" \
+    --output "${BOOTSTRAP}" --baseline-only > "${STAGE}/baseline-build.log"
+fi
+[[ -s "${BOOTSTRAP}" ]] || { echo 'FAIL: missing sanitized baseline SQL' >&2; exit 1; }
 
 cp "${PROJECT_ROOT}/deploy/internal/migrate.sh" "${MANIFEST}" \
   "${PROJECT_ROOT}/deploy/internal/init-schema-history.sql" "${ROOT}/deploy/internal/"
@@ -122,7 +131,8 @@ if ENV_FILE_OVERRIDE="${ENV_FILE}" sh "${MIGRATOR}" status > "${STAGE}/pending.l
   exit 1
 fi
 last_version="$(awk -F'|' '$1 ~ /^[0-9][0-9][0-9]$/ { last=$1 } END { print last }' "${MANIFEST}")"
-case "${last_version}" in 023|025|026) ;; *) echo "FAIL: unsupported test manifest range ${last_version}"; exit 1 ;; esac
+[[ "${last_version}" =~ ^[0-9]{3}$ ]] && (( 10#${last_version} >= 23 )) ||
+  { echo "FAIL: unsupported test manifest range ${last_version}"; exit 1; }
 last_count=$((10#${last_version}))
 incrementals="$(awk -F'|' '$1 ~ /^[0-9][0-9][0-9]$/ && ($1+0)>19 {print $1}' "${MANIFEST}")"
 for version in ${incrementals}; do
@@ -133,11 +143,12 @@ done
   { echo 'FAIL: unexpected pending migrations'; exit 1; }
 echo "PASS: 020-${last_version} pending after baseline"
 
-if [[ "${last_version}" == '025' || "${last_version}" == '026' ]]; then
+if (( last_count >= 25 )); then
   # Do not modify immutable migration SQL: stage a pre-024 manifest only for
   # this isolated disposable test fixture, then restore the original bytes.
   cp "${ROOT}/deploy/internal/migrations.manifest" "${STAGE}/original.manifest"
-  sed '/^024|/d; /^025|/d; /^026|/d' "${STAGE}/original.manifest" > "${ROOT}/deploy/internal/migrations.manifest"
+  awk -F'|' '$1 ~ /^[0-9][0-9][0-9]$/ && ($1+0)>=24 {next} {print}' \
+    "${STAGE}/original.manifest" > "${ROOT}/deploy/internal/migrations.manifest"
   ENV_FILE_OVERRIDE="${ENV_FILE}" sh "${MIGRATOR}" apply > "${STAGE}/earlier.log" 2>&1 ||
     { tail -20 "${STAGE}/earlier.log"; exit 1; }
   [[ "$(counts)" == '0|23' ]] || { echo 'FAIL: pre-024 ledger mismatch'; exit 1; }
@@ -165,7 +176,7 @@ if [[ "${last_version}" == '025' || "${last_version}" == '026' ]]; then
   [[ "$(sql "SELECT COUNT(*) FROM system_menu WHERE id IN (9700,9710,9711,9712,9713,9714,9715,9716,9717);")" == 9 ]] ||
     { echo 'FAIL: 024 menu entries missing'; exit 1; }
   echo 'PASS: 024-025 created 11 tables, relaxed 22 audit fields, created 9 menus'
-  if [[ "${last_version}" == '026' ]]; then
+  if (( last_count >= 26 )); then
     [[ "$(sql "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name='rehab_tenant_license_binding';")" == 1 ]] ||
       { echo 'FAIL: 026 signature-bound tenant license table missing'; exit 1; }
     [[ "$(sql "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='rehab_tenant_license_binding' AND column_name IN ('tenant_uuid','installation_uuid','signed_lease','status_proof','revocation_epoch','trusted_time_ms');")" == 6 ]] ||
@@ -194,6 +205,26 @@ ENV_FILE_OVERRIDE="${ENV_FILE}" sh "${MIGRATOR}" apply > "${STAGE}/apply-repeat.
 [[ "$(counts)" == "0|${last_count}" ]] || { echo 'FAIL: repeat apply changed ledger'; exit 1; }
 echo "PASS: actual migrate.sh applied 020-${last_version}; ${last_count} checksummed ledger rows; idempotent"
 
+if (( last_count >= 31 )); then
+  [[ "$(sql "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name IN ('crm_department_workspace','crm_department_case','crm_department_case_note','crm_department_transfer','crm_customer_pool_event');")" == 5 ]] ||
+    { echo 'FAIL: 031 CRM department tables missing'; exit 1; }
+  sql "INSERT INTO crm_customer (id,name,tenant_id) VALUES (9917010001,'synthetic-department-case',991701);"
+  sql "INSERT INTO crm_department_case (id,tenant_id,customer_id,dept_id,claimed_by) VALUES (9917010001,991701,9917010001,101,1);"
+  if sql "INSERT INTO crm_department_case (tenant_id,customer_id,dept_id,claimed_by) VALUES (991701,9917010001,102,2);" >/dev/null 2>&1; then
+    echo 'FAIL: 031 allowed simultaneous ownership by two departments'; exit 1
+  fi
+  sql "INSERT INTO crm_department_transfer (id,tenant_id,case_id,from_dept_id,to_dept_id,requested_by,status) VALUES (9917010001,991701,9917010001,101,102,1,'PENDING');"
+  if sql "INSERT INTO crm_department_transfer (tenant_id,case_id,from_dept_id,to_dept_id,requested_by,status) VALUES (991701,9917010001,101,103,1,'PENDING');" >/dev/null 2>&1; then
+    echo 'FAIL: 031 allowed duplicate pending transfer'; exit 1
+  fi
+  sql "UPDATE crm_department_transfer SET status='REJECTED' WHERE id=9917010001;"
+  sql "INSERT INTO crm_department_transfer (tenant_id,case_id,from_dept_id,to_dept_id,requested_by,status) VALUES (991701,9917010001,101,103,1,'PENDING');"
+  sql "INSERT INTO crm_customer_pool_event (tenant_id,customer_id,owner_user_id,event_type) VALUES (991701,9917010001,1,'PUT');"
+  [[ "$(sql "SELECT COUNT(*) FROM crm_customer_pool_event WHERE tenant_id=991701 AND event_type='PUT';")" == 1 ]] ||
+    { echo 'FAIL: 031 real pool event missing'; exit 1; }
+  echo 'PASS: 031 unique department ownership, one pending transfer, real pool event'
+fi
+
 # Synthetic-only backup/restore into a second database in the same tmpfs instance.
 docker compose "${COMPOSE_ARGS[@]}" exec -T mysql sh -c \
   'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysqldump -uroot --no-tablespaces --single-transaction --column-statistics=0 --set-gtid-purged=OFF "$MYSQL_DATABASE"' \
@@ -211,7 +242,7 @@ RESTORED="$(docker compose "${COMPOSE_ARGS[@]}" exec -T mysql sh -c \
   restore-verify "${RESTORE_DB}" \
   "SELECT CONCAT((SELECT COUNT(*) FROM rehab_patient),'|',(SELECT COUNT(*) FROM internal_schema_history));")"
 [[ "${RESTORED}" == "0|${last_count}" ]] || { echo 'FAIL: synthetic backup/restore count mismatch'; exit 1; }
-if [[ "${last_version}" == '026' ]]; then
+if (( last_count >= 26 )); then
   LICENSE_RESTORED="$(docker compose "${COMPOSE_ARGS[@]}" exec -T mysql sh -c     'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysql -uroot "$1" -N -B --execute "$2"'     restore-verify "${RESTORE_DB}"     "SELECT COUNT(*) FROM rehab_tenant_license_binding WHERE tenant_id=991701 AND revocation_epoch=0;")"
   [[ "${LICENSE_RESTORED}" == 1 ]] || { echo 'FAIL: license binding not recovered after synthetic restore'; exit 1; }
   echo 'PASS: synthetic license binding survives backup/restore'

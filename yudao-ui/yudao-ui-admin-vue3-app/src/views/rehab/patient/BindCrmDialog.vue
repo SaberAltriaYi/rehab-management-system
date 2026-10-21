@@ -16,6 +16,9 @@
         <el-select
           v-model="formData.crmCustomerId"
           filterable
+          remote
+          :remote-method="loadCustomers"
+          :loading="customerSearchLoading"
           clearable
           class="!w-full"
           placeholder="请选择 CRM 客户"
@@ -29,7 +32,9 @@
         </el-select>
       </el-form-item>
       <el-form-item>
-        <el-text type="info">如列表无目标客户，请先在 CRM 模块创建客户，再回到此处绑定。</el-text>
+        <el-button v-hasPermi="['crm:customer:create']" type="primary" plain @click="customerFormRef?.open('create', undefined, formData.patientName)">
+          新建 CRM 客户并选择
+        </el-button>
       </el-form-item>
       <el-form-item label="备注">
         <el-input v-model="formData.syncMessage" type="textarea" :rows="2" placeholder="可填写同步备注" />
@@ -50,6 +55,7 @@
       <el-button @click="dialogVisible = false">取 消</el-button>
     </template>
   </Dialog>
+  <CustomerForm ref="customerFormRef" @success="onCustomerCreated" />
 </template>
 
 <script lang="ts" setup>
@@ -60,7 +66,8 @@ import {
   RehabPatientCrmBindingVO,
   unbindRehabPatientCrm
 } from '@/api/rehab/patient'
-import { getCustomerSimpleList } from '@/api/crm/customer'
+import { searchCustomerSimple } from '@/api/crm/customer'
+import CustomerForm from '@/views/crm/customer/CustomerForm.vue'
 import { FormRules } from 'element-plus'
 
 defineOptions({ name: 'RehabBindCrmDialog' })
@@ -72,6 +79,18 @@ const formLoading = ref(false)
 const formRef = ref()
 const bindingInfo = ref<RehabPatientCrmBindingVO>()
 const customerOptions = ref<Array<{ id: number; name?: string; mobile?: string }>>([])
+const customerSearchLoading = ref(false)
+const customerFormRef = ref<InstanceType<typeof CustomerForm>>()
+
+const onCustomerCreated = async (id?: number) => {
+  await loadCustomers()
+  if (id) {
+    if (!customerOptions.value.some((item) => item.id === id)) {
+      customerOptions.value.unshift({ id, name: formData.value.patientName })
+    }
+    formData.value.crmCustomerId = id
+  }
+}
 
 const formData = ref({
   patientId: undefined as number | undefined,
@@ -89,13 +108,16 @@ const loadBinding = async () => {
   bindingInfo.value = await getRehabPatientCrmBinding(formData.value.patientId)
 }
 
-const loadCustomers = async () => {
+const loadCustomers = async (keyword = '') => {
+  customerSearchLoading.value = true
   try {
-    const data = await getCustomerSimpleList()
+    const data = await searchCustomerSimple(keyword)
     customerOptions.value = Array.isArray(data) ? data : []
   } catch {
     customerOptions.value = []
     message.warning('CRM 客户列表读取失败，请确认 CRM 模块已启用且有权限')
+  } finally {
+    customerSearchLoading.value = false
   }
 }
 
@@ -109,6 +131,10 @@ const open = async (data: { patientId: number; patientName: string }) => {
   }
   await Promise.all([loadBinding(), loadCustomers()])
   if (bindingInfo.value?.crmCustomerId) {
+    if (!customerOptions.value.some((item) => item.id === bindingInfo.value!.crmCustomerId)) {
+      customerOptions.value.unshift({ id: bindingInfo.value.crmCustomerId,
+        name: bindingInfo.value.crmCustomerName || '已绑定客户' })
+    }
     formData.value.crmCustomerId = bindingInfo.value.crmCustomerId
   }
 }
