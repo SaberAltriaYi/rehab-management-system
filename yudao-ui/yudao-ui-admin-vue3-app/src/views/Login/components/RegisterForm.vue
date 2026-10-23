@@ -93,7 +93,7 @@
         @success="handleRegister"
       />
     </el-row>
-    <XButton :title="t('login.hasUser')" class="w-full" @click="backToLogin()" />
+    <el-button class="w-full" @click="backToLogin">返回主系统登录</el-button>
   </el-form>
 </template>
 <script lang="ts" setup>
@@ -115,7 +115,7 @@ const iconHouse = useIcon({ icon: 'ep:house' })
 const iconAvatar = useIcon({ icon: 'ep:avatar' })
 const iconLock = useIcon({ icon: 'ep:lock' })
 const formLogin = ref()
-const {validForm} = useFormValid(formLogin)
+const { validForm } = useFormValid(formLogin)
 const { handleBackLogin, getLoginState } = useLoginState()
 const { currentRoute, push } = useRouter()
 const permissionStore = usePermissionStore()
@@ -181,20 +181,20 @@ const registerData = reactive({
 const loading = ref() // ElLoading.service 返回的实例
 // 提交注册
 const handleRegister = async (params: any) => {
-  loading.value = true
+  loginLoading.value = true
   try {
-    if (registerData.tenantEnable) {
+    const data = await validForm()
+    if (!data) return
+    if (registerData.tenantEnable === 'true') {
+      // Resolve the chosen tenant before registration; never reuse an old tenant ID.
+      authUtil.removeTenantId()
       await getTenantId()
       registerData.registerForm.tenantId = authUtil.getTenantId()
+      if (!registerData.registerForm.tenantId) return
     }
 
-    if (registerData.captchaEnable) {
+    if (registerData.captchaEnable === 'true') {
       registerData.registerForm.captchaVerification = params.captchaVerification
-    }
-
-    const data = await validForm()
-    if (!data) {
-      return
     }
 
     const res = await LoginApi.register(registerData.registerForm)
@@ -221,7 +221,7 @@ const handleRegister = async (params: any) => {
     }
   } finally {
     loginLoading.value = false
-    loading.value.close()
+    loading.value?.close()
   }
 }
 

@@ -144,8 +144,10 @@ export function createVitePlugins() {
       }
     }),
     Components({
-      // 生成自定义 `auto-components.d.ts` 全局声明
-      dts: 'src/types/auto-components.d.ts',
+      // Component types must not be inferred from already built assets:
+      // concurrent Vite dev/build scans otherwise inject invalid dist chunk
+      // identifiers into the declaration file and break vue-tsc.
+      dts: false,
       // 自定义组件的解析器
       resolvers: [ElementPlusResolver()],
       globs: ["src/components/**/**.{vue, md}", '!src/components/DiyEditor/components/mobile/**']

@@ -25,16 +25,9 @@
       </div>
       <form id="register-form">
         <label>机构名称 <input name="organization" required minlength="2" maxlength="120" placeholder="例如：杭州启航运动康复中心" /></label>
-        <div class="register-grid">
-          <label>联系人 <input name="contactName" required minlength="2" maxlength="80" placeholder="姓名" /></label>
-          <label>联系电话 <input name="contactPhone" required maxlength="40" placeholder="手机号或座机" /></label>
-        </div>
-        <div class="register-grid">
-          <label>工作邮箱 <input name="contactEmail" type="email" maxlength="160" placeholder="用于接收审核结果（可选）" /></label>
-          <label>所在地区 <input name="region" maxlength="80" placeholder="省 / 市" /></label>
-        </div>
-        <label>补充说明 <textarea name="note" maxlength="500" rows="4" placeholder="机构类型、预计使用人数、是否需要动作评估等（可选）"></textarea></label>
-        <label class="register-consent"><input name="consent" type="checkbox" required /> <span>我确认提交的是机构联系信息，不包含患者姓名、病历、视频或其他健康资料。</span></label>
+        <label>联系人 <input name="contactName" required minlength="2" maxlength="80" placeholder="姓名" /></label>
+        <label>联系邮箱 <input name="contactEmail" type="email" required maxlength="160" placeholder="用于接收审核结果" /></label>
+        <p class="hint">此处只提交机构联系信息，请勿填写任何患者、病历、影像等健康资料。</p>
         <button type="submit" id="submit">提交申请</button>
       </form>
       <div id="result" class="register-result" role="status" aria-live="polite" hidden></div>
@@ -43,13 +36,13 @@
         <p><strong>当前状态：待审核</strong></p>
         <ol>
           <li>软件拥有者会核对机构申请。</li>
-          <li>审核通过后，系统会创建机构租户和机构管理员账号。</li>
-          <li>管理员会通过联系人提供登录入口、账号和临时密码。</li>
+          <li>审批并签发授权策略后，若主系统自动开通已配置，才会触发租户开通。</li>
+          <li>机构管理员账号创建或绑定完成后，才能使用主系统登录。</li>
           <li>收到管理员信息后，再进入主系统登录页；申请页本身不能直接登录。</li>
         </ol>
         <p>申请编号：<code id="application-id"></code></p>
         <p class="register-login-hint">已有机构账号？请在审核通过并收到管理员账号后，进入主系统登录。</p>
-        <a class="toolbar-link" href="http://127.0.0.1:80/#/login" target="_blank" rel="noopener">打开主系统登录页</a>
+        <a class="toolbar-link" href="http://127.0.0.1:5173/login" target="_blank" rel="noopener">打开主系统登录页</a>
         <a class="toolbar-link" href="/owner/register">返回申请页</a>
       </section>
       <p class="hint register-footnote">提交后状态为“待审核”。如需补充材料，拥有者会通过你提供的联系人方式联系。</p>

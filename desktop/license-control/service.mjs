@@ -332,7 +332,9 @@ export class OwnerLicensingService {
     validMs(nowMs)
     const name = validateOrganization(organization)
     const contact = validateContact(contactName, { required: true, max: 80 })
-    const phone = validateContact(contactPhone, { required: true, max: 40 })
+    // Public intake is intentionally limited to three required fields.
+    // Older callers may still supply a telephone number; it is optional.
+    const phone = validateContact(contactPhone, { max: 40 })
     const email = validateEmail(contactEmail)
     const area = validateContact(region, { max: 80 })
     const memo = validateContact(note, { max: 500 })

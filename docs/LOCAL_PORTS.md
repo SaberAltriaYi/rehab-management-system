@@ -7,11 +7,14 @@
 | Rehab Core 主系统 | http://127.0.0.1:5173/login | 租户员工、治疗师、患者业务登录；登录页下方统一提供个人注册和机构申请 |
 | Owner 兼容入口 | http://127.0.0.1:5180/owner/login | 仅作旧入口兼容，打开后自动跳转到独立 Owner 控制台 |
 | Owner 控制台 | https://127.0.0.1:9444/owner/console | 系统拥有者登录、机构审批、授权、续费和扩容；使用独立 Owner MFA |
+| 机构申请 | https://127.0.0.1:9444/owner/register | 从主系统注册方式页跳转；仅输入机构名称、联系人和邮箱；同源提交到 Owner 待审队列并显示申请编号 |
 | Rehab Core API | http://127.0.0.1:48080 | 主系统后端接口 |
 
 ## 账号关系
 
 机构申请不是主系统登录账号。机构申请通过 Owner 审批后，才成为可授权的租户；租户管理员或员工账号仍在主系统中创建并绑定到该租户。个人注册只创建主系统用户，不能绕过机构授权或自动创建租户。
+
+主系统原 `/admin-api/system/saas/register` 属于受条件配置控制的旧 SaaS 流程，不能代替 Owner 审核队列。5173 页面只提供前往 Owner HTTPS 公开申请页的链接，不能直接跨域调用 Owner API；不得为了页面内提交而放宽 Owner CORS 或允许 iframe。Owner 的公开申请由 9444 同源 POST 到 `/public/v1/applications`，它不是 Owner 管理登录接口。
 
 ## 旧端口
 

@@ -108,6 +108,18 @@ test('public institution registration creates a pending owner application withou
   assert.match(pageHtml, /机构申请/)
   assert.match(pageHtml, /接下来怎么做/)
   assert.match(pageHtml, /打开主系统登录页/)
+  assert.match(pageHtml, /name="contactEmail" type="email" required/)
+  assert.doesNotMatch(pageHtml, /name="contactPhone"/)
+  assert.doesNotMatch(pageHtml, /name="region"/)
+  assert.doesNotMatch(pageHtml, /name="note"/)
+  const minimal = await api('/public/v1/applications', {
+    method: 'POST', body: {
+      organization: '三字段合成康复机构', contactName: '测试联系人',
+      contactEmail: 'minimal@example.com'
+    }
+  })
+  assert.equal(minimal.status, 201, JSON.stringify(minimal.body))
+  assert.equal(minimal.body.status, 'PENDING')
   const submitted = await api('/public/v1/applications', {
     method: 'POST', body: {
       organization: '线上申请合成康复中心', contactName: '申请联系人',
@@ -123,6 +135,9 @@ test('public institution registration creates a pending owner application withou
   assert.equal(application.source, 'public')
   assert.equal(application.contactName, '申请联系人')
   assert.equal(application.contactEmail, 'apply@example.com')
+  const minimalApplication = list.body.applications.find(item => item.id === minimal.body.applicationId)
+  assert.equal(minimalApplication.contactPhone, null)
+  assert.equal(minimalApplication.status, 'PENDING')
   const requested = await api('/owner/v1/applications/' + submitted.body.applicationId + '/request-info', {
     method: 'POST', token: sessionToken, body: { reason: '请补充机构使用人数和所在地' }
   })
@@ -130,6 +145,9 @@ test('public institution registration creates a pending owner application withou
   assert.equal(requested.body.status, 'NEEDS_INFO')
 })
 test('CORS, unknown fields, payload length and alternate HTTP content types fail closed', async () => {
+  assert.equal((await api('/public/v1/applications', {
+    method: 'POST', body: {}, headers: { origin: 'http://127.0.0.1:5173' }
+  })).status, 403)
   assert.equal((await api('/owner/v1/applications', {
     token: sessionToken, headers: { origin: 'https://evil.example.invalid' }
   })).status, 403)
