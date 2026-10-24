@@ -103,6 +103,20 @@ function policy(body) {
 }
 const loopback = ip => ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(ip)
 
+// If the local operator arrived through an unsupported hostname or a stale
+// forwarded address, redirect the LOGIN DOCUMENT to the configured canonical
+// HTTPS origin before the password/TOTP form is ever displayed.
+// This is only a document navigation. Owner APIs still reject other Origins.
+export function canonicalOwnerPageRedirect(path, host, permittedOrigins, hasTls) {
+  if (!hasTls || !permittedOrigins?.length ||
+      !['/owner/console', '/owner/register', '/owner/recovery'].includes(path) ||
+      typeof host !== 'string') return null
+  const allowedHosts = permittedOrigins.map(origin => new URL(origin).host)
+  if (allowedHosts.includes(host)) return null
+  return new URL(path, permittedOrigins[0]).toString()
+}
+
+
 export function createOwnerControlServer(service, {
   tlsOptions,
   allowInsecureLoopbackForTests = false,
@@ -115,8 +129,15 @@ export function createOwnerControlServer(service, {
     Array.isArray(permittedBrowserOrigin) ? permittedBrowserOrigin : [permittedBrowserOrigin]
   if (permittedOrigins !== null &&
     (permittedOrigins.length < 1 ||
-    permittedOrigins.some(origin => typeof origin !== 'string' || !origin.startsWith('https://')))) {
-    throw new Error('Browser origin must be an explicit HTTPS origin')
+    permittedOrigins.some(origin => {
+      if (typeof origin !== 'string') return true
+      try {
+        const value = new URL(origin)
+        return value.protocol !== 'https:' || value.origin !== origin ||
+          Boolean(value.username || value.password)
+      } catch { return true }
+    }))) {
+    throw new Error('Browser origin must be an exact HTTPS origin')
   }
   const handle = async (req, res) => {
     const nowMs = Date.now()
@@ -135,6 +156,18 @@ export function createOwnerControlServer(service, {
         return writeJson(res, 403, { error: 'CROSS_ORIGIN_FORBIDDEN' })
       }
       if (req.method === 'OPTIONS') return writeJson(res, 405, { error: 'NOT_ALLOWED' })
+      const canonicalPage = req.method === 'GET' && loopback(req.socket.remoteAddress)
+        ? canonicalOwnerPageRedirect(path, req.headers.host, permittedOrigins, Boolean(tlsOptions))
+        : null
+      if (canonicalPage) {
+        res.writeHead(302, {
+          Location: canonicalPage,
+          'Cache-Control': 'no-store',
+          'Referrer-Policy': 'no-referrer',
+          'X-Content-Type-Options': 'nosniff'
+        })
+        return res.end()
+      }
       if (restricted(req.socket.remoteAddress, path, nowMs)) {
         return writeJson(res, 429, { error: 'RATE_LIMITED' })
       }

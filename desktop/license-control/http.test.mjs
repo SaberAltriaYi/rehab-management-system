@@ -9,7 +9,7 @@ import https from 'node:https'
 import { OwnerLicenseStore } from './store.mjs'
 import { OwnerLicensingService } from './service.mjs'
 import { SecretVault, totpAt } from './security.mjs'
-import { createOwnerControlServer } from './http.mjs'
+import { createOwnerControlServer, canonicalOwnerPageRedirect } from './http.mjs'
 import { enrollmentMessage, renewalMessage } from '../scripts/tenant-license-owner-core.mjs'
 import { verifyTenantLicenseLease } from '../scripts/tenant-license-lease.mjs'
 
@@ -52,6 +52,24 @@ async function api(path, { method = 'GET', body, token, headers = {} } = {}) {
   })
   return { status: res.status, body: await res.json(), headers: res.headers }
 }
+test('unexpected owner login host navigates to exact HTTPS allowlisted origin', () => {
+  const origins = ['https://127.0.0.1:9444', 'https://localhost:9444']
+  for (const path of ['/owner/console', '/owner/register', '/owner/recovery']) {
+    assert.equal(canonicalOwnerPageRedirect(path, 'localhost:9444', origins, true), null)
+    assert.equal(canonicalOwnerPageRedirect(path, '127.0.0.1:9444', origins, true), null)
+    assert.equal(canonicalOwnerPageRedirect(path, 'example.test:9444', origins, true),
+      'https://127.0.0.1:9444' + path)
+    assert.equal(canonicalOwnerPageRedirect(path, '127.0.0.1:9445', origins, true),
+      'https://127.0.0.1:9444' + path)
+  }
+  assert.equal(canonicalOwnerPageRedirect('/owner/v1/login', 'example.test:9444', origins, true), null)
+  assert.equal(canonicalOwnerPageRedirect('/owner/console', 'example.test:9444', origins, false), null)
+  assert.throws(() => createOwnerControlServer({}, {
+    allowInsecureLoopbackForTests: true,
+    permittedBrowserOrigin: 'https://owner.example.test/unexpected-path'
+  }), /exact HTTPS origin/)
+})
+
 test('owner console assets are same-origin, CSP-hardened and contain no secrets', async () => {
   const root = await fetch(url + '/', { redirect: 'manual' })
   assert.equal(root.status, 302)

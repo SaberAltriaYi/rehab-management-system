@@ -11,6 +11,8 @@ const $ = (id) => document.getElementById(id)
 const formData = (id) => Object.fromEntries(new FormData($(id)))
 const errorLabels = {
   OWNER_STEP_UP_REQUIRED: '高风险操作需要重新验证 TOTP。',
+  CROSS_ORIGIN_FORBIDDEN: '登录地址与 Owner 服务允许的 HTTPS 来源不一致。请在本机浏览器地址栏直接打开 https://127.0.0.1:9444/owner/console 后重新登录；不要从主系统、端口转发或不受信任的域名提交。',
+
   OWNER_UNAUTHORIZED: '所有者会话已失效，请重新登录。',
   INVALID_OWNER_CREDENTIALS: '所有者账号、密码或 TOTP 不正确。',
   APPLICATION_NOT_PENDING: '此申请已经处理，先刷新申请列表。',
