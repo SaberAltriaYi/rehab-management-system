@@ -98,6 +98,8 @@ test('owner console assets are same-origin, CSP-hardened and contain no secrets'
     assert.equal(result.headers.get('x-content-type-options'), 'nosniff')
     if (asset.endsWith('/app.mjs')) {
       const browserScript = await result.text()
+      assert.match(browserScript, /mode: 'cors'/,
+        'Owner browser requests must retain an HTTPS Origin under no-referrer')
       assert.doesNotMatch(browserScript, /api\('\/owner\/v1\/signing-keys\/rotate'/)
       assert.doesNotMatch(browserScript, /\b(?:localStorage|sessionStorage)\s*[.\[]/)
     }

@@ -60,7 +60,7 @@ async function api(path, { method = 'GET', body, auth = true } = {}) {
   if (auth && !session) throw Error('请先完成所有者双因素登录')
   if (!/^\/(owner|license)\/v1\/[a-zA-Z0-9/_-]+$/.test(path)) throw Error('非法的授权操作')
   const res = await fetch(path, {
-    method, credentials: 'omit', mode: 'same-origin',
+    method, credentials: 'omit', mode: 'cors',
     cache: 'no-store', redirect: 'error',
     headers: {
       Accept: 'application/json',
