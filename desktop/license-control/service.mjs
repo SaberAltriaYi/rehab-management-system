@@ -11,6 +11,7 @@ import {
   enrollmentMessage, renewalMessage
 } from '../scripts/tenant-license-owner-core.mjs'
 import { MAX_OFFLINE_LEASE_MS, verifyTenantLicenseLease } from '../scripts/tenant-license-lease.mjs'
+import { activationMailConfig, sendActivationNotice } from './mailer.mjs'
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
 const MOD = /^[a-z][a-z0-9_-]{0,31}$/
@@ -101,6 +102,7 @@ export class OwnerLicensingService {
       packageId: Number(process.env.REHAB_MAIN_PROVISIONING_PACKAGE_ID ?? 0),
       timeoutMs: Math.min(30_000, Math.max(1_000, Number(process.env.REHAB_MAIN_PROVISIONING_TIMEOUT_MS ?? 10_000)))
     }
+    this.activationMail = activationMailConfig()
   }
   get db() { return this.store.db }
   get hasOwner() { return Boolean(this.db.prepare('SELECT id FROM owner_identity WHERE id = 1').get()) }
@@ -362,7 +364,8 @@ export class OwnerLicensingService {
       decision_reason AS decisionReason,source,contact_name AS contactName,
       contact_phone AS contactPhone,contact_email AS contactEmail,region,note,
       provisioning_status AS provisioningStatus,provisioning_id AS provisioningId,
-      provisioning_error AS provisioningError,main_tenant_id AS mainTenantId
+      provisioning_error AS provisioningError,main_tenant_id AS mainTenantId,
+      notification_status AS notificationStatus,notification_error AS notificationError
       FROM applications ORDER BY submitted_at,id`).all()
   }
 
@@ -413,6 +416,46 @@ export class OwnerLicensingService {
       Number.isSafeInteger(this.provisioning.packageId) && this.provisioning.packageId > 0)
   }
 
+  activationEmailConfigured() { return this.activationMail.configured }
+
+  async sendActivationMail({ token, applicationId, nowMs }) {
+    this.requireStrongOwner(token, nowMs)
+    return this.#dispatchActivationMail(applicationId, nowMs)
+  }
+
+  async #dispatchActivationMail(applicationId, nowMs) {
+    const app = this.db.prepare('SELECT * FROM applications WHERE id=?').get(applicationId)
+    if (!app || app.status !== 'APPROVED' || app.provisioning_status !== 'ACTIVE' ||
+      !Number.isSafeInteger(app.main_tenant_id) || app.main_tenant_id <= 0) {
+      deny('MAIN_SYSTEM_NOT_ACTIVE')
+    }
+    if (!this.activationEmailConfigured()) return { status: 'NOT_CONFIGURED' }
+    if (app.notification_status === 'ACCEPTED') return { status: 'ACCEPTED' }
+    if (app.notification_status === 'SENDING') return { status: 'SENDING' }
+    if (!app.contact_email) deny('CONTACT_EMAIL_MISSING')
+    // Lock dispatch before the network operation. A crash mid-send remains
+    // SENDING for operator review rather than risking duplicate delivery.
+    const claimed = this.db.prepare(`UPDATE applications
+      SET notification_status='SENDING',notification_error=NULL,notification_attempted_at=?
+      WHERE id=? AND notification_status NOT IN ('SENDING','ACCEPTED')`).run(nowMs, app.id)
+    if (claimed.changes !== 1) return { status: 'SENDING' }
+    try {
+      const result = await sendActivationNotice(app, this.activationMail)
+      this.db.prepare(`UPDATE applications SET notification_status='ACCEPTED',notification_provider_id=?,notification_error=NULL WHERE id=?`)
+        .run(result.providerId, app.id)
+      this.store.audit({ actor: 'owner-mailer', action: 'ACTIVATION_EMAIL_ACCEPTED',
+        subject: app.tenant_uuid, details: { applicationId: app.id }, nowMs })
+      return { status: 'ACCEPTED' }
+    } catch (error) {
+      // Never persist mail provider raw errors (they may echo recipient data).
+      const category = error?.message === 'EMAIL_PROVIDER_INVALID_RESPONSE'
+        ? 'EMAIL_PROVIDER_INVALID_RESPONSE' : 'EMAIL_PROVIDER_UNAVAILABLE'
+      this.db.prepare("UPDATE applications SET notification_status='FAILED',notification_error=? WHERE id=?")
+        .run(category, app.id)
+      return { status: 'FAILED', error: category }
+    }
+  }
+
   #provisionMain(app, policy, credentials, nowMs) {
     const username = typeof credentials?.username === 'string' ? credentials.username.trim() : ''
     const password = typeof credentials?.password === 'string' ? credentials.password : ''
@@ -445,7 +488,8 @@ export class OwnerLicensingService {
       const result = data?.data
       if (!response.ok ||
         (typeof data?.code === 'number' && data.code !== 0) ||
-        !result || result.status === 'FAILED') {
+        !result || result.status !== 'ACTIVE' ||
+        !Number.isSafeInteger(Number(result.tenant_id)) || Number(result.tenant_id) <= 0) {
         throw new Error(result?.failure_reason || data?.msg || data?.message ||
           `主系统返回 HTTP ${response.status}`)
       }
@@ -454,6 +498,11 @@ export class OwnerLicensingService {
       this.store.audit({ actor: this.db.prepare('SELECT username FROM owner_identity WHERE id=1').get().username,
         action: 'APPLICATION_PROVISIONED', subject: app.tenant_uuid,
         details: { applicationId: app.id, mainTenantId: result.tenant_id ?? null }, nowMs })
+      if (this.activationEmailConfigured() && app.contact_email) {
+        // Do not let a mail-provider failure tear down the Owner HTTP service.
+        // The notification status is separately persisted for operator review.
+        void this.#dispatchActivationMail(app.id, Date.now()).catch(() => {})
+      }
       return { status: 'ACTIVE', tenantId: result.tenant_id ?? null, tenantUuid: result.tenant_uuid ?? app.tenant_uuid }
     }).catch(error => {
       const message = error?.name === 'AbortError' ? '主系统开通请求超时' : String(error?.message || error).slice(0, 500)
@@ -467,6 +516,7 @@ export class OwnerLicensingService {
     if (!this.provisioningConfigured()) deny('PROVISIONING_NOT_CONFIGURED')
     const app = this.db.prepare('SELECT * FROM applications WHERE id=?').get(applicationId)
     if (!app || app.status !== 'APPROVED') deny('APPLICATION_NOT_APPROVED')
+    if (!['NOT_CONFIGURED', 'FAILED'].includes(app.provisioning_status)) deny('PROVISIONING_ALREADY_ACTIVE')
     this.db.prepare("UPDATE applications SET provisioning_status='PROVISIONING',provisioning_error=NULL WHERE id=?").run(applicationId)
     const policy = this.db.prepare('SELECT expires_at FROM entitlements WHERE tenant_uuid=?').get(app.tenant_uuid)
     if (!policy) deny('ENTITLEMENT_NOT_FOUND')

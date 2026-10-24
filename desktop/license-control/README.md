@@ -49,6 +49,22 @@
 
 流程为：机构注册 → Owner MFA 审核 → 签发软件授权 → 异步调用主系统私有接口 → 创建 `system_tenant` 并写入同一 `tenant_uuid` → 建立订阅与用量 → Owner 页面显示“主系统已开通”。失败会保留 `FAILED` 和脱敏错误，可使用“重试开通”继续同一个幂等请求。数据库先执行 `sql/mysql/rehab-saas-provisioning-v3.sql`。
 
+**重要：批准许可证不等于创建主系统账号。** 主系统对接未配置时，Owner 页面隐藏初始管理员凭据输入框并将申请标记为 `APPROVED / NOT_CONFIGURED`；此时机构不能使用审批时填写的任何账号/密码登录主系统。接通主系统后，对这类已批准申请使用“开通主系统”，重新输入初始管理员账号及临时密码，等待状态变为 `ACTIVE` 并具有主系统租户 ID，再从主系统登录入口使用**机构名称 + 管理员账号 + 密码**登录。`ACTIVE` 状态不能通过“重试开通”来修改管理员密码，应走主系统单独的重置密码流程。
+
+### 审批后邮件通知（可选，默认关闭）
+
+Owner 独立控制面支持在主系统真正开通成功后，自动向机构申请时填写的 `contactEmail` 发送开通通知，并在 Owner 申请列表显示 `NOT_CONFIGURED / SENDING / ACCEPTED / FAILED`。`ACCEPTED` 仅代表邮件服务商接收请求，不代表送达或用户阅读。已开通机构也有一个受 Owner MFA 会话及再认证约束的“发送开通邮件”操作；同一申请记录为 `ACCEPTED` 后不允许重复发送。发送请求带有幂等键，服务端不会记录邮件 API Key 或临时密码。请求可能已到达服务商却在响应前断线时，状态停留在 `SENDING`，需运维核查服务商日志，不盲目自动重发。
+
+发送功能采用显式配置的 HTTPS Resend 邮件 API，必须由运营者自行准备已验证的发件人域名及服务商 API Key，并在 **Owner 进程**的保密环境注入：
+
+```text
+REHAB_OWNER_EMAIL_RESEND_KEY=<secret-api-key>
+REHAB_OWNER_EMAIL_FROM=noreply@your-verified-domain.example
+REHAB_MAIN_PUBLIC_LOGIN_URL=https://your-real-domain.example/login
+```
+
+配置前不会发送任何邮件；本机 `127.0.0.1` 登录地址不得写进给外部机构的邮件。邮件**绝不包含明文密码、Owner TOTP、令牌或临床资料**；初始登录凭据必须通过独立、安全的交付渠道传递，首登后应修改。申请人邮箱数据在配置邮件服务后才会发送至指定第三方邮件服务商；须由平台运营者核对隐私要求及服务商设置。没有完成主系统开通的申请不得发送“登录已开通”邮件。以上功能已经有合成测试，但未配置真实邮件服务商时不代表真实邮件已发出。
+
 ## API （均为 JSON；受保护接口需要 `Authorization: Bearer <session>`）
 
 L3 桌面离线许可证对接：只有软件所有者 MFA 登录并审批安装实例后，调用 `POST /owner/v1/leases/offline`，成功 JSON 同时包含 `token`、`statusProof` 和可直接保存为 `.rehab-license` 文件的 `licenseFile` 子对象。后者由 `schemaVersion/tenantId/installationId/token/statusProof` 构成，必须通过独立安全通道交付目标工作室。不得导出签名私钥、MFA 种子、短期 Bearer 或患者数据；工作室不得自签许可证。
@@ -65,6 +81,7 @@ L3 桌面离线许可证对接：只有软件所有者 MFA 登录并审批安装
 | GET | `/owner/register` | 机构公开注册页面 |
 | POST | `/owner/v1/applications/{id}/approve` | 审批、确定员工席位/实例数/期限/模块 |
 | POST | `/owner/v1/applications/{id}/retry-provision` | MFA 后重试主系统租户开通 |
+| POST | `/owner/v1/applications/{id}/send-activation-email` | Owner MFA 再认证后仅针对真正 `ACTIVE` 的主系统租户提交开通邮件（需要单独配置发信） |
 | POST | `/owner/v1/applications/{id}/reject` | 驳回附原因 |
 | POST | `/owner/v1/applications/{id}/request-info` | 要求申请人补充资料 |
 | POST | `/owner/v1/signing-keys/rotate` | 初始化/轮换所有者签名密钥 |

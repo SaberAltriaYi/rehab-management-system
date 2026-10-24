@@ -6,6 +6,7 @@ let session = null
 let selected = null
 let selectedTenant = null
 let provisioningConfigured = null
+let activationEmailConfigured = false
 let operationBusy = false
 const $ = (id) => document.getElementById(id)
 const formData = (id) => Object.fromEntries(new FormData($(id)))
@@ -18,6 +19,9 @@ const errorLabels = {
   APPLICATION_NOT_PENDING: '此申请已经处理，先刷新申请列表。',
   APPLICATION_NOT_APPROVED: '只有已授权申请才可以重试主系统开通。',
   PROVISIONING_NOT_CONFIGURED: '本地尚未配置主系统自动开通，先完成许可授权即可。',
+  PROVISIONING_ALREADY_ACTIVE: '主系统已在开通中或已经开通，不允许再次用此表单覆盖管理员密码。',
+  MAIN_SYSTEM_NOT_ACTIVE: '此机构的主系统尚未开通，不允许发送登录通知。',
+  CONTACT_EMAIL_MISSING: '申请未提供合法邮箱，无法发送开通通知。',
   TENANT_NOT_APPROVED: '租户尚未处于可维护状态。',
   TENANT_NOT_ACTIVE: '租户当前未处于启用状态。',
   NO_STATUS_CHANGE: '租户已经是目标状态，不需要重复操作。',
@@ -144,12 +148,20 @@ function setTenantControls(status) {
   $('offline-form').querySelector('button[type="submit"]').disabled = !active
 }
 
-function setWorkflowStatus(configured) {
+function setWorkflowStatus(configured, emailConfigured) {
   provisioningConfigured = Boolean(configured)
+  activationEmailConfigured = Boolean(emailConfigured)
   $('provisioning-fields').hidden = !provisioningConfigured
+  for (const input of $('provisioning-fields').querySelectorAll('input')) {
+    input.disabled = !provisioningConfigured
+    if (!provisioningConfigured) input.value = ''
+  }
   $('workflow-status').textContent = provisioningConfigured
-    ? '主系统自动开通已配置：批准后会先签发许可，再显示主系统开通进度。'
-    : '当前是本地许可模式：批准、续期和扩容会立即保存授权；主系统自动开通尚未配置，因此不会凭空创建主系统租户。'
+    ? '主系统自动开通已配置：只有显示「主系统已开通」后，机构管理员才能登录。'
+    : '重要：当前仅启用许可证授权，未配置主系统开通！审批后不会创建机构或管理员账号，输入任何密码都不能据此登录主系统。'
+  $('workflow-status').textContent += activationEmailConfigured
+    ? ' 机构开通后可向联系人发送开通通知（邮件不包含密码）。'
+    : ' 邮件发送尚未配置，不会自动给机构发邮件。'
   $('workflow-status').classList.toggle('warning', !provisioningConfigured)
 }
 
@@ -188,10 +200,16 @@ const applicationStatusLabel = {
   REJECTED: '已驳回'
 }
 const provisioningStatusLabel = {
-  NOT_CONFIGURED: '未接入主系统',
+  NOT_CONFIGURED: '许可证已批准；主系统未开通（不能登录）',
   PROVISIONING: '主系统开通中',
-  ACTIVE: '主系统已开通',
-  FAILED: '主系统开通失败'
+  ACTIVE: '主系统已开通（可按机构名登录）',
+  FAILED: '主系统开通失败（不能登录）'
+}
+const notificationStatusLabel = {
+  NOT_CONFIGURED: '开通邮件：未配置或未发送',
+  SENDING: '开通邮件：提交服务商中',
+  ACCEPTED: '开通邮件：服务商已接收（非送达确认）',
+  FAILED: '开通邮件：发送失败'
 }
 function applyTenant(id, installationId = '') {
   $('tenant-form').elements.namedItem('tenantId').value = id
@@ -232,7 +250,7 @@ async function waitForProvisioning(applicationId) {
 async function refreshApplications({ announce = true } = {}) {
   const result = await api('/owner/v1/applications')
   const applications = result.applications || []
-  setWorkflowStatus(result.provisioningConfigured)
+  setWorkflowStatus(result.provisioningConfigured, result.activationEmailConfigured)
   const body = $('applications')
   body.replaceChildren()
   $('application-count').textContent = applications.length + ' 条申请'
@@ -253,6 +271,9 @@ async function refreshApplications({ announce = true } = {}) {
     const status = node('td', applicationStatusLabel[app.status] ?? app.status)
     if (app.provisioningStatus) status.append(node('div', provisioningStatusLabel[app.provisioningStatus] ?? app.provisioningStatus, 'muted'))
     if (app.provisioningError) status.append(node('small', app.provisioningError, 'muted'))
+    if (app.provisioningStatus === 'ACTIVE') {
+      status.append(node('small', notificationStatusLabel[app.notificationStatus] ?? '开通邮件：未发送', 'muted'))
+    }
     const actions = node('td')
     if (['PENDING', 'NEEDS_INFO'].includes(app.status)) {
       const choose = node('button', '审核')
@@ -299,8 +320,8 @@ async function refreshApplications({ announce = true } = {}) {
       }))
       actions.append(manage)
     }
-    if (app.status === 'APPROVED' && app.provisioningStatus === 'FAILED') {
-      const retry = node('button', '重试开通')
+    if (app.status === 'APPROVED' && ['NOT_CONFIGURED', 'FAILED'].includes(app.provisioningStatus)) {
+      const retry = node('button', app.provisioningStatus === 'NOT_CONFIGURED' ? '开通主系统' : '重试开通')
       retry.type = 'button'
       retry.className = 'warning'
       retry.disabled = !provisioningConfigured
@@ -322,6 +343,28 @@ async function refreshApplications({ announce = true } = {}) {
             : '已提交主系统开通重试，请稍后刷新状态')
       }))
       actions.append(retry)
+    }
+    if (app.status === 'APPROVED' && app.provisioningStatus === 'ACTIVE') {
+      const email = node('button', '发送开通邮件')
+      email.type = 'button'
+      email.className = 'outline'
+      email.disabled = !activationEmailConfigured || app.notificationStatus === 'ACCEPTED' ||
+        app.notificationStatus === 'SENDING' || !app.contactEmail
+      email.title = !activationEmailConfigured ? '先配置邮件发送渠道和机构可访问的 HTTPS 登录地址' :
+        app.notificationStatus === 'ACCEPTED' ? '服务商已接收过此通知，不会重复发送' :
+          '向机构申请邮箱发送不包含密码的开通通知'
+      email.addEventListener('click', () => void handle(async () => {
+        const confirmed = await strongOperation(async () => {
+          const result = await api('/owner/v1/applications/' + requireUuid(app.id) + '/send-activation-email', {
+            method: 'POST', body: {}
+          })
+          if (result.status !== 'ACCEPTED') throw Error('邮件尚未被服务商接收：' + result.status)
+        }, '向机构联系人邮箱发送不包含密码的开通通知')
+        if (!confirmed) return
+        await refreshAll()
+        feedback('开通邮件已被邮件服务商接受；实际送达需要在邮件服务商检查。')
+      }))
+      actions.append(email)
     }
     row.append(name, ids, status, actions)
     body.append(row)

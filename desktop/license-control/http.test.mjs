@@ -96,6 +96,10 @@ test('owner console assets are same-origin, CSP-hardened and contain no secrets'
     const result = await fetch(url + asset)
     assert.equal(result.status, 200, asset)
     assert.equal(result.headers.get('x-content-type-options'), 'nosniff')
+    if (asset.endsWith('/styles.css')) {
+      assert.match(await result.text(), /\[hidden\]\{display:none!important\}/,
+        'CSS grid must not override hidden Owner provisioning fields')
+    }
     if (asset.endsWith('/app.mjs')) {
       const browserScript = await result.text()
       assert.match(browserScript, /mode: 'cors'/,
@@ -157,6 +161,8 @@ test('public institution registration creates a pending owner application withou
   assert.equal(submitted.body.status, 'PENDING')
   assert.match(submitted.body.tenantId, /^[0-9a-f-]{36}$/)
   const list = await api('/owner/v1/applications', { token: sessionToken })
+  assert.equal(list.body.activationEmailConfigured, false,
+    'Mail notification must fail closed without operator-provided credentials')
   const application = list.body.applications.find(item => item.id === submitted.body.applicationId)
   assert.equal(application.source, 'public')
   assert.equal(application.contactName, '申请联系人')
@@ -164,6 +170,14 @@ test('public institution registration creates a pending owner application withou
   const minimalApplication = list.body.applications.find(item => item.id === minimal.body.applicationId)
   assert.equal(minimalApplication.contactPhone, null)
   assert.equal(minimalApplication.status, 'PENDING')
+  const mailNotReady = await api('/owner/v1/applications/' + submitted.body.applicationId + '/send-activation-email', {
+    method: 'POST', token: sessionToken, body: {}
+  })
+  assert.equal(mailNotReady.status, 400)
+  assert.equal(mailNotReady.body.error, 'MAIN_SYSTEM_NOT_ACTIVE')
+  assert.equal((await api('/owner/v1/applications/' + submitted.body.applicationId + '/send-activation-email', {
+    method: 'POST', body: {}
+  })).status, 401)
   const requested = await api('/owner/v1/applications/' + submitted.body.applicationId + '/request-info', {
     method: 'POST', token: sessionToken, body: { reason: '请补充机构使用人数和所在地' }
   })

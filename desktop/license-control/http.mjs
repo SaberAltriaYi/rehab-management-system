@@ -265,7 +265,8 @@ export function createOwnerControlServer(service, {
           applications: service.applicationList({ token, nowMs }),
           // This is only a capability flag. Never expose the provisioning URL,
           // token or plan/package identifiers to the browser.
-          provisioningConfigured: service.provisioningConfigured()
+          provisioningConfigured: service.provisioningConfigured(),
+          activationEmailConfigured: service.activationEmailConfigured()
         })
       }
       if (path === '/owner/v1/signing-keys/rotate' && req.method === 'POST') {
@@ -304,6 +305,14 @@ export function createOwnerControlServer(service, {
         const b = await readJson(req)
         fieldsOnly(b, ['credentials'])
         return writeJson(res, 200, service.retryProvision({ token, applicationId: retry[1], credentials: b.credentials, nowMs }))
+      }
+      const activationNotice = /^\/owner\/v1\/applications\/([0-9a-f-]{36})\/send-activation-email$/.exec(path)
+      if (activationNotice && req.method === 'POST') {
+        const b = await readJson(req)
+        fieldsOnly(b, [])
+        return writeJson(res, 200, await service.sendActivationMail({
+          token, applicationId: activationNotice[1], nowMs
+        }))
       }
       const status = /^\/owner\/v1\/tenants\/([0-9a-f-]{36})$/.exec(path)
       if (status && req.method === 'GET') {
