@@ -1,6 +1,6 @@
 // Browser-only input normalization. Server performs authoritative validation.
 export const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
-export function parsePolicy({ expiry, seats, unlimited, installations, modules }, nowMs = Date.now()) {
+export function parsePolicy({ expiry, seats, unlimited, installations, modules, mainSystem }, nowMs = Date.now()) {
   const expiresAtMs = Date.parse(expiry)
   if (!Number.isSafeInteger(expiresAtMs) || expiresAtMs <= nowMs ||
       expiresAtMs > nowMs + 5 * 366 * 86400000) throw Error('授权到期时间须在未来五年内')
@@ -11,7 +11,12 @@ export function parsePolicy({ expiry, seats, unlimited, installations, modules }
       Number(installations) < 1 || Number(installations) > 100000) {
     throw Error('设备实例数须为 1–100000')
   }
-  const list = modules.split(/[\s,，]+/).filter(Boolean)
+  const raw = modules.split(/[\s,，]+/).filter(Boolean)
+  // Existing callers with no explicit selection retain the historical rehab
+  // module. When the checkbox is supplied it is the one source of truth.
+  const list = mainSystem === undefined ? raw : [
+    ...raw.filter(module => module !== 'rehab'), ...(mainSystem ? ['rehab'] : [])
+  ]
   if (list.length < 1 || list.length > 64 ||
       list.some(s => !/^[a-z][a-z0-9_-]{0,31}$/.test(s)) ||
       new Set(list).size !== list.length) throw Error('模块名称无效或存在重复')

@@ -365,7 +365,8 @@ export class OwnerLicensingService {
       contact_phone AS contactPhone,contact_email AS contactEmail,region,note,
       provisioning_status AS provisioningStatus,provisioning_id AS provisioningId,
       provisioning_error AS provisioningError,main_tenant_id AS mainTenantId,
-      notification_status AS notificationStatus,notification_error AS notificationError
+      notification_status AS notificationStatus,notification_error AS notificationError,
+      core_sync_status AS coreSyncStatus,core_sync_error AS coreSyncError
       FROM applications ORDER BY submitted_at,id`).all()
   }
 
@@ -380,7 +381,9 @@ export class OwnerLicensingService {
       this.db.prepare(`UPDATE applications SET status=?,decision_at=?,decision_reason=? WHERE id=?`)
         .run(decision, nowMs, reason, applicationId)
       this.db.prepare(`UPDATE applications SET provisioning_status=? WHERE id=?`)
-        .run(decision === 'APPROVED' ? (this.provisioningConfigured() ? 'PROVISIONING' : 'NOT_CONFIGURED') : 'NOT_CONFIGURED', applicationId)
+        .run(decision !== 'APPROVED' ? 'NOT_CONFIGURED' :
+          !policy.modules.includes('rehab') ? 'NOT_AUTHORIZED' :
+            this.provisioningConfigured() ? 'PROVISIONING' : 'NOT_CONFIGURED', applicationId)
       if (decision === 'APPROVED') {
         this.db.prepare(`INSERT INTO entitlements
           (tenant_uuid,expires_at,seat_limit,max_installations,modules_json,revocation_epoch,status,updated_at)
@@ -403,7 +406,7 @@ export class OwnerLicensingService {
         }, nowMs })
       return this.db.prepare('SELECT * FROM applications WHERE id=?').get(applicationId)
     })
-    if (decision === 'APPROVED' && this.provisioningConfigured()) {
+    if (decision === 'APPROVED' && policy.modules.includes('rehab') && this.provisioningConfigured()) {
       void this.#provisionMain(app, policy, credentials, nowMs)
       return { applicationId, status: decision, provisioning: 'PROVISIONING' }
     }
@@ -474,6 +477,7 @@ export class OwnerLicensingService {
       contactMobile: app.contact_phone,
       planId: this.provisioning.planId,
       packageId: this.provisioning.packageId,
+      seatLimit: policy.seatLimit,
       // The main system uses its global epoch-millis LocalDateTime contract.
       expiresAt: policy.expiresAtMs,
       adminUsername: username,
@@ -516,11 +520,13 @@ export class OwnerLicensingService {
     if (!this.provisioningConfigured()) deny('PROVISIONING_NOT_CONFIGURED')
     const app = this.db.prepare('SELECT * FROM applications WHERE id=?').get(applicationId)
     if (!app || app.status !== 'APPROVED') deny('APPLICATION_NOT_APPROVED')
+    const entitlement = this.db.prepare('SELECT modules_json FROM entitlements WHERE tenant_uuid=?').get(app.tenant_uuid)
+    if (!entitlement || !JSON.parse(entitlement.modules_json).includes('rehab')) deny('MAIN_SYSTEM_NOT_AUTHORIZED')
     if (!['NOT_CONFIGURED', 'FAILED'].includes(app.provisioning_status)) deny('PROVISIONING_ALREADY_ACTIVE')
     this.db.prepare("UPDATE applications SET provisioning_status='PROVISIONING',provisioning_error=NULL WHERE id=?").run(applicationId)
-    const policy = this.db.prepare('SELECT expires_at FROM entitlements WHERE tenant_uuid=?').get(app.tenant_uuid)
+    const policy = this.db.prepare('SELECT expires_at,seat_limit FROM entitlements WHERE tenant_uuid=?').get(app.tenant_uuid)
     if (!policy) deny('ENTITLEMENT_NOT_FOUND')
-    void this.#provisionMain(app, { expiresAtMs: policy.expires_at }, credentials, nowMs)
+    void this.#provisionMain(app, { expiresAtMs: policy.expires_at, seatLimit: policy.seat_limit }, credentials, nowMs)
     return { applicationId, status: 'PROVISIONING' }
   }
 
@@ -661,20 +667,77 @@ export class OwnerLicensingService {
     validatePolicy({ ...policy, nowMs })
     if (typeof reason !== 'string' || reason.length > 240) deny('INVALID_REASON')
     const auditReason = reason.trim()
-    return this.store.transaction(() => {
+    const result = this.store.transaction(() => {
       const entitlement = this.db.prepare('SELECT * FROM entitlements WHERE tenant_uuid=?').get(tenantId)
       if (!entitlement || entitlement.status !== 'ACTIVE') deny('TENANT_NOT_APPROVED')
+      const application = this.db.prepare('SELECT * FROM applications WHERE tenant_uuid=?').get(tenantId)
+      const wasAuthorized = JSON.parse(entitlement.modules_json).includes('rehab')
+      const authorizesCore = policy.modules.includes('rehab')
+      if (wasAuthorized && !authorizesCore && application?.provisioning_status === 'ACTIVE') {
+        deny('MAIN_SYSTEM_REVOCATION_REQUIRES_SYNC')
+      }
       const newEpoch = entitlement.revocation_epoch + 1
       this.db.prepare(`UPDATE entitlements SET expires_at=?,seat_limit=?,max_installations=?,
         modules_json=?,revocation_epoch=?,updated_at=? WHERE tenant_uuid=?`)
         .run(policy.expiresAtMs, policy.seatLimit, policy.maxInstallations,
           JSON.stringify([...policy.modules].sort()), newEpoch, nowMs, tenantId)
       this.db.prepare('DELETE FROM renewal_challenges WHERE tenant_uuid=?').run(tenantId)
+      const provisioned = application?.provisioning_status === 'ACTIVE'
+      const needsCoreSync = provisioned && authorizesCore &&
+        (entitlement.expires_at !== policy.expiresAtMs || entitlement.seat_limit !== policy.seatLimit ||
+          ['PENDING', 'FAILED', 'NOT_CONFIGURED'].includes(application.core_sync_status))
+      const syncStatus = needsCoreSync ? (this.provisioningConfigured() ? 'PENDING' : 'NOT_CONFIGURED') : 'NOT_REQUIRED'
+      if (!authorizesCore || (!wasAuthorized && authorizesCore && !provisioned)) {
+        this.db.prepare('UPDATE applications SET provisioning_status=? WHERE tenant_uuid=?')
+          .run(!authorizesCore ? 'NOT_AUTHORIZED' : 'NOT_CONFIGURED', tenantId)
+      }
+      this.db.prepare('UPDATE applications SET core_sync_status=?,core_sync_error=NULL WHERE tenant_uuid=?')
+        .run(syncStatus, tenantId)
       this.store.audit({ actor, action: 'ENTITLEMENT_UPDATED', subject: tenantId,
         details: { revocationEpoch: newEpoch, ...policy,
           ...(auditReason ? { reason: auditReason } : {}) }, nowMs })
-      return { tenantId, revocationEpoch: newEpoch }
+      return { tenantId, revocationEpoch: newEpoch, coreSyncStatus: syncStatus }
     })
+    if (result.coreSyncStatus === 'PENDING') {
+      void this.#syncMainEntitlements(tenantId, result.revocationEpoch, policy).catch(() => {})
+    }
+    return result
+  }
+
+  async #syncMainEntitlements(tenantUuid, revision, policy) {
+    // Only the private, token-protected main-system endpoint can change the
+    // actual tenant. Owner license signing remains independent and auditable.
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), this.provisioning.timeoutMs)
+    try {
+      const response = await fetch(`${this.provisioning.baseUrl}/admin-api/system/saas/internal/entitlements/sync`, {
+        method: 'POST', signal: controller.signal,
+        headers: {
+          'content-type': 'application/json',
+          'x-rehab-provisioning-token': this.provisioning.token
+        },
+        body: JSON.stringify({
+          tenantUuid, revision, expiresAtMs: policy.expiresAtMs, seatLimit: policy.seatLimit
+        })
+      })
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok || data.code !== 0 || data.data?.status !== 'ACTIVE') {
+        throw Error('MAIN_CORE_SYNC_REJECTED')
+      }
+      this.db.prepare(`UPDATE applications SET core_sync_status='ACTIVE',core_sync_error=NULL
+        WHERE tenant_uuid=? AND core_sync_status='PENDING'
+        AND (SELECT revocation_epoch FROM entitlements WHERE tenant_uuid=?)=?`)
+        .run(tenantUuid, tenantUuid, revision)
+      this.store.audit({ actor: 'owner-core-sync', action: 'CORE_ENTITLEMENT_SYNCED',
+        subject: tenantUuid, details: { revision }, nowMs: Date.now() })
+    } catch (error) {
+      // No secrets/provider payloads in the durable status or audit log.
+      this.db.prepare(`UPDATE applications SET core_sync_status='FAILED',core_sync_error=?
+        WHERE tenant_uuid=? AND core_sync_status='PENDING'
+        AND (SELECT revocation_epoch FROM entitlements WHERE tenant_uuid=?)=?`)
+        .run(error?.name === 'AbortError' ? 'MAIN_CORE_SYNC_TIMEOUT' : 'MAIN_CORE_SYNC_FAILED',
+          tenantUuid, tenantUuid, revision)
+    } finally { clearTimeout(timer) }
   }
 
   setTenantStatus({ token, tenantId, status, nowMs }) {

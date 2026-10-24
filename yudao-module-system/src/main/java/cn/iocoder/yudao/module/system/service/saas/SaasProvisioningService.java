@@ -10,9 +10,12 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.sql.Timestamp;
+import java.time.Instant;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -64,7 +67,8 @@ public class SaasProvisioningService {
                 create.setStatus(0);
                 create.setPackageId(request.packageId);
                 create.setExpireTime(request.expiresAt);
-                create.setAccountCount(maxUsers(request.planId));
+                maxUsers(request.planId); // Retain validation that the selected plan is active.
+                create.setAccountCount(request.seatLimit == null ? Integer.MAX_VALUE : request.seatLimit);
                 create.setUsername(request.adminUsername);
                 create.setPassword(request.adminPassword);
                 create.setWebsites(Collections.emptyList());
@@ -85,6 +89,39 @@ public class SaasProvisioningService {
             jdbc.update("UPDATE saas_provisioning_requests SET status='FAILED',failure_reason=? WHERE idempotency_key=?", reason, request.idempotencyKey);
             return response("FAILED", map("tenant_uuid", request.tenantUuid, "failure_reason", reason));
         }
+    }
+
+    /** Revision-ordered, authenticated Owner updates for existing Core tenants only. */
+    @Transactional
+    public Map<String, Object> syncEntitlements(SaasEntitlementSyncRequest request) {
+        if (request == null || !UUID_PATTERN.matcher(value(request.tenantUuid)).matches()
+                || request.revision < 1 || request.expiresAtMs <= System.currentTimeMillis()
+                || (request.seatLimit != null && request.seatLimit < 1)) {
+            throw new IllegalArgumentException("主系统授权同步参数无效");
+        }
+        LocalDateTime expiry = LocalDateTime.ofInstant(Instant.ofEpochMilli(request.expiresAtMs), ZoneId.systemDefault());
+        List<Map<String, Object>> records = jdbc.queryForList(
+                "SELECT tenant_id,status,entitlement_revision FROM saas_provisioning_requests WHERE tenant_uuid=? FOR UPDATE",
+                request.tenantUuid);
+        if (records.size() != 1 || !"ACTIVE".equals(records.get(0).get("status"))
+                || !(records.get(0).get("tenant_id") instanceof Number)) {
+            throw new IllegalArgumentException("机构尚未通过 Owner 开通");
+        }
+        long current = ((Number) records.get(0).get("entitlement_revision")).longValue();
+        if (request.revision <= current) return response("ACTIVE", map("revision", current));
+        long tenantId = ((Number) records.get(0).get("tenant_id")).longValue();
+        int seats = request.seatLimit == null ? Integer.MAX_VALUE : request.seatLimit;
+        if (jdbc.update("UPDATE system_tenant SET expire_time=?,account_count=? WHERE id=? AND tenant_uuid=? AND deleted=0 AND registration_source='owner-control-plane'",
+                Timestamp.valueOf(expiry), seats, tenantId, request.tenantUuid) != 1) {
+            throw new IllegalArgumentException("Owner 授权机构不存在或已失效");
+        }
+        if (jdbc.update("UPDATE tenant_subscriptions SET expire_time=? WHERE tenant_id=? AND status<>'cancelled'",
+                Timestamp.valueOf(expiry), tenantId) != 1) {
+            throw new IllegalArgumentException("机构订阅不可更新");
+        }
+        jdbc.update("UPDATE saas_provisioning_requests SET entitlement_revision=? WHERE tenant_uuid=?",
+                request.revision, request.tenantUuid);
+        return response("ACTIVE", map("tenant_id", tenantId, "revision", request.revision));
     }
 
     /** TenantService relies on the normal request user for creator/updater audit fields.
@@ -121,6 +158,7 @@ public class SaasProvisioningService {
                 || blank(request.contactName) || request.contactName.length() > 80) throw new IllegalArgumentException("机构信息不合法");
         if (request.planId < 1) throw new IllegalArgumentException("套餐计划不合法");
         if (request.packageId < 1) throw new IllegalArgumentException("租户套餐不合法");
+        if (request.seatLimit != null && request.seatLimit < 1) throw new IllegalArgumentException("主系统授权席位数不合法");
         if (request.expiresAt == null || !request.expiresAt.isAfter(LocalDateTime.now())) throw new IllegalArgumentException("到期时间不合法");
         if (!USERNAME_PATTERN.matcher(value(request.adminUsername)).matches() || request.adminPassword == null || request.adminPassword.length() < 12 || request.adminPassword.length() > 72) throw new IllegalArgumentException("初始管理员凭据不合法");
     }

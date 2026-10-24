@@ -51,7 +51,9 @@
           <label>员工席位数 <input name="seats" type="number" min="1" max="2147483647" value="6" required /></label>
           <label class="check"><input name="unlimited" type="checkbox" checked/> 许可证明确签署无限员工席位（默认；定额合同可取消勾选）</label>
           <label>最大部署实例数 <input name="installations" type="number" min="1" max="100000" value="1" required /></label>
-          <label>授权模块（逗号分隔） <input name="modules" value="rehab,motion,report" maxlength="2100" required /></label>
+          <label class="check"><input name="mainSystem" type="checkbox" checked/> <strong>授权主系统（Rehab Core）</strong></label>
+          <p class="hint">勾选后，许可证包含 rehab 主系统权限；只有主系统接口已配置、管理员已开通且状态为 ACTIVE，机构才可以登录。取消勾选不会创建主系统账号。</p>
+          <label>其他授权模块（逗号分隔） <input name="modules" value="motion,report" maxlength="2100" placeholder="motion,report" /></label>
           <div id="provisioning-fields">
             <label>首位机构管理员账号（仅本次转发） <input name="adminUsername" pattern="[a-zA-Z0-9]{4,30}" autocomplete="off" placeholder="例如 rehabadmin" /></label>
             <label>首位机构管理员临时密码（仅本次转发） <input name="adminPassword" type="password" minlength="12" maxlength="16" autocomplete="new-password" placeholder="12-16 位" /></label>

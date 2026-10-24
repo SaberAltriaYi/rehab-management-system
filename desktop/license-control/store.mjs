@@ -133,7 +133,9 @@ export class OwnerLicenseStore {
       ['notification_status', "TEXT NOT NULL DEFAULT 'NOT_CONFIGURED'"],
       ['notification_error', 'TEXT'],
       ['notification_provider_id', 'TEXT'],
-      ['notification_attempted_at', 'INTEGER']
+      ['notification_attempted_at', 'INTEGER'],
+      ['core_sync_status', "TEXT NOT NULL DEFAULT 'NOT_REQUIRED'"],
+      ['core_sync_error', 'TEXT']
     ]
     for (const [name, definition] of applicationAdditions) {
       if (!applicationColumns.includes(name)) this.db.exec(`ALTER TABLE applications ADD COLUMN ${name} ${definition}`)

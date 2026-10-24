@@ -11,6 +11,17 @@ test('staff limits come only from explicit signed owner approval policy', () => 
   })
   assert.equal(parsePolicy({ ...BASE, unlimited: true }, NOW).seatLimit, null)
 })
+test('main-system checkbox maps exclusively to the signed rehab permission', () => {
+  assert.deepEqual(parsePolicy({ ...BASE, modules: 'motion,report', mainSystem: true }, NOW).modules,
+    ['motion', 'rehab', 'report'])
+  assert.deepEqual(parsePolicy({ ...BASE, modules: 'rehab,motion', mainSystem: false }, NOW).modules,
+    ['motion'])
+  assert.deepEqual(parsePolicy({ ...BASE, modules: '', mainSystem: true }, NOW).modules,
+    ['rehab'])
+  assert.throws(() => parsePolicy({ ...BASE, modules: '', mainSystem: false }, NOW),
+    /模块名称无效/)
+})
+
 test('invalid entitlement inputs fail closed before owner API calls', () => {
   for (const edit of [
     { seats: '-1' }, { seats: '0' }, { seats: '1.1' }, { seats: 'Infinity' },

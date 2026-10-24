@@ -20,6 +20,8 @@ const errorLabels = {
   APPLICATION_NOT_APPROVED: '只有已授权申请才可以重试主系统开通。',
   PROVISIONING_NOT_CONFIGURED: '本地尚未配置主系统自动开通，先完成许可授权即可。',
   PROVISIONING_ALREADY_ACTIVE: '主系统已在开通中或已经开通，不允许再次用此表单覆盖管理员密码。',
+  MAIN_SYSTEM_NOT_AUTHORIZED: '许可证未勾选「授权主系统」，请先在续期/扩容策略中勾选并保存。',
+  MAIN_SYSTEM_REVOCATION_REQUIRES_SYNC: '主系统已开通，取消授权必须先同步停用主系统，不能只修改许可证。',
   MAIN_SYSTEM_NOT_ACTIVE: '此机构的主系统尚未开通，不允许发送登录通知。',
   CONTACT_EMAIL_MISSING: '申请未提供合法邮箱，无法发送开通通知。',
   TENANT_NOT_APPROVED: '租户尚未处于可维护状态。',
@@ -120,7 +122,9 @@ function fillDefaultPolicy() {
   form.elements.namedItem('seats').value = '6'
   form.elements.namedItem('unlimited').checked = true
   form.elements.namedItem('installations').value = '1'
-  form.elements.namedItem('modules').value = 'rehab,motion,report'
+  form.elements.namedItem('mainSystem').checked = true
+  form.elements.namedItem('modules').value = 'motion,report'
+  if (provisioningConfigured !== null) setWorkflowStatus(provisioningConfigured, activationEmailConfigured)
   if (!String(form.elements.namedItem('reason').value || '').trim()) {
     form.elements.namedItem('reason').value = '已核验机构资料与授权范围，按标准策略批准。'
   }
@@ -133,7 +137,9 @@ function fillPolicyFromTenant(tenant) {
   form.elements.namedItem('unlimited').checked = tenant.seatLimit === null
   form.elements.namedItem('seats').value = tenant.seatLimit === null ? '6' : String(tenant.seatLimit)
   form.elements.namedItem('installations').value = String(tenant.maxInstallations)
-  form.elements.namedItem('modules').value = tenant.modules.join(',')
+  form.elements.namedItem('mainSystem').checked = tenant.modules.includes('rehab')
+  form.elements.namedItem('modules').value = tenant.modules.filter(m => m !== 'rehab').join(',')
+  if (provisioningConfigured !== null) setWorkflowStatus(provisioningConfigured, activationEmailConfigured)
   form.elements.namedItem('reason').value = '已复核租户合同与用量，调整续期或扩容策略。'
 }
 
@@ -151,10 +157,11 @@ function setTenantControls(status) {
 function setWorkflowStatus(configured, emailConfigured) {
   provisioningConfigured = Boolean(configured)
   activationEmailConfigured = Boolean(emailConfigured)
-  $('provisioning-fields').hidden = !provisioningConfigured
+  const canProvision = provisioningConfigured && $('policy-form').elements.namedItem('mainSystem').checked
+  $('provisioning-fields').hidden = !canProvision
   for (const input of $('provisioning-fields').querySelectorAll('input')) {
-    input.disabled = !provisioningConfigured
-    if (!provisioningConfigured) input.value = ''
+    input.disabled = !canProvision
+    if (!canProvision) input.value = ''
   }
   $('workflow-status').textContent = provisioningConfigured
     ? '主系统自动开通已配置：只有显示「主系统已开通」后，机构管理员才能登录。'
@@ -163,6 +170,14 @@ function setWorkflowStatus(configured, emailConfigured) {
     ? ' 机构开通后可向联系人发送开通通知（邮件不包含密码）。'
     : ' 邮件发送尚未配置，不会自动给机构发邮件。'
   $('workflow-status').classList.toggle('warning', !provisioningConfigured)
+}
+
+function refreshMainSystemOption() {
+  const checked = $('policy-form').elements.namedItem('mainSystem').checked
+  setWorkflowStatus(provisioningConfigured, activationEmailConfigured)
+  $('selection-status').textContent = checked
+    ? '授权主系统已勾选；实际创建机构账号仍取决于接口开通成功。'
+    : '只签发其他模块许可，不会创建主系统机构或管理员账号。'
 }
 
 function setSelectionStatus(message, state = '') {
@@ -182,7 +197,8 @@ function policyFromForm() {
     seats: field.elements.namedItem('seats').value,
     unlimited: field.elements.namedItem('unlimited').checked,
     installations: field.elements.namedItem('installations').value,
-    modules: field.elements.namedItem('modules').value
+    modules: field.elements.namedItem('modules').value,
+    mainSystem: field.elements.namedItem('mainSystem').checked
   })
 }
 function credentialsFromForm() {
@@ -200,6 +216,7 @@ const applicationStatusLabel = {
   REJECTED: '已驳回'
 }
 const provisioningStatusLabel = {
+  NOT_AUTHORIZED: '未授权主系统（不会创建机构账号）',
   NOT_CONFIGURED: '许可证已批准；主系统未开通（不能登录）',
   PROVISIONING: '主系统开通中',
   ACTIVE: '主系统已开通（可按机构名登录）',
@@ -210,6 +227,12 @@ const notificationStatusLabel = {
   SENDING: '开通邮件：提交服务商中',
   ACCEPTED: '开通邮件：服务商已接收（非送达确认）',
   FAILED: '开通邮件：发送失败'
+}
+const coreSyncStatusLabel = {
+  PENDING: '主系统续期 / 席位同步中',
+  ACTIVE: '主系统续期 / 席位已同步',
+  NOT_CONFIGURED: '主系统续期 / 席位未同步（尚未配置接口）',
+  FAILED: '主系统续期 / 席位同步失败'
 }
 function applyTenant(id, installationId = '') {
   $('tenant-form').elements.namedItem('tenantId').value = id
@@ -273,6 +296,9 @@ async function refreshApplications({ announce = true } = {}) {
     if (app.provisioningError) status.append(node('small', app.provisioningError, 'muted'))
     if (app.provisioningStatus === 'ACTIVE') {
       status.append(node('small', notificationStatusLabel[app.notificationStatus] ?? '开通邮件：未发送', 'muted'))
+      if (app.coreSyncStatus && app.coreSyncStatus !== 'NOT_REQUIRED') {
+        status.append(node('div', coreSyncStatusLabel[app.coreSyncStatus] ?? app.coreSyncStatus, 'muted'))
+      }
     }
     const actions = node('td')
     if (['PENDING', 'NEEDS_INFO'].includes(app.status)) {
@@ -329,8 +355,13 @@ async function refreshApplications({ announce = true } = {}) {
       retry.addEventListener('click', () => void handle(async () => {
         selectedTenant = app
         applyTenant(app.tenantId, app.installationId)
+        await loadTenantStatus(app.tenantId)
         const credentials = credentialsFromForm()
-        if (!credentials.username || !credentials.password) throw Error('重试前请重新填写机构管理员账号和临时密码')
+        if (!credentials.username || !credentials.password) {
+          setSelectionStatus('请在左侧填写主系统管理员账号与新的临时密码，再点击「开通主系统」。', 'warning')
+          $('policy-form').scrollIntoView({ behavior: 'smooth', block: 'center' })
+          return
+        }
         await strongOperation(() => api('/owner/v1/applications/' + requireUuid(app.id) + '/retry-provision', {
           method: 'POST', body: { credentials }
         }), '重试主系统租户开通')
@@ -442,8 +473,10 @@ $('stepup').addEventListener('click', () => void handle(stepUp))
 $('refresh').addEventListener('click', () => void handle(refreshAll))
 $('use-default-policy').addEventListener('click', () => void handle(async () => {
   fillDefaultPolicy()
+  refreshMainSystemOption()
   setSelectionStatus('已填入标准策略。选择待审核申请后再点击批准。', 'ready')
 }))
+$('policy-form').elements.namedItem('mainSystem').addEventListener('change', refreshMainSystemOption)
 $('approve').addEventListener('click', () => void handle(async () => {
   if (!selected) throw Error('请先选中待审核申请')
   const applicationId = selected.id
@@ -492,13 +525,20 @@ $('update-policy').addEventListener('click', () => void handle(async () => {
   const policy = policyFromForm()
   const reason = String(formData('policy-form').reason || '').trim()
   if (reason.length < 5) throw Error('续期或扩容需要填写至少五个字符的变更理由')
-  const confirmed = await strongOperation(() => api('/owner/v1/tenants/' + id + '/policy', {
-    method: 'POST', body: { policy, reason }
-  }), '更新此租户的合同、席位、实例和模块范围')
+  let result
+  const confirmed = await strongOperation(async () => {
+    result = await api('/owner/v1/tenants/' + id + '/policy', {
+      method: 'POST', body: { policy, reason }
+    })
+  }, '更新此租户的合同、席位、实例和模块范围')
   if (!confirmed) return
   await loadTenantStatus(id)
+  await refreshApplications({ announce: false })
   await refreshAudit()
-  feedback('续期 / 扩容策略已保存，旧许可证缓存已失效')
+  feedback('续期 / 扩容的 Owner 许可证已保存，旧租约已失效。' +
+    (result.coreSyncStatus === 'PENDING' ? ' 主系统正在异步同步，请刷新并确认状态。' :
+      result.coreSyncStatus === 'NOT_CONFIGURED' ? ' 主系统尚未同步，请勿将其视为已生效。' :
+        ' 主系统无需额外同步或尚未开通。'))
 }))
 for (const [id, status] of [['suspend', 'SUSPENDED'], ['resume', 'ACTIVE'], ['revoke', 'REVOKED']]) {
   $(id).addEventListener('click', () => void handle(async () => {

@@ -28,6 +28,13 @@ public class SaasAccessFilter extends OncePerRequestFilter {
                 && ("/admin-api/system/captcha/get".equals(path)
                 || "/admin-api/system/captcha/check".equals(path));
         boolean publicRoute=captchaRoute || "OPTIONS".equals(req.getMethod())
+                // Exact machine-to-machine routes are authenticated by the
+                // independent >=24-character provisioning token in controller.
+                // They have no tenant login session and may not traverse the
+                // normal subscription context gate.
+                || ("POST".equals(req.getMethod()) && (
+                    "/admin-api/system/saas/internal/provisioning".equals(path)
+                    || "/admin-api/system/saas/internal/entitlements/sync".equals(path)))
                 || ("POST".equals(req.getMethod()) && "/admin-api/system/saas/register".equals(path))
                 || ("POST".equals(req.getMethod()) && "/admin-api/system/auth/logout".equals(path))
                 || ("GET".equals(req.getMethod()) && ("/admin-api/system/tenant/get-id-by-name".equals(path)

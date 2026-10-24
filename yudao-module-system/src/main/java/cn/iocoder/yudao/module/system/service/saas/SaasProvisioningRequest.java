@@ -14,4 +14,6 @@ public class SaasProvisioningRequest {
     public LocalDateTime expiresAt;
     public String adminUsername;
     public String adminPassword;
+    /** Null represents unlimited seats explicitly signed by the Owner. */
+    public Integer seatLimit;
 }

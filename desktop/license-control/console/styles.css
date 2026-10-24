@@ -16,6 +16,7 @@ form{display:grid;gap:12px}
 #provisioning-fields{display:grid;gap:12px}
 label{display:grid;gap:5px;font-size:13px;font-weight:600}
 label.check{display:flex;align-items:center;gap:10px}
+label.check input[type=checkbox]{width:18px;height:18px;flex:0 0 18px}
 input,textarea,button{font:inherit}
 input,textarea{width:100%;padding:10px 11px;background:white;border:1px solid #bacfc7;border-radius:9px;color:#173b33;min-width:0}
 input:focus-visible,textarea:focus-visible,button:focus-visible{outline:3px solid #76bb9e;outline-offset:2px}

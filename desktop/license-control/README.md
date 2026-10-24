@@ -49,6 +49,14 @@
 
 流程为：机构注册 → Owner MFA 审核 → 签发软件授权 → 异步调用主系统私有接口 → 创建 `system_tenant` 并写入同一 `tenant_uuid` → 建立订阅与用量 → Owner 页面显示“主系统已开通”。失败会保留 `FAILED` 和脱敏错误，可使用“重试开通”继续同一个幂等请求。数据库先执行 `sql/mysql/rehab-saas-provisioning-v3.sql`。
 
+### 「授权主系统」与续费、扩容策略
+
+在“审批、续费、扩容策略”中独立选择**授权主系统（Rehab Core）**。此勾选与签名许可证的 `rehab` 模块严格绑定；其他模块单独填写（例如 `motion,report`）。不勾选时只签发这些独立模块许可，主系统状态为 `NOT_AUTHORIZED`，不会创建主系统的机构或管理员账号，即使主系统对接已配置也不触发开通。勾选且接口已配置时才进入主系统开通；未配置时为 `NOT_CONFIGURED`，许可证有效不代表能登录主系统。已批准但原本没有主系统权限的机构，可以在“维护”中补勾“授权主系统”保存策略，然后执行“开通主系统”。
+
+对于已经在 Core `ACTIVE` 的机构，修改到期日或员工席位，会单独异步调用受内部令牌保护的 `/admin-api/system/saas/internal/entitlements/sync` 接口，按主系统租户 UUID、Owner 许可 `revocation_epoch` 单调版本同步 `system_tenant` 的到期日/账户上限及 `tenant_subscriptions` 的到期日。Owner 列表区分 `PENDING / ACTIVE / FAILED / NOT_CONFIGURED` 的同步状态；设备实例数和其他模块仍仅由 Owner 许可证控制。不允许在已开通机构上直接取消 `rehab`，否则 Core 账号仍活跃造成两套系统授权不一致；该操作明确拒绝，必须另行执行安全的主系统停用流程。**保存 Owner 许可证不等于 Core 已同步。**
+
+启用这一版本的 Core 同步前，需在实际主系统 MySQL **先独立备份并审核应用** `sql/mysql/rehab-saas-entitlement-sync-v4.sql`（幂等新增 `saas_provisioning_requests.entitlement_revision`），部署并重启包含该接口的 Java 主系统，再按照前述参数配置双方的内部令牌和有效的 plan/package ID；否则不要打开自动开通。纯代码编译与 H2 合成测试不构成对真实 MySQL、主系统登录或租户生命周期的验收。
+
 **重要：批准许可证不等于创建主系统账号。** 主系统对接未配置时，Owner 页面隐藏初始管理员凭据输入框并将申请标记为 `APPROVED / NOT_CONFIGURED`；此时机构不能使用审批时填写的任何账号/密码登录主系统。接通主系统后，对这类已批准申请使用“开通主系统”，重新输入初始管理员账号及临时密码，等待状态变为 `ACTIVE` 并具有主系统租户 ID，再从主系统登录入口使用**机构名称 + 管理员账号 + 密码**登录。`ACTIVE` 状态不能通过“重试开通”来修改管理员密码，应走主系统单独的重置密码流程。
 
 ### 审批后邮件通知（可选，默认关闭）
