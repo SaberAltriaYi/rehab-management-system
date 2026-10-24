@@ -74,6 +74,12 @@ test('owner console assets are same-origin, CSP-hardened and contain no secrets'
   const root = await fetch(url + '/', { redirect: 'manual' })
   assert.equal(root.status, 302)
   assert.equal(root.headers.get('location'), '/owner/console')
+  for (const oldPath of ['/owner', '/owner/login']) {
+    const oldLogin = await fetch(url + oldPath, { redirect: 'manual' })
+    assert.equal(oldLogin.status, 302)
+    assert.equal(oldLogin.headers.get('location'), '/owner/console')
+    assert.equal(oldLogin.headers.get('cache-control'), 'no-store')
+  }
   const html = await fetch(url + '/owner/console')
   assert.equal(html.status, 200)
   assert.match(html.headers.get('content-security-policy'), /default-src 'none'/)
