@@ -302,7 +302,8 @@ public class RehabDashboardServiceImpl implements RehabDashboardService {
     }
 
     private void validateOpsPermission(Long operatorUserId) {
-        if (!dataPermissionService.isSuperAdmin(operatorUserId)) {
+        if (!dataPermissionService.isSuperAdmin(operatorUserId)
+                && !dataPermissionService.isTenantAdmin(operatorUserId)) {
             throw exception(PATIENT_NO_PERMISSION);
         }
     }

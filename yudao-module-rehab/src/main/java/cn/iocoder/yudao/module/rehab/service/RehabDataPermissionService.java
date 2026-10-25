@@ -47,7 +47,7 @@ public class RehabDataPermissionService {
     /**
      * 租户管理员负责本租户的患者与评估业务，数据范围仍受当前租户上下文约束。
      */
-    private boolean isTenantAdmin(Long userId) {
+    public boolean isTenantAdmin(Long userId) {
         return permissionApi.hasAnyRoles(userId, TENANT_ADMIN_ROLE);
     }
 
