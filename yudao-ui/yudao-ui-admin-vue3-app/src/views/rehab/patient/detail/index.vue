@@ -7,6 +7,12 @@
         <el-button type="primary" plain v-hasPermi="['rehab:motion:query']" @click="push(`/rehab/motion?patientId=${id}`)">
           动作评估
         </el-button>
+        <el-button
+          type="primary"
+          plain
+          v-hasPermi="['rehab:hep:feedback:review']"
+          @click="push(`/rehab/hep/console?patientId=${id}`)"
+        >HEP 家庭训练</el-button>
         <el-button type="primary" v-hasPermi="['rehab:patient:assign']" @click="openAssign">分配</el-button>
         <el-button type="primary" v-hasPermi="['rehab:patient:transfer']" @click="openTransfer">转交</el-button>
         <el-button type="primary" v-hasPermi="['rehab:patient:bind-crm']" @click="openBindCrm">CRM 绑定</el-button>

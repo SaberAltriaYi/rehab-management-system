@@ -140,6 +140,18 @@ const remainingRouter: AppRouteRecordRaw[] = [
     meta: { hidden: true },
     children: [
       {
+        path: 'hep/console',
+        component: () => import('@/views/rehab/hep-console/index.vue'),
+        name: 'RehabHepIntegrationConsole',
+        meta: {
+          title: '家庭康复 HEP 联动',
+          hidden: true,
+          canTo: true,
+          noCache: true,
+          activeMenu: '/rehab/patient'
+        }
+      },
+      {
         path: 'patient/detail/:id',
         component: () => import('@/views/rehab/patient/detail/index.vue'),
         name: 'RehabPatientDetail',

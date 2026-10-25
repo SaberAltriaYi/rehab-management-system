@@ -131,11 +131,11 @@ public class RehabHepBridgeController {
         Long tenant=TenantContextHolder.getRequiredTenantId();
         require(patientId!=null && existsPatient(tenant,patientId) && eventId!=null &&
             EVENT_ID.matcher(eventId).matches());
-        int updated=db.update("UPDATE rehab_hep_bridge_event SET review_status='REVIEWED' " +
+        int updated=db.update("UPDATE rehab_hep_bridge_event SET review_status='REVIEWED',reviewed_by=?,reviewed_at=CURRENT_TIMESTAMP " +
             "WHERE tenant_id=? AND patient_id=? AND event_id=? AND review_status='PENDING' " +
             "AND EXISTS (SELECT 1 FROM rehab_therapist_assignment a WHERE a.tenant_id=? AND a.patient_id=? " +
             "AND a.therapist_user_id=? AND a.assign_status='active' AND a.deleted=0)",
-            tenant,patientId,eventId,tenant,patientId,getLoginUserId());
+            getLoginUserId(),tenant,patientId,eventId,tenant,patientId,getLoginUserId());
         require(updated==1);
         return CommonResult.success(true);
     }
