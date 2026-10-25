@@ -28,6 +28,40 @@ export function requireUuid(value) {
   if (!UUID.test(value ?? '')) throw Error('请输入合法的小写 UUID')
   return value
 }
+// Distinguish an approved license from an actually provisioned Rehab Core tenant.
+// This controls presentation only; the Owner API independently authorizes MFA,
+// the signed rehab module and provisioning eligibility on every POST.
+export function approvedProvisionState(application, tenant, configured) {
+  if (!application || application.status !== 'APPROVED' || !tenant ||
+      application.tenantId !== tenant.tenantId) {
+    return { visible: false, ready: false, message: '' }
+  }
+  if (tenant.status !== 'ACTIVE') {
+    return { visible: true, ready: false, message: '许可证已停用或撤销，不能开通主系统。' }
+  }
+  if (!tenant.modules?.includes('rehab')) {
+    return { visible: true, ready: false,
+      message: '当前许可证没有主系统 rehab 权限。请先在左侧勾选「授权主系统」，按「续期 / 扩容」保存权限，再开通。' }
+  }
+  if (application.provisioningStatus === 'ACTIVE') {
+    return { visible: true, ready: false,
+      message: `主系统已开通（租户 ID：${application.mainTenantId ?? '待核实'}）。请从主系统登录，不要重复创建管理员账号。` }
+  }
+  if (application.provisioningStatus === 'PROVISIONING') {
+    return { visible: true, ready: false, message: '主系统正在开通，请刷新等待结果，不能重复提交。' }
+  }
+  if (!['NOT_CONFIGURED', 'FAILED'].includes(application.provisioningStatus)) {
+    return { visible: true, ready: false, message: '当前状态不允许重复开通主系统，请刷新机构状态。' }
+  }
+  if (!configured) {
+    return { visible: true, ready: false,
+      message: '当前未配置 Owner → Rehab Core 自动开通（接口地址、内部令牌、计划 ID、套餐 ID）。许可证已批准并包含 rehab 权限，但主系统机构账号尚未创建。请先完成本机主系统对接配置。' }
+  }
+  return { visible: true, ready: true,
+    message: application.provisioningStatus === 'FAILED'
+      ? '上次开通失败。请核对错误原因，重新填写管理员账号与新的初始密码，然后 MFA 重试。'
+      : '已批准且授权主系统，尚未开通。填写管理员账号和新的初始密码后，执行独立开通（需要 Owner MFA）。' }
+}
 export function redactAuditItem(item) {
   // Display only recognized metadata; never render token, mfa, patient fields
   const details = item?.details && typeof item.details === 'object' ? item.details : {}

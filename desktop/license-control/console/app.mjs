@@ -1,10 +1,11 @@
-import { parsePolicy, requireUuid, redactAuditItem } from './policy.mjs'
+import { approvedProvisionState, parsePolicy, requireUuid, redactAuditItem } from './policy.mjs'
 
 // Dedicated owner application: NO localStorage, sessionStorage, cookies or
 // reuse of the clinic's Vue admin bearer. Every owner API call is server MFA.
 let session = null
 let selected = null
 let selectedTenant = null
+let currentApplications = []
 let provisioningConfigured = null
 let activationEmailConfigured = false
 let operationBusy = false
@@ -59,6 +60,7 @@ function displaySession() {
     provisioningConfigured = null
     selected = null
     selectedTenant = null
+    currentApplications = []
     $('workflow-status').textContent = ''
   }
 }
@@ -154,6 +156,21 @@ function setTenantControls(status) {
   $('offline-form').querySelector('button[type="submit"]').disabled = !active
 }
 
+function updateApprovedProvisionPanel() {
+  const value = String($('tenant-form').elements.namedItem('tenantId').value || '').trim()
+  const app = currentApplications.find(a => a.status === 'APPROVED' && a.tenantId === value)
+  const state = approvedProvisionState(app, selectedTenant, provisioningConfigured)
+  $('approved-provision-panel').hidden = !state.visible
+  $('approved-provision-status').textContent = state.message
+  $('approved-provision-credentials').hidden = !state.ready
+  $('provision-approved').disabled = !state.ready
+  for (const name of ['provisionAdminUsername', 'provisionAdminPassword']) {
+    const input = $('tenant-form').elements.namedItem(name)
+    input.disabled = !state.ready
+    if (!state.ready) input.value = ''
+  }
+}
+
 function setWorkflowStatus(configured, emailConfigured) {
   provisioningConfigured = Boolean(configured)
   activationEmailConfigured = Boolean(emailConfigured)
@@ -170,6 +187,7 @@ function setWorkflowStatus(configured, emailConfigured) {
     ? ' 机构开通后可向联系人发送开通通知（邮件不包含密码）。'
     : ' 邮件发送尚未配置，不会自动给机构发邮件。'
   $('workflow-status').classList.toggle('warning', !provisioningConfigured)
+  updateApprovedProvisionPanel()
 }
 
 function refreshMainSystemOption() {
@@ -257,6 +275,7 @@ async function loadTenantStatus(id, { updatePolicy = true } = {}) {
     ' · 合同截止：' + tenant.expiresAt
   setTenantControls(tenant.status)
   if (updatePolicy) fillPolicyFromTenant(tenant)
+  updateApprovedProvisionPanel()
   setSelectionStatus('已载入 ' + tenant.tenantId + ' 的当前策略，可直接续期 / 扩容。', 'ready')
   return tenant
 }
@@ -273,6 +292,7 @@ async function waitForProvisioning(applicationId) {
 async function refreshApplications({ announce = true } = {}) {
   const result = await api('/owner/v1/applications')
   const applications = result.applications || []
+  currentApplications = applications
   setWorkflowStatus(result.provisioningConfigured, result.activationEmailConfigured)
   const body = $('applications')
   body.replaceChildren()
@@ -281,6 +301,7 @@ async function refreshApplications({ announce = true } = {}) {
     ? applications.find(x => x.id === selected.id) : null
   selectedTenant = selectedTenant && applications.some(x => x.tenantId === selectedTenant.tenantId && x.status === 'APPROVED')
     ? selectedTenant : null
+  updateApprovedProvisionPanel()
   for (const app of applications) {
     const row = node('tr')
     if (selected?.id === app.id || selectedTenant?.tenantId === app.tenantId) row.className = 'selected'
@@ -308,6 +329,7 @@ async function refreshApplications({ announce = true } = {}) {
         selected = app
         selectedTenant = null
         applyTenant(app.tenantId)
+        updateApprovedProvisionPanel()
         fillDefaultPolicy()
         setTenantControls(null)
         setSelectionStatus('已选中 ' + app.organization + '：核实资料后可直接批准或要求补充。', 'ready')
@@ -350,28 +372,12 @@ async function refreshApplications({ announce = true } = {}) {
       const retry = node('button', app.provisioningStatus === 'NOT_CONFIGURED' ? '开通主系统' : '重试开通')
       retry.type = 'button'
       retry.className = 'warning'
-      retry.disabled = !provisioningConfigured
-      retry.title = provisioningConfigured ? '重新提交主系统租户开通' : '先配置主系统自动开通'
+      retry.title = '选择该机构，跳转到独立的主系统开通区查看配置与状态'
       retry.addEventListener('click', () => void handle(async () => {
-        selectedTenant = app
+        selected = null
         applyTenant(app.tenantId, app.installationId)
         await loadTenantStatus(app.tenantId)
-        const credentials = credentialsFromForm()
-        if (!credentials.username || !credentials.password) {
-          setSelectionStatus('请在左侧填写主系统管理员账号与新的临时密码，再点击「开通主系统」。', 'warning')
-          $('policy-form').scrollIntoView({ behavior: 'smooth', block: 'center' })
-          return
-        }
-        await strongOperation(() => api('/owner/v1/applications/' + requireUuid(app.id) + '/retry-provision', {
-          method: 'POST', body: { credentials }
-        }), '重试主系统租户开通')
-        const latest = await waitForProvisioning(app.id)
-        await refreshAudit()
-        feedback(latest?.provisioningStatus === 'ACTIVE'
-          ? '主系统租户已开通'
-          : latest?.provisioningError
-            ? '主系统开通失败：' + latest.provisioningError
-            : '已提交主系统开通重试，请稍后刷新状态')
+        $('approved-provision-panel').scrollIntoView({ behavior: 'smooth', block: 'center' })
       }))
       actions.append(retry)
     }
@@ -424,7 +430,34 @@ async function refreshAll() {
   if (failed) throw failed.reason
   feedback('申请与独立授权审计已刷新')
 }
+async function openApprovedMainSystem() {
+  const uuid = tenantId()
+  const app = currentApplications.find(item => item.tenantId === uuid && item.status === 'APPROVED')
+  const state = approvedProvisionState(app, selectedTenant, provisioningConfigured)
+  if (!state.ready) throw Error(state.message || '当前机构无法开通主系统')
+  const form = $('tenant-form')
+  const username = String(form.elements.namedItem('provisionAdminUsername').value || '').trim()
+  const password = String(form.elements.namedItem('provisionAdminPassword').value || '')
+  if (!/^[a-zA-Z0-9]{4,30}$/.test(username) || password.length < 12 || password.length > 16) {
+    throw Error('管理员账号须为 4–30 位字母或数字，临时密码须为 12–16 位')
+  }
+  const confirmed = await strongOperation(() => api('/owner/v1/applications/' + requireUuid(app.id) + '/retry-provision', {
+    method: 'POST', body: { credentials: { username, password } }
+  }), '为已批准的机构开通主系统并创建首位管理员')
+  form.elements.namedItem('provisionAdminPassword').value = ''
+  if (!confirmed) return
+  const latest = await waitForProvisioning(app.id)
+  await refreshAudit()
+  updateApprovedProvisionPanel()
+  feedback(latest?.provisioningStatus === 'ACTIVE' && latest.mainTenantId
+    ? '主系统已开通，租户 ID：' + latest.mainTenantId + '。请使用机构名称、管理员账号和新密码登录。'
+    : latest?.provisioningStatus === 'FAILED'
+      ? '主系统开通失败：' + (latest.provisioningError || '请检查接口或套餐配置')
+      : '开通已提交但尚未确认创建成功，请刷新开通状态。')
+}
+
 async function handle(callback) {
+  // Owner operations remain guarded by the existing MFA session.
   if (operationBusy) {
     feedback('已有操作正在处理，请等待当前状态刷新')
     return
@@ -520,6 +553,7 @@ $('tenant-form').addEventListener('submit', event => {
     await loadTenantStatus(id)
   })
 })
+$('provision-approved').addEventListener('click', () => void handle(openApprovedMainSystem))
 $('update-policy').addEventListener('click', () => void handle(async () => {
   const id = tenantId()
   const policy = policyFromForm()

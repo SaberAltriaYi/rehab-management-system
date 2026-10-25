@@ -71,6 +71,16 @@
           <button type="submit" class="outline">查询当前许可</button>
           <div id="tenant-status" aria-live="polite"></div>
           <button type="button" id="update-policy">按左侧策略续期 / 扩容</button>
+          <section id="approved-provision-panel" class="provision-panel" hidden>
+            <h3>已批准机构 · 主系统开通</h3>
+            <p class="hint">仅对已完成审批的机构执行主系统开通；不需要再次点击批准，也不会由续期按钮自动创建账号。</p>
+            <p id="approved-provision-status" role="status"></p>
+            <div id="approved-provision-credentials" hidden>
+              <label>主系统首位管理员账号 <input name="provisionAdminUsername" pattern="[a-zA-Z0-9]{4,30}" autocomplete="off" placeholder="例如 rehabadmin" /></label>
+              <label>一次性初始密码 <input name="provisionAdminPassword" type="password" minlength="12" maxlength="16" autocomplete="new-password" placeholder="12–16 位，请勿重复使用已公开密码" /></label>
+            </div>
+            <button type="button" id="provision-approved">开通已批准机构的主系统</button>
+          </section>
           <button type="button" id="suspend" class="warning">暂停此租户</button>
           <button type="button" id="resume" class="outline">恢复此租户</button>
           <button type="button" id="revoke" class="danger">永久撤销此租户</button>

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { parsePolicy, requireUuid, redactAuditItem } from './policy.mjs'
+import { approvedProvisionState, parsePolicy, requireUuid, redactAuditItem } from './policy.mjs'
 
 const NOW = Date.parse('2026-10-10T04:00:00Z')
 const EXP = '2026-12-31T23:00:00+08:00'
@@ -20,6 +20,21 @@ test('main-system checkbox maps exclusively to the signed rehab permission', () 
     ['rehab'])
   assert.throws(() => parsePolicy({ ...BASE, modules: '', mainSystem: false }, NOW),
     /模块名称无效/)
+})
+
+test('approved tenants can provision Core only when service and authorization are ready', () => {
+  const id = 'f12b2687-09a1-40b5-b47a-747d75ce5551'
+  const app = { tenantId: id, status: 'APPROVED', provisioningStatus: 'NOT_CONFIGURED' }
+  const tenant = { tenantId: id, status: 'ACTIVE', modules: ['rehab', 'motion'] }
+  assert.equal(approvedProvisionState(app, tenant, false).ready, false)
+  assert.match(approvedProvisionState(app, tenant, false).message, /未配置/)
+  assert.equal(approvedProvisionState(app, tenant, true).ready, true)
+  assert.equal(approvedProvisionState({ ...app, provisioningStatus: 'FAILED' }, tenant, true).ready, true)
+  assert.equal(approvedProvisionState({ ...app, provisioningStatus: 'PROVISIONING' }, tenant, true).ready, false)
+  assert.equal(approvedProvisionState({ ...app, provisioningStatus: 'ACTIVE', mainTenantId: 4 }, tenant, true).ready, false)
+  assert.equal(approvedProvisionState(app, { ...tenant, modules: ['motion'] }, true).ready, false)
+  assert.equal(approvedProvisionState(app, { ...tenant, status: 'SUSPENDED' }, true).ready, false)
+  assert.equal(approvedProvisionState({ ...app, status: 'PENDING' }, tenant, true).visible, false)
 })
 
 test('invalid entitlement inputs fail closed before owner API calls', () => {

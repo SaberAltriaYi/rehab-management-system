@@ -91,6 +91,8 @@ test('owner console assets are same-origin, CSP-hardened and contain no secrets'
     'Default license must explicitly sign unlimited staff seats')
   assert.match(body, /name="mainSystem" type="checkbox" checked/,
     'Owner must explicitly see and control main-system authorization')
+  assert.match(body, /id="approved-provision-panel"/)
+  assert.match(body, /id="provision-approved"/)
   assert.match(body, /id="rotate"[^>]*disabled/, 'UI must not rotate an undistributed signer')
   assert.doesNotMatch(body, /<script(?![^>]*src=)/)
   for (const asset of ['/owner/console/app.mjs', '/owner/console/policy.mjs',

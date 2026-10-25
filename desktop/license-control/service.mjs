@@ -520,8 +520,11 @@ export class OwnerLicensingService {
     if (!this.provisioningConfigured()) deny('PROVISIONING_NOT_CONFIGURED')
     const app = this.db.prepare('SELECT * FROM applications WHERE id=?').get(applicationId)
     if (!app || app.status !== 'APPROVED') deny('APPLICATION_NOT_APPROVED')
-    const entitlement = this.db.prepare('SELECT modules_json FROM entitlements WHERE tenant_uuid=?').get(app.tenant_uuid)
-    if (!entitlement || !JSON.parse(entitlement.modules_json).includes('rehab')) deny('MAIN_SYSTEM_NOT_AUTHORIZED')
+    const entitlement = this.db.prepare('SELECT modules_json,status,expires_at FROM entitlements WHERE tenant_uuid=?').get(app.tenant_uuid)
+    if (!entitlement || entitlement.status !== 'ACTIVE' || entitlement.expires_at <= nowMs) {
+      deny('TENANT_NOT_ACTIVE')
+    }
+    if (!JSON.parse(entitlement.modules_json).includes('rehab')) deny('MAIN_SYSTEM_NOT_AUTHORIZED')
     if (!['NOT_CONFIGURED', 'FAILED'].includes(app.provisioning_status)) deny('PROVISIONING_ALREADY_ACTIVE')
     this.db.prepare("UPDATE applications SET provisioning_status='PROVISIONING',provisioning_error=NULL WHERE id=?").run(applicationId)
     const policy = this.db.prepare('SELECT expires_at,seat_limit FROM entitlements WHERE tenant_uuid=?').get(app.tenant_uuid)
