@@ -30,3 +30,5 @@
 029|3be02fe62ec4f06a590de9fa64efda16dc473bdc01fc32e48adb102c91b9b5ea|sql/mysql/rehab-saas-staff-invitations-v2.sql|SaaS 治疗师一次性邀请
 030|659db17ae877f55fa834192bd8db1facd3a36d4ecfc90bea119f583a1e22e891|sql/mysql/rehab-system-owner-tenant-v1.sql|系统拥有者租户总览权限
 031|27283e424befaf9122d5a2d35f237a0bbf5f44a66b195d180081545c59e06872|sql/mysql/rehab-crm-department-workspaces-v1.sql|CRM共享客户目录与部门私有工作台
+032|dff3739e966d9a09c0af346fd893778aba34ba0b42de55d9e3951069ffac567d|sql/mysql/rehab-motion-workspace-v1.sql|原生运动学工作区权限及版本化接收复核
+033|18169aa1e9a2009d3d53f99c2a7dd8ef338c74b6e8ec2eff86127681e3028343|sql/mysql/rehab-ai-plan-default-off-v1.sql|历史迁移恢复固定校验和后保持AI训练草稿关闭

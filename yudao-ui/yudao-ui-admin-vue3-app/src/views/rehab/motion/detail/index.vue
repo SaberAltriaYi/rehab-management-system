@@ -108,6 +108,14 @@
 
   <ContentWrap v-if="a">
     <el-tabs v-model="tab" class="assessment-tabs">
+      <el-tab-pane
+        v-if="checkPermi(['rehab:motion:workspace'])"
+        label="原生运动学工作区"
+        name="workspace"
+        lazy
+      >
+        <WorkspacePanel :assessment="a" />
+      </el-tab-pane>
       <el-tab-pane label="数据与上传" name="upload">
         <UploadPanel :assessment="a" @changed="reload" />
       </el-tab-pane>
@@ -160,6 +168,8 @@ import ReviewPanel from '../components/ReviewPanel.vue'
 import ReportPanel from '../components/ReportPanel.vue'
 import ComparePanel from '../components/ComparePanel.vue'
 import AuditPanel from '../components/AuditPanel.vue'
+import WorkspacePanel from '../components/WorkspacePanel.vue'
+import { checkPermi } from '@/utils/permission'
 
 defineOptions({ name: 'RehabMotionDetail' })
 

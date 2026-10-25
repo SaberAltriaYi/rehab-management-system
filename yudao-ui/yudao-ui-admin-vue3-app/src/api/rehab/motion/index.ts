@@ -113,11 +113,28 @@ export interface MotionTaskVO {
 const BASE = '/rehab/motion'
 
 export const MotionApi = {
+  workspaceLaunch: (assessmentId: number) =>
+    request.post<{ url: string }>({ url: `${BASE}/workspace/launch`, params: { assessmentId } }),
+  workspaceReceive: (assessmentId: number) =>
+    request.post<{ state: string }>({ url: `${BASE}/workspace/receive`, params: { assessmentId } }),
+  workspaceHistory: (assessmentId: number) =>
+    request.get<any[]>({ url: `${BASE}/workspace/history`, params: { assessmentId } }),
+  workspaceReview: (assessmentId: number, inboxId: number, note: string) =>
+    request.post({
+      url: `${BASE}/workspace/review`,
+      params: { assessmentId, inboxId },
+      data: { note }
+    }),
   create: (data: MotionSaveReqVO) => request.post<number>({ url: `${BASE}/create`, data }),
   update: (data: MotionSaveReqVO) => request.put<boolean>({ url: `${BASE}/update`, data }),
   remove: (id: number) => request.delete<boolean>({ url: `${BASE}/delete`, params: { id } }),
-  page: (params: { pageNo: number; pageSize: number; patientId?: number; status?: string; visitType?: string }) =>
-    request.get({ url: `${BASE}/page`, params }),
+  page: (params: {
+    pageNo: number
+    pageSize: number
+    patientId?: number
+    status?: string
+    visitType?: string
+  }) => request.get({ url: `${BASE}/page`, params }),
   get: (id: number) => request.get<MotionAssessmentVO>({ url: `${BASE}/get`, params: { id } }),
   listByPatient: (patientId: number) =>
     request.get<MotionAssessmentVO[]>({ url: `${BASE}/list-by-patient`, params: { patientId } }),
@@ -133,10 +150,12 @@ export const MotionApi = {
   },
   listFiles: (assessmentId: number) =>
     request.get<MotionFileVO[]>({ url: `${BASE}/file/list`, params: { assessmentId } }),
-  deleteFile: (id: number) => request.delete<boolean>({ url: `${BASE}/file/delete`, params: { id } }),
+  deleteFile: (id: number) =>
+    request.delete<boolean>({ url: `${BASE}/file/delete`, params: { id } }),
   downloadFile: (id: number) => request.download({ url: `${BASE}/file/download`, params: { id } }),
 
-  listTrials: (assessmentId: number) => request.get({ url: `${BASE}/trial/list`, params: { assessmentId } }),
+  listTrials: (assessmentId: number) =>
+    request.get({ url: `${BASE}/trial/list`, params: { assessmentId } }),
   saveTrials: (assessmentId: number, trials: MotionTrialItem[]) =>
     request.post<boolean>({ url: `${BASE}/trial/save`, data: { assessmentId, trials } }),
   updateTrialManual: (data: {
@@ -148,8 +167,11 @@ export const MotionApi = {
     manualValues?: Record<string, any>
     reason?: string
   }) => request.post<boolean>({ url: `${BASE}/trial/manual`, data }),
-  saveManualInputs: (data: { assessmentId: number; inputs: Record<string, any>; reason?: string }) =>
-    request.post<boolean>({ url: `${BASE}/manual-inputs`, data }),
+  saveManualInputs: (data: {
+    assessmentId: number
+    inputs: Record<string, any>
+    reason?: string
+  }) => request.post<boolean>({ url: `${BASE}/manual-inputs`, data }),
 
   process: (assessmentId: number, idempotencyKey: string) =>
     request.post<MotionTaskVO>({ url: `${BASE}/process`, data: { assessmentId, idempotencyKey } }),
@@ -161,30 +183,41 @@ export const MotionApi = {
   retryTask: (id: number, idempotencyKey: string) =>
     request.post<MotionTaskVO>({ url: `${BASE}/task/retry`, params: { id, idempotencyKey } }),
 
-  result: (assessmentId: number) => request.get({ url: `${BASE}/result`, params: { assessmentId } }),
+  result: (assessmentId: number) =>
+    request.get({ url: `${BASE}/result`, params: { assessmentId } }),
   series: (assessmentId: number, trialName?: string) =>
     request.get({ url: `${BASE}/series`, params: { assessmentId, trialName } }),
 
-  reviewScore: (data: { scoreId: number; finalStatus: string; finalScore?: number | null; reason?: string }) =>
-    request.post<boolean>({ url: `${BASE}/score/review`, data }),
+  reviewScore: (data: {
+    scoreId: number
+    finalStatus: string
+    finalScore?: number | null
+    reason?: string
+  }) => request.post<boolean>({ url: `${BASE}/score/review`, data }),
   reviewAi: (data: { draftId: number; action: 'accept' | 'reject'; editedText?: string }) =>
     request.post<boolean>({ url: `${BASE}/ai/review`, data }),
   regenerateAi: (assessmentId: number, idempotencyKey: string) =>
-    request.post<MotionTaskVO>({ url: `${BASE}/ai/regenerate`, params: { assessmentId, idempotencyKey } }),
+    request.post<MotionTaskVO>({
+      url: `${BASE}/ai/regenerate`,
+      params: { assessmentId, idempotencyKey }
+    }),
   sign: (assessmentId: number) =>
     request.post<boolean>({ url: `${BASE}/sign`, data: { assessmentId, confirmed: true } }),
   amend: (assessmentId: number, reason: string) =>
     request.post<boolean>({ url: `${BASE}/amend`, data: { assessmentId, reason } }),
 
-  reports: (assessmentId: number) => request.get({ url: `${BASE}/report/list`, params: { assessmentId } }),
+  reports: (assessmentId: number) =>
+    request.get({ url: `${BASE}/report/list`, params: { assessmentId } }),
   report: (id: number) => request.get({ url: `${BASE}/report/get`, params: { id } }),
   reportDocx: (id: number) => request.download({ url: `${BASE}/report/docx`, params: { id } }),
   reportPdf: (id: number) => request.download({ url: `${BASE}/report/pdf`, params: { id } }),
   compare: (baseId: number, currentId: number) =>
     request.get({ url: `${BASE}/compare`, params: { baseId, currentId } }),
   trend: (patientId: number) => request.get({ url: `${BASE}/trend`, params: { patientId } }),
-  manualEdits: (assessmentId: number) => request.get({ url: `${BASE}/manual-edits`, params: { assessmentId } }),
-  auditLogs: (assessmentId: number) => request.get({ url: `${BASE}/audit-logs`, params: { assessmentId } }),
+  manualEdits: (assessmentId: number) =>
+    request.get({ url: `${BASE}/manual-edits`, params: { assessmentId } }),
+  auditLogs: (assessmentId: number) =>
+    request.get({ url: `${BASE}/audit-logs`, params: { assessmentId } }),
   protocols: () => request.get({ url: `${BASE}/protocols` })
 }
 
