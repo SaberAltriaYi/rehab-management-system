@@ -332,7 +332,7 @@
 
   <Dialog v-model="engineReportVisible" title="运动评估引擎联调报告" width="min(1100px, 96%)">
     <el-alert
-      title="该结果来自已接入的运动评估引擎 /v1/reports/rehearsal 接口，用于验证主系统到引擎的报告链路。"
+      title="该结果来自运动评估引擎 /v1/research/rehearsal 接口，是合成资料的连通自检，不是患者临床报告。"
       type="info"
       :closable="false"
       class="mb-12px"
