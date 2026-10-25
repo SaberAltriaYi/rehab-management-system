@@ -8,6 +8,8 @@ import cn.iocoder.yudao.module.system.service.saas.SaasProvisioningService;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.bind.annotation.*;
 import javax.annotation.security.PermitAll;
 
@@ -52,5 +54,19 @@ public class SaasProvisioningController {
         if (provisioningToken == null || provisioningToken.length() < 24 || !provisioningToken.equals(token)) {
             throw new org.springframework.web.server.ResponseStatusException(HttpStatus.UNAUTHORIZED, "provisioning token invalid");
         }
+    }
+
+    /** Scope machine API errors locally instead of letting the global handler
+     * transform missing tokens into HTTP 200 / generic business code 500. */
+    @ExceptionHandler(ResponseStatusException.class)
+    public ResponseEntity<CommonResult<Void>> unauthorized(ResponseStatusException error) {
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .body(CommonResult.error(401, "INTERNAL_PROVISIONING_UNAUTHORIZED"));
+    }
+
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<CommonResult<Void>> invalidInput(IllegalArgumentException error) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(CommonResult.error(400, "INVALID_PROVISIONING_REQUEST"));
     }
 }

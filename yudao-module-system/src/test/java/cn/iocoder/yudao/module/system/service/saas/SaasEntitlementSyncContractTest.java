@@ -26,6 +26,10 @@ class SaasEntitlementSyncContractTest {
                 () -> controller.syncEntitlements(null, request));
         assertThrows(org.springframework.web.server.ResponseStatusException.class,
                 () -> controller.syncEntitlements("invalid-token", request));
+        assertEquals(401, controller.unauthorized(new org.springframework.web.server.ResponseStatusException(
+                org.springframework.http.HttpStatus.UNAUTHORIZED)).getStatusCodeValue());
+        assertEquals(400, controller.invalidInput(new IllegalArgumentException("synthetic-invalid"))
+                .getStatusCodeValue());
         when(service.syncEntitlements(same(request))).thenReturn(java.util.Map.of("status", "ACTIVE"));
         assertEquals(0, controller.syncEntitlements(machineToken, request).getCode());
     }
