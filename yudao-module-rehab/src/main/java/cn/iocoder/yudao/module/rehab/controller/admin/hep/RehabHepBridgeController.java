@@ -39,6 +39,9 @@ public class RehabHepBridgeController {
         public String eventId, type, sessionId, payload;
         public Long tenantId, patientId, episodeId;
     }
+    public static class PrescriptionLookup {
+        public Long tenantId,patientId,episodeId,therapistUserId,prescriptionId;
+    }
     private void authorize(String token) {
         // Equal-length constant-time comparison to avoid leaking machine secret.
         if (secret.length()<32 || token==null ||
@@ -56,6 +59,48 @@ public class RehabHepBridgeController {
     private boolean existsEpisode(long tenant,long patient,long episode) {
         return db.queryForObject("SELECT COUNT(*) FROM rehab_episode WHERE tenant_id=? AND id=? AND patient_id=? AND deleted=0 AND status IN ('active','paused')",
             Integer.class,tenant,episode,patient)==1;
+    }
+    /** Machine-only export of an already issued and therapist-owned Core plan.
+     * Media/exercise IDs are not shared with HEP until explicitly mapped. */
+    @PostMapping("/internal/prescriptions/export")
+    @PermitAll
+    public ResponseEntity<?> exportPrescription(
+        @RequestHeader(value="X-HEP-Core-Token",required=false) String token,
+        @RequestBody PrescriptionLookup input) {
+        try {
+            authorize(token);
+            require(input!=null && input.tenantId!=null && input.tenantId>0 &&
+                input.patientId!=null && input.patientId>0 && input.episodeId!=null && input.episodeId>0 &&
+                input.therapistUserId!=null && input.therapistUserId>0 &&
+                input.prescriptionId!=null && input.prescriptionId>0);
+            require(existsPatient(input.tenantId,input.patientId) &&
+                existsEpisode(input.tenantId,input.patientId,input.episodeId));
+            require(db.queryForObject("SELECT COUNT(*) FROM rehab_therapist_assignment WHERE tenant_id=? AND patient_id=? AND therapist_user_id=? AND assign_status='active' AND deleted=0",
+                Integer.class,input.tenantId,input.patientId,input.therapistUserId)>0);
+            List<Map<String,Object>> prescription=db.queryForList(
+                "SELECT p.id,p.current_version_id,p.start_date,p.end_date,v.version_no FROM rehab_hep_prescription p "+
+                "JOIN rehab_hep_prescription_version v ON v.id=p.current_version_id AND v.tenant_id=p.tenant_id "+
+                "WHERE p.tenant_id=? AND p.id=? AND p.patient_id=? AND p.episode_id=? AND p.therapist_user_id=? "+
+                "AND p.status='ISSUED' AND v.status='ISSUED' AND p.deleted=0",
+                input.tenantId,input.prescriptionId,input.patientId,input.episodeId,input.therapistUserId);
+            require(prescription.size()==1);
+            Map<String,Object> row=prescription.get(0);
+            List<Map<String,Object>> items=db.queryForList(
+                "SELECT i.exercise_id AS exerciseId,i.training_day_no AS dayNo,i.group_code AS dayCode,"+
+                "i.dosage_json AS dosageJson,i.pain_limit_rule AS painLimitRule "+
+                "FROM rehab_hep_prescription_item i JOIN rehab_hep_exercise e ON e.tenant_id=i.tenant_id AND e.id=i.exercise_id "+
+                "WHERE i.tenant_id=? AND i.version_id=? AND i.deleted=0 AND e.status='REVIEWED' AND e.deleted=0 "+
+                "ORDER BY i.training_day_no,i.sort_order",
+                input.tenantId,row.get("current_version_id"));
+            require(!items.isEmpty()&&items.size()<=150);
+            return ResponseEntity.ok(Map.of("prescriptionId",input.prescriptionId,
+                "versionId",row.get("current_version_id"),"version",row.get("version_no"),
+                "startDate",String.valueOf(row.get("start_date")),"items",items));
+        } catch (org.springframework.web.server.ResponseStatusException error) {
+            return ResponseEntity.status(401).body(Map.of("error","UNAUTHORIZED"));
+        } catch (IllegalArgumentException error) {
+            return ResponseEntity.badRequest().body(Map.of("error","PRESCRIPTION_NOT_AVAILABLE"));
+        }
     }
     @PostMapping("/internal/verify-binding")
     @PermitAll
@@ -124,6 +169,23 @@ public class RehabHepBridgeController {
         return CommonResult.success(db.queryForList(
             "SELECT id,event_id,event_type,episode_id,session_id,payload_json,review_status,created_at FROM rehab_hep_bridge_event WHERE tenant_id=? AND patient_id=? ORDER BY created_at DESC LIMIT 100",
             tenant,patientId));
+    }
+    @GetMapping("/patients/{patientId}/summary")
+    @PreAuthorize("@ss.hasPermission('rehab:hep:feedback:review')")
+    public CommonResult<Map<String,Object>> patientSummary(@PathVariable Long patientId) {
+        Long tenant=TenantContextHolder.getRequiredTenantId();
+        require(patientId!=null && existsPatient(tenant,patientId));
+        require(db.queryForObject("SELECT COUNT(*) FROM rehab_therapist_assignment WHERE tenant_id=? AND patient_id=? AND therapist_user_id=? AND assign_status='active' AND deleted=0",
+            Integer.class,tenant,patientId,getLoginUserId())>0);
+        List<Map<String,Object>> totals=db.queryForList(
+            "SELECT event_type AS eventType,COUNT(*) AS total FROM rehab_hep_bridge_event "+
+            "WHERE tenant_id=? AND patient_id=? AND created_at>=DATE_SUB(CURRENT_TIMESTAMP,INTERVAL 30 DAY) GROUP BY event_type",
+            tenant,patientId);
+        Integer pending=db.queryForObject("SELECT COUNT(*) FROM rehab_hep_bridge_event "+
+            "WHERE tenant_id=? AND patient_id=? AND review_status='PENDING'",Integer.class,tenant,patientId);
+        return CommonResult.success(Map.of("periodDays",30,"events",totals,
+            "pendingClinicalReview",pending==null?0:pending,
+            "interpretation","训练与风险事件仅供治疗师随访复评参考，不自动生成诊断"));
     }
     @PostMapping("/patients/{patientId}/events/{eventId}/review")
     @PreAuthorize("@ss.hasPermission('rehab:hep:feedback:review')")

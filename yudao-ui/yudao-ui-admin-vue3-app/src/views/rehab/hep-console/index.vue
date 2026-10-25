@@ -16,6 +16,7 @@ const hepTherapistUrl = 'http://127.0.0.1:5192/'
 const pending = ref(false)
 const patientId = ref('')
 const events = ref<EventRow[]>([])
+const summary = ref<{periodDays:number;events:{eventType:string;total:number}[];pendingClinicalReview:number;interpretation:string}|null>(null)
 const error = ref('')
 const route = useRoute()
 
@@ -77,7 +78,9 @@ async function loadEvents() {
   }
   try {
     events.value = await request.get({ url: '/rehab/hep-bridge/patients/' + id + '/events' }) as EventRow[]
+    summary.value = await request.get({ url: '/rehab/hep-bridge/patients/' + id + '/summary' }) as typeof summary.value
   } catch (cause) {
+    summary.value = null
     error.value = cause instanceof Error ? cause.message : '没有查看该患者 HEP 事件的权限'
   }
 }
@@ -111,6 +114,13 @@ onMounted(() => {
     <h3>患者训练与风险回传</h3>
     <el-input v-model="patientId" style="max-width: 320px" placeholder="Core 患者数字 ID" />
     <el-button class="ml-2" @click="loadEvents">查看已回传事件</el-button>
+    <div v-if="summary" class="summary-grid">
+      <div class="summary-cell"><strong>{{ summary.periodDays }} 天</strong><span>统计窗口</span></div>
+      <div class="summary-cell"><strong>{{ summary.pendingClinicalReview }}</strong><span>待治疗师复核</span></div>
+      <div v-for="item in summary.events" :key="item.eventType" class="summary-cell">
+        <strong>{{ item.total }}</strong><span>{{ item.eventType==='HEP_SESSION_COMPLETED'?'训练完成':item.eventType==='HEP_RISK_REPORTED'?'风险上报':item.eventType==='HEP_RISK_REVIEWED'?'风险已审核':item.eventType==='HEP_FEEDBACK_REVIEWED'?'反馈已审核':item.eventType }}</span>
+      </div>
+    </div>
     <el-table :data="events" style="width: 100%; margin-top: 16px">
       <el-table-column prop="event_type" label="事件类型" min-width="165" />
       <el-table-column prop="episode_id" label="疗程" width="95" />
@@ -131,4 +141,8 @@ onMounted(() => {
 
 <style scoped>
 .hint { color: #687787; margin: 14px 0; font-size: 13px; }
+.summary-grid { display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:12px;margin-top:18px;margin-bottom:6px; }
+.summary-cell { border-radius:10px;border:1px solid #cfe3e2;padding:15px;background:#f5faf9; }
+.summary-cell strong { font-size:25px;display:block;color:#117a71; }
+.summary-cell span { color:#61767f;font-size:12px;display:block;margin-top:4px; }
 </style>
