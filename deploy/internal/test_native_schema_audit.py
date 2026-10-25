@@ -1,6 +1,7 @@
 """Synthetic, offline contracts for explicit native legacy adoption."""
 
 import copy
+import os
 from pathlib import Path
 import shutil
 import tempfile
@@ -137,6 +138,24 @@ class NativeMigrationAdapterTests(unittest.TestCase):
         result = self.fixture.run("status", **self.env)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.fixture.assert_read_only(self)
+
+    def test_fake_adapter_never_inherits_operator_native_target(self):
+        with patch.dict(
+            os.environ,
+            {
+                "REHAB_NATIVE_MYSQL_CLIENT_FILE": "/must-not-be-used/client.cnf",
+                "REHAB_NATIVE_MYSQL_DATABASE": "must_not_open_real_database",
+                "REHAB_NATIVE_MYSQL_PORT": "3306",
+            },
+        ):
+            isolated = GuardFixture()
+        self.addCleanup(isolated.close)
+        for key in self.env:
+            self.assertNotIn(key, isolated.env)
+        self.assertNotIn("REHAB_NATIVE_MYSQL_PORT", isolated.env)
+        result = isolated.run("status")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        isolated.assert_read_only(self)
 
     def test_native_missing_ledger_does_not_create_or_baseline(self):
         self.fixture.set_state(ledger=False)

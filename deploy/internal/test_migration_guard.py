@@ -49,6 +49,11 @@ class GuardFixture:
         self.set_state()
         self.env = dict(os.environ)
         self.env.pop('CONFIRM_BASELINE', None)
+        self.env.pop('CONFIRM_ADOPT', None)
+        # Fake-adapter tests must never inherit an operator's real native DB target.
+        for key in ('REHAB_NATIVE_MYSQL_CLIENT_FILE', 'REHAB_NATIVE_MYSQL_DATABASE',
+                    'REHAB_NATIVE_MYSQL_PORT'):
+            self.env.pop(key, None)
         self.env['ENV_FILE_OVERRIDE'] = str(self.deploy / '.env')
         self.env['PATH'] = str(self.bin) + os.pathsep + os.environ['PATH']
         self.env['GUARD_STATE'] = str(self.state)
