@@ -100,7 +100,14 @@ public class RehabHepService {
     public Long createPrescription(Map<String, Object> body, Long therapistUserId) {
         Long patientId = number(body, "patientId");
         Long episodeId = number(body, "episodeId");
-        if (patientId == null || episodeId == null) {
+        if (patientId == null || episodeId == null || therapistUserId == null ||
+                date(body, "startDate") == null ||
+                jdbcTemplate.queryForObject("SELECT COUNT(*) FROM rehab_patient WHERE id=? AND tenant_id=? AND deleted=0",
+                    Integer.class,patientId,tenantId()) != 1 ||
+                jdbcTemplate.queryForObject("SELECT COUNT(*) FROM rehab_episode WHERE id=? AND tenant_id=? AND patient_id=? AND status IN ('active','paused') AND deleted=0",
+                    Integer.class,episodeId,tenantId(),patientId) != 1 ||
+                jdbcTemplate.queryForObject("SELECT COUNT(*) FROM rehab_therapist_assignment WHERE patient_id=? AND tenant_id=? AND therapist_user_id=? AND assign_status='active' AND deleted=0",
+                    Integer.class,patientId,tenantId(),therapistUserId) < 1) {
             throw ServiceExceptionUtil.exception(PATIENT_NOT_EXISTS);
         }
         String no = StrUtil.blankToDefault(text(body, "prescriptionNo"), "HEP-" + System.currentTimeMillis());
@@ -139,20 +146,28 @@ public class RehabHepService {
 
     @Transactional(rollbackFor = Exception.class)
     public void issuePrescription(Long prescriptionId, Long therapistUserId) {
-        Long versionId = jdbcTemplate.queryForObject("SELECT current_version_id FROM rehab_hep_prescription " +
-                "WHERE tenant_id=? AND id=? AND deleted=0", Long.class, tenantId(), prescriptionId);
-        if (versionId == null) {
+        List<Long> versions = jdbcTemplate.query("SELECT p.current_version_id FROM rehab_hep_prescription p " +
+                "JOIN rehab_patient patient ON patient.id=p.patient_id AND patient.tenant_id=p.tenant_id AND patient.deleted=0 " +
+                "JOIN rehab_episode ep ON ep.id=p.episode_id AND ep.tenant_id=p.tenant_id AND ep.patient_id=p.patient_id AND ep.status IN ('active','paused') AND ep.deleted=0 " +
+                "JOIN rehab_therapist_assignment a ON a.patient_id=p.patient_id AND a.tenant_id=p.tenant_id AND a.therapist_user_id=? AND a.assign_status='active' AND a.deleted=0 " +
+                "WHERE p.tenant_id=? AND p.id=? AND p.therapist_user_id=? AND p.status='DRAFT' AND p.start_date IS NOT NULL AND p.deleted=0",
+                (rs,i)->rs.getLong(1),therapistUserId,tenantId(),prescriptionId,therapistUserId);
+        if (versions.size()!=1 || versions.get(0)==null || versions.get(0)<=0) {
             throw ServiceExceptionUtil.exception(PATIENT_NOT_EXISTS);
         }
+        Long versionId = versions.get(0);
         List<Map<String, Object>> items = jdbcTemplate.queryForList("SELECT training_day_no,group_code FROM rehab_hep_prescription_item " +
                 "WHERE tenant_id=? AND version_id=? AND deleted=0 ORDER BY training_day_no,sort_order", tenantId(), versionId);
         if (items.isEmpty()) {
             throw ServiceExceptionUtil.exception(APP_PATIENT_INVITATION_INVALID);
         }
-        jdbcTemplate.update("UPDATE rehab_hep_prescription_version SET status='ISSUED',issued_by=?,issued_time=NOW(),reviewed_by=?,reviewed_time=NOW() " +
-                "WHERE tenant_id=? AND id=? AND status='DRAFT'", therapistUserId, therapistUserId, tenantId(), versionId);
-        jdbcTemplate.update("UPDATE rehab_hep_prescription SET status='ISSUED',core_sync_status='PENDING' WHERE tenant_id=? AND id=?",
-                tenantId(), prescriptionId);
+        if (jdbcTemplate.update("UPDATE rehab_hep_prescription_version SET status='ISSUED',issued_by=?,issued_time=NOW(),reviewed_by=?,reviewed_time=NOW() " +
+                "WHERE tenant_id=? AND id=? AND prescription_id=? AND status='DRAFT'",
+                therapistUserId,therapistUserId,tenantId(),versionId,prescriptionId) != 1 ||
+            jdbcTemplate.update("UPDATE rehab_hep_prescription SET status='ISSUED',core_sync_status='PENDING' WHERE tenant_id=? AND id=? AND status='DRAFT'",
+                tenantId(),prescriptionId) != 1) {
+            throw ServiceExceptionUtil.exception(PATIENT_NOT_EXISTS);
+        }
         Set<Integer> days = new LinkedHashSet<>();
         for (Map<String, Object> item : items) {
             days.add(((Number) item.get("training_day_no")).intValue());

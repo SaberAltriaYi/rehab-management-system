@@ -116,8 +116,8 @@ public class RehabHepBridgeController {
             require(existsPatient(t,p) && existsEpisode(t,p,e));
             require(db.queryForObject("SELECT COUNT(*) FROM rehab_therapist_assignment WHERE tenant_id=? AND patient_id=? AND therapist_user_id=? AND assign_status='active' AND deleted=0",
                 Integer.class,t,p,u)>0);
-            require(db.queryForObject("SELECT COUNT(*) FROM rehab_patient_user_binding WHERE patient_id=? AND app_user_id=? AND bind_status='active' AND deleted=0",
-                Integer.class,p,request.patientAppUserId)>0);
+            require(db.queryForObject("SELECT COUNT(*) FROM rehab_patient_user_binding WHERE tenant_id=? AND patient_id=? AND app_user_id=? AND bind_status='active' AND deleted=0",
+                Integer.class,t,p,request.patientAppUserId)>0);
             return ResponseEntity.ok(Map.of("verified",true,"tenantId",t,"patientId",p,"episodeId",e,"therapistUserId",u));
         } catch (org.springframework.web.server.ResponseStatusException e) {return ResponseEntity.status(401).body(Map.of("error","UNAUTHORIZED"));}
           catch (IllegalArgumentException e) {return ResponseEntity.badRequest().body(Map.of("error","BINDING_NOT_VERIFIED"));}
