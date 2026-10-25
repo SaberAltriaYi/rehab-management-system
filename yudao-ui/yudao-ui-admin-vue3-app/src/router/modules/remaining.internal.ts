@@ -148,7 +148,7 @@ const remainingRouter: AppRouteRecordRaw[] = [
           hidden: true,
           canTo: true,
           noCache: true,
-          activeMenu: '/rehab/patient'
+          activeMenu: '/rehab/hep'
         }
       },
       {

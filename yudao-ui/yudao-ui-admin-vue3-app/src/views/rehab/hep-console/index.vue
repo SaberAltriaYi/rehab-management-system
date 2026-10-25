@@ -1,148 +1,68 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref,onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import request from '@/config/axios'
-
-type EventRow = {
-  event_id: string
-  event_type: string
-  episode_id: number
-  session_id: string
-  review_status: string
-  created_at: string
+import HepWorkspace from './HepWorkspace.vue'
+type EventRow={event_id:string;event_type:string;episode_id:number;session_id:string;review_status:string;created_at:string}
+const route=useRoute()
+const patientId=ref('')
+const rows=ref<EventRow[]>([])
+const error=ref('')
+const pending=ref(false)
+const summary=ref<{periodDays:number;events:{eventType:string;total:number}[];pendingClinicalReview:number;interpretation:string}|null>(null)
+const eventNames:Record<string,string>={HEP_SESSION_COMPLETED:'家庭训练完成',HEP_RISK_REPORTED:'风险上报',
+ HEP_RISK_REVIEWED:'风险已审核',HEP_FEEDBACK_REVIEWED:'反馈已审核'}
+const names:Record<string,string>={PENDING:'待审核',REVIEWED:'已复核'}
+async function loadEvents(){
+ const id=patientId.value.trim()
+ if(!/^[1-9]\d{0,15}$/.test(id)){error.value='请输入有效 Core 患者编号';return}
+ pending.value=true;error.value=''
+ try{
+  const [events,snapshot]=await Promise.all([
+   request.get({url:'/rehab/hep-bridge/patients/'+id+'/events'}),
+   request.get({url:'/rehab/hep-bridge/patients/'+id+'/summary'})
+  ])
+  rows.value=events as EventRow[];summary.value=snapshot as typeof summary.value
+ }catch(e){error.value=e instanceof Error?e.message:'患者不属于当前负责治疗师，或数据不可用'}
+ finally{pending.value=false}
 }
-const hepAdminUrl = 'http://127.0.0.1:5188/'
-const hepTherapistUrl = 'http://127.0.0.1:5192/'
-const pending = ref(false)
-const patientId = ref('')
-const events = ref<EventRow[]>([])
-const summary = ref<{periodDays:number;events:{eventType:string;total:number}[];pendingClinicalReview:number;interpretation:string}|null>(null)
-const error = ref('')
-const route = useRoute()
-
-async function openHep(role: 'admin' | 'therapist') {
-  error.value = ''
-  const hepUrl = role === 'admin' ? hepAdminUrl : hepTherapistUrl
-  const hepOrigin = new URL(hepUrl).origin
-  const popup = window.open(hepUrl, '_blank')
-  if (!popup) {
-    error.value = '浏览器阻止打开 HEP，请允许弹出窗口。'
-    return
-  }
-  let ready = false
-  let token = ''
-  let sent = false
-  let cleanup = () => {}
-  const deliver = () => {
-    if (sent || !ready || !token || popup.closed) return
-    sent = true
-    popup.postMessage({ kind: 'HEP_CORE_TOKEN', token }, hepOrigin)
-    cleanup()
-  }
-  const listener = (event: MessageEvent) => {
-    if (event.source !== popup || event.origin !== hepOrigin || event.data?.kind !== 'HEP_READY') return
-    ready = true
-    deliver()
-  }
-  window.addEventListener('message', listener)
-  const timeout = window.setTimeout(() => {
-    cleanup()
-    if (!sent) error.value = 'HEP 页面未完成安全握手，请检查服务端口。'
-  }, 20000)
-  cleanup = () => {
-    window.removeEventListener('message', listener)
-    window.clearTimeout(timeout)
-  }
-  pending.value = true
-  try {
-    const response = await request.post({ url: role === 'admin'
-      ? '/rehab/hep-auth/admin-token' : '/rehab/hep-auth/therapist-token' }) as { accessToken?: string }
-    if (!response?.accessToken) throw Error('Core 尚未授予当前账号对应的 HEP 权限')
-    token = response.accessToken
-    deliver()
-  } catch (cause) {
-    cleanup()
-    popup.close()
-    error.value = cause instanceof Error ? cause.message : '当前账号没有所需 HEP 权限'
-  } finally {
-    pending.value = false
-  }
+async function review(row:EventRow){
+ if(row.review_status!=='PENDING')return
+ try{
+  await request.post({url:'/rehab/hep-bridge/patients/'+patientId.value.trim()+'/events/'+encodeURIComponent(row.event_id)+'/review'})
+  await loadEvents()
+ }catch(e){error.value=e instanceof Error?e.message:'复核失败'}
 }
-
-async function loadEvents() {
-  error.value = ''
-  const id = patientId.value.trim()
-  if (!/^[1-9]\d{0,15}$/.test(id)) {
-    error.value = '请输入合法的 Core 患者数字 ID'
-    return
-  }
-  try {
-    events.value = await request.get({ url: '/rehab/hep-bridge/patients/' + id + '/events' }) as EventRow[]
-    summary.value = await request.get({ url: '/rehab/hep-bridge/patients/' + id + '/summary' }) as typeof summary.value
-  } catch (cause) {
-    summary.value = null
-    error.value = cause instanceof Error ? cause.message : '没有查看该患者 HEP 事件的权限'
-  }
-}
-async function review(row: EventRow) {
-  if (row.review_status !== 'PENDING') return
-  try {
-    await request.post({ url: '/rehab/hep-bridge/patients/' + patientId.value.trim() + '/events/' +
-      encodeURIComponent(row.event_id) + '/review' })
-    await loadEvents()
-  } catch (cause) {
-    error.value = cause instanceof Error ? cause.message : '人工复核失败'
-  }
-}
-onMounted(() => {
-  const id = route.query.patientId
-  if (typeof id === 'string' && /^[1-9]\d{0,15}$/.test(id)) {
-    patientId.value = id
-    void loadEvents()
-  }
+onMounted(()=>{
+ const id=route.query.patientId
+ if(typeof id==='string'&&/^[1-9]\d{0,15}$/.test(id)){patientId.value=id;void loadEvents()}
 })
 </script>
-
 <template>
-  <ContentWrap>
-    <h2>HEP 家庭康复联动</h2>
-    <p>Rehab Core 管理患者、疗程和治疗师权限；HEP 独立保存训练处方、执行和患者反馈。</p>
-    <el-button type="primary" :loading="pending" @click="openHep('therapist')">进入治疗师 HEP 工作台</el-button>
-    <el-button :loading="pending" @click="openHep('admin')">进入 HEP 管理台</el-button>
-    <p class="hint">治疗师需具备 rehab:hep:prescription:create，管理员需具备 rehab:hep:integration:admin。短期访问令牌经浏览器来源校验传递，不出现在 URL 中。</p>
-    <el-divider />
-    <h3>患者训练与风险回传</h3>
-    <el-input v-model="patientId" style="max-width: 320px" placeholder="Core 患者数字 ID" />
-    <el-button class="ml-2" @click="loadEvents">查看已回传事件</el-button>
-    <div v-if="summary" class="summary-grid">
-      <div class="summary-cell"><strong>{{ summary.periodDays }} 天</strong><span>统计窗口</span></div>
-      <div class="summary-cell"><strong>{{ summary.pendingClinicalReview }}</strong><span>待治疗师复核</span></div>
-      <div v-for="item in summary.events" :key="item.eventType" class="summary-cell">
-        <strong>{{ item.total }}</strong><span>{{ item.eventType==='HEP_SESSION_COMPLETED'?'训练完成':item.eventType==='HEP_RISK_REPORTED'?'风险上报':item.eventType==='HEP_RISK_REVIEWED'?'风险已审核':item.eventType==='HEP_FEEDBACK_REVIEWED'?'反馈已审核':item.eventType }}</span>
-      </div>
-    </div>
-    <el-table :data="events" style="width: 100%; margin-top: 16px">
-      <el-table-column prop="event_type" label="事件类型" min-width="165" />
-      <el-table-column prop="episode_id" label="疗程" width="95" />
-      <el-table-column prop="session_id" label="训练会话" min-width="190" />
-      <el-table-column prop="review_status" label="人工复核" width="120" />
-      <el-table-column label="操作" width="125">
-        <template #default="{ row }">
-          <el-button v-if="row.review_status === 'PENDING'" type="primary" link @click="review(row)">
-            标记已复核
-          </el-button>
-        </template>
-      </el-table-column>
+  <HepWorkspace/>
+  <ContentWrap title="HEP 执行回传与随访复评参考">
+    <p class="help">这里展示 HEP 真实投递到 Core 的执行及风险事件，保留治疗师人工审核。打卡只能由患者在本人训练端执行，治疗师在本页面开方、管理、查看和审核。</p>
+    <el-input v-model="patientId" placeholder="Core 患者 ID" style="max-width:300px"/>
+    <el-button type="primary" :loading="pending" class="ml-12px" @click="loadEvents">查看患者记录</el-button>
+    <el-alert v-if="error" class="mt-12px" type="warning" :title="error" :closable="false" show-icon/>
+    <el-row v-if="summary" :gutter="12" class="mt-16px">
+      <el-col :xs="12" :sm="8" :md="6"><el-card shadow="never">近 {{summary.periodDays}} 天</el-card></el-col>
+      <el-col :xs="12" :sm="8" :md="6"><el-card shadow="never">待复核 {{summary.pendingClinicalReview}} 条</el-card></el-col>
+      <el-col v-for="evt in summary.events" :key="evt.eventType" :xs="12" :sm="8" :md="6">
+        <el-card shadow="never">{{eventNames[evt.eventType]||evt.eventType}}：{{evt.total}}</el-card>
+      </el-col>
+    </el-row>
+    <el-table :data="rows" stripe class="mt-16px">
+      <el-table-column label="事件类型" min-width="160"><template #default="{row}">{{eventNames[row.event_type]||row.event_type}}</template></el-table-column>
+      <el-table-column prop="episode_id" label="疗程" width="95"/>
+      <el-table-column prop="session_id" label="会话" min-width="210"/>
+      <el-table-column label="临床复核" width="130"><template #default="{row}">{{names[row.review_status]||row.review_status}}</template></el-table-column>
+      <el-table-column label="操作" width="120"><template #default="{row}">
+        <el-button v-if="row.review_status==='PENDING'" type="primary" link
+          v-hasPermi="['rehab:hep:feedback:review']" @click="review(row)">标记已复核</el-button>
+      </template></el-table-column>
     </el-table>
-    <p class="hint">这些是训练执行和风险事件，不等于医学诊断；复评需由治疗师通过主系统现有流程创建。</p>
-    <el-alert v-if="error" type="warning" :title="error" show-icon :closable="false" />
+    <p class="help">随访和复评结论仍需治疗师在主系统签署，事件统计不自动形成医学诊断。</p>
   </ContentWrap>
 </template>
-
-<style scoped>
-.hint { color: #687787; margin: 14px 0; font-size: 13px; }
-.summary-grid { display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:12px;margin-top:18px;margin-bottom:6px; }
-.summary-cell { border-radius:10px;border:1px solid #cfe3e2;padding:15px;background:#f5faf9; }
-.summary-cell strong { font-size:25px;display:block;color:#117a71; }
-.summary-cell span { color:#61767f;font-size:12px;display:block;margin-top:4px; }
-</style>
+<style scoped>.help{color:var(--el-text-color-secondary);font-size:13px;line-height:1.7}</style>
