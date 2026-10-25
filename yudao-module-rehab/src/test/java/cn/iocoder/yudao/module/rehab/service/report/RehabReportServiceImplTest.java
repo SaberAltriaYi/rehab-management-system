@@ -272,6 +272,7 @@ class RehabReportServiceImplTest {
                 .assessmentType("initial")
                 .build());
         when(permissionApi.hasAnyRoles(99L, RehabRoleCodeConstants.SUPER_ADMIN)).thenReturn(false);
+        when(permissionApi.hasAnyRoles(99L, "tenant_admin")).thenReturn(false);
         when(permissionApi.hasAnyRoles(99L, RehabRoleCodeConstants.REHAB_CLERK)).thenReturn(false);
         when(permissionApi.hasAnyRoles(99L, RehabRoleCodeConstants.REHAB_THERAPIST)).thenReturn(false);
 
