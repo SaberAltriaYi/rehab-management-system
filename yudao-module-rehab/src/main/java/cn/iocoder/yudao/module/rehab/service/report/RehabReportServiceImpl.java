@@ -79,6 +79,8 @@ public class RehabReportServiceImpl implements RehabReportService {
 
     @Resource
     private RehabReportVersionSequence reportVersionSequence;
+    @Resource
+    private RehabReportGenerationRequests generationRequests;
 
     private static final DateTimeFormatter REPORT_NO_DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyyMMdd");
     private static final String SOFTWARE_NAME = "运动康复评估与业务管理系统";
@@ -186,6 +188,15 @@ public class RehabReportServiceImpl implements RehabReportService {
         RehabAssessmentRecordDO assessment = validateAssessmentExists(reqVO.getAssessmentId());
         validatePatientReadable(assessment.getPatientId(), operatorUserId);
 
+        String reportType = StrUtil.blankToDefault(reqVO.getReportType(), resolveDefaultReportType(assessment.getAssessmentType()));
+        String generationMode = StrUtil.blankToDefault(reqVO.getGenerationMode(), RehabReportConstants.GENERATION_AUTO);
+        String requestFingerprint = null;
+        if (reqVO.getRequestKey() != null) {
+            requestFingerprint = generationRequests.fingerprint(assessment.getId(), reportType, generationMode, reqVO.getNote());
+            RehabReportGenerateRespVO completed = generationRequests.findCompleted(
+                    assessment.getId(), operatorUserId, reqVO.getRequestKey(), requestFingerprint);
+            if (completed != null) return completed;
+        }
         RehabPatientDO patient = patientMapper.selectById(assessment.getPatientId());
         RehabEpisodeDO episode = episodeMapper.selectById(assessment.getEpisodeId());
         List<RehabAssessmentModuleDataDO> modules = moduleDataMapper.selectListByAssessmentId(assessment.getId());
@@ -195,11 +206,11 @@ public class RehabReportServiceImpl implements RehabReportService {
                 .patientId(assessment.getPatientId())
                 .episodeId(assessment.getEpisodeId())
                 .assessmentId(assessment.getId())
-                .reportType(StrUtil.blankToDefault(reqVO.getReportType(), resolveDefaultReportType(assessment.getAssessmentType())))
+                .reportType(reportType)
                 .reportStatus(RehabReportConstants.STATUS_DRAFT)
                 .reportVersion(reportVersion)
                 .generatedBy(operatorUserId)
-                .generationMode(StrUtil.blankToDefault(reqVO.getGenerationMode(), RehabReportConstants.GENERATION_AUTO))
+                .generationMode(generationMode)
                 .lastGeneratedAt(LocalDateTime.now())
                 .note(reqVO.getNote())
                 .build();
@@ -251,6 +262,9 @@ public class RehabReportServiceImpl implements RehabReportService {
         respVO.setReportVersion(reportVersion);
         respVO.setFallbackUsed(fallbackUsed);
         respVO.setFallbackMessage(fallbackMessage);
+        if (reqVO.getRequestKey() != null) {
+            generationRequests.recordCompleted(assessment.getId(), operatorUserId, reqVO.getRequestKey(), requestFingerprint, respVO);
+        }
         return respVO;
     }
 

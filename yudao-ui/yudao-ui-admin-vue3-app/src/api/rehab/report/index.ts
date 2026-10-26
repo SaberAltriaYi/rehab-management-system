@@ -38,6 +38,8 @@ export const getRehabReport = async (id: number) => {
 
 export const generateRehabReport = async (data: {
   assessmentId: number
+  // Same UUID for retries of one intent; a new UUID for an explicit new revision.
+  requestKey?: string
   reportType?: string
   generationMode?: string
   note?: string

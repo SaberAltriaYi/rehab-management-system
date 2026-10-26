@@ -56,6 +56,8 @@ class RehabReportServiceImplTest {
 
     @Mock
     private RehabReportVersionSequence reportVersionSequence;
+    @Mock
+    private RehabReportGenerationRequests generationRequests;
 
     @Mock
     private RehabReportMapper reportMapper;
@@ -86,6 +88,7 @@ class RehabReportServiceImplTest {
     void setUp() throws IOException {
         reportService = new RehabReportServiceImpl();
         ReflectionTestUtils.setField(reportService, "reportVersionSequence", reportVersionSequence);
+        ReflectionTestUtils.setField(reportService, "generationRequests", generationRequests);
 
         RehabDataPermissionService dataPermissionService = new RehabDataPermissionService();
         ReflectionTestUtils.setField(dataPermissionService, "permissionApi", permissionApi);
@@ -167,9 +170,28 @@ class RehabReportServiceImplTest {
     }
 
     @Test
+    void authorizedRequestReplayReturnsBeforeReadingModulesOrWritingAudit() {
+        RehabReportGenerateReqVO request = new RehabReportGenerateReqVO();
+        request.setAssessmentId(20001L);
+        request.setRequestKey("019f1234-abcd-4abc-8abc-0123456789ab");
+        when(assessmentRecordMapper.selectById(20001L)).thenReturn(RehabAssessmentRecordDO.builder()
+                .id(20001L).patientId(10001L).assessmentType("initial").build());
+        when(permissionApi.hasAnyRoles(1L, RehabRoleCodeConstants.SUPER_ADMIN)).thenReturn(true);
+        RehabReportGenerateRespVO original = new RehabReportGenerateRespVO();
+        original.setId(30001L); original.setReportVersion(7); original.setReportNo("SYNTHETIC-REPLAY");
+        when(generationRequests.fingerprint(eq(20001L), anyString(), eq("auto"), isNull())).thenReturn("SYNTHETIC_FINGERPRINT");
+        when(generationRequests.findCompleted(20001L, 1L, request.getRequestKey(), "SYNTHETIC_FINGERPRINT")).thenReturn(original);
+        assertSame(original, reportService.generateReport(request, 1L));
+        verifyNoInteractions(moduleDataMapper, episodeMapper, reportMapper, reportVersionSequence,
+                reportVersionMapper, auditLogService, assessmentOperationLogMapper);
+    }
+
+    @Test
     void generateReport_shouldWorkWithMissingModulesAndKeepStructuredJson() {
         RehabReportGenerateReqVO reqVO = new RehabReportGenerateReqVO();
         reqVO.setAssessmentId(20001L);
+        reqVO.setRequestKey("019f1234-abcd-4abc-8abc-0123456789ab");
+        when(generationRequests.fingerprint(eq(20001L), anyString(), eq("auto"), isNull())).thenReturn("SYNTHETIC_FINGERPRINT");
 
         when(permissionApi.hasAnyRoles(1L, RehabRoleCodeConstants.SUPER_ADMIN)).thenReturn(true);
         when(assessmentRecordMapper.selectById(20001L)).thenReturn(RehabAssessmentRecordDO.builder()
@@ -214,6 +236,8 @@ class RehabReportServiceImplTest {
         assertTrue(updates.stream().anyMatch(item ->
                 item.getReportJson() != null && item.getReportJson().contains("missingModules")));
         verify(assessmentOperationLogMapper).insert(any(RehabAssessmentOperationLogDO.class));
+        verify(generationRequests).recordCompleted(eq(20001L), eq(1L), eq(reqVO.getRequestKey()),
+                eq("SYNTHETIC_FINGERPRINT"), same(respVO));
     }
 
     @Test
@@ -327,6 +351,7 @@ class RehabReportServiceImplTest {
     void generateReport_shouldDenyWhenTherapistHasNoPermission() {
         RehabReportGenerateReqVO reqVO = new RehabReportGenerateReqVO();
         reqVO.setAssessmentId(20001L);
+        reqVO.setRequestKey("019f1234-abcd-4abc-8abc-0123456789ab");
 
         when(assessmentRecordMapper.selectById(20001L)).thenReturn(RehabAssessmentRecordDO.builder()
                 .id(20001L)
@@ -342,6 +367,7 @@ class RehabReportServiceImplTest {
         ServiceException ex = assertThrows(ServiceException.class, () -> reportService.generateReport(reqVO, 99L));
         assertEquals(1_011_000_001, ex.getCode());
         verify(reportMapper, never()).insert(any(RehabReportDO.class));
+        verifyNoInteractions(generationRequests, reportVersionSequence);
     }
 
     @Test

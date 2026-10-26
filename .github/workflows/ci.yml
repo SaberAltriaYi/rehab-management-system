@@ -136,6 +136,10 @@ jobs:
         env:
           REHAB_TEST_MYSQL: '1'
         run: python3 -B -m unittest discover -s deploy/internal -p 'test_report_version_mysql.py' -v
+      - name: Verify report request ledger and current reads on isolated MySQL
+        env:
+          REHAB_TEST_MYSQL: '1'
+        run: python3 -B -m unittest discover -s deploy/internal -p 'test_report_requests_mysql.py' -v
       - name: Test S0 inventory and secret finding boundaries with synthetic inputs
         run: |
           python3 -c 'import sys; assert sys.version_info >= (3, 11), "Python 3.11+ required"'

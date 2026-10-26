@@ -21,7 +21,7 @@ public class RehabReportVersionSequence {
     @Resource private JdbcTemplate jdbcTemplate;
 
     @Transactional(propagation = Propagation.MANDATORY)
-    public int nextVersion(Long assessmentId) {
+    public void lockAssessment(Long assessmentId) {
         if (!TransactionSynchronizationManager.isActualTransactionActive()) {
             throw new IllegalStateException("报告版本分配必须与报告写入位于同一事务");
         }
@@ -31,6 +31,12 @@ public class RehabReportVersionSequence {
                 tenantId, assessmentId).size() != 1) {
             throw exception(ASSESSMENT_NOT_EXISTS);
         }
+    }
+
+    @Transactional(propagation = Propagation.MANDATORY)
+    public int nextVersion(Long assessmentId) {
+        lockAssessment(assessmentId);
+        long tenantId = TenantContextHolder.getRequiredTenantId();
         // Use a locking current read on MySQL REPEATABLE READ: the caller may
         // already have an older snapshot before waiting for the assessment lock.
         // Include deleted versions so historical numbers are never reused.

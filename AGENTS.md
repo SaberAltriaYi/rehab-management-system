@@ -66,9 +66,11 @@ REHAB_TEST_MYSQL=1 python3 -B -m unittest discover -s deploy/internal \
 REHAB_TEST_MYSQL=1 python3 -B -m unittest discover -s deploy/internal \
   -p 'test_report_version_mysql.py' -v
 python3 -B -m unittest discover -s deploy/internal -p 'test_synthetic_mysql.py' -v
+REHAB_TEST_MYSQL=1 python3 -B -m unittest discover -s deploy/internal \
+  -p 'test_report_requests_mysql.py' -v
 ```
 
-Migration 035 is required before running the new backend. Never grant its
+Migrations through 036 are required before deploying this candidate backend. Never grant 035's
 `rehab:patient:data-governance` permission to existing clinic accounts automatically.
 
 ## S0 inventory
