@@ -42,8 +42,9 @@ class SyntheticMySQLSafetyTest(unittest.TestCase):
         with patch("synthetic_mysql.subprocess.run", return_value=SimpleNamespace(returncode=0)) as run:
             mysql.command(["exec", "--env", "MYSQL_PWD", mysql.container, "mysql", "-uroot"])
         args, kwargs = run.call_args
-        self.assertNotIn(mysql.password, str(args))
-        self.assertEqual(mysql.password, kwargs["env"]["MYSQL_PWD"])
+        # Even a failed assertion must not echo the generated credential.
+        self.assertTrue(mysql.password not in str(args), "secret appears in command arguments; value omitted")
+        self.assertTrue(mysql.password == kwargs["env"]["MYSQL_PWD"], "secret environment handoff mismatch; values omitted")
 
 
 if __name__ == "__main__":
