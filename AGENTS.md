@@ -116,3 +116,14 @@ Before a desktop release:
 
 Do not weaken authentication, tenant isolation, upload restrictions, migration checks or TLS verification
 to make desktop packaging pass.
+
+## Local capacity safeguard
+
+Before a new heavyweight local Maven/Vite/Rust/Docker build, check free disk.
+Below 8 GiB, do not start another heavyweight local build; record that local
+check as NOT_RUN and use the already-authorized CI without removing its tests.
+Run heavyweight local builds serially to avoid excessive system swap. This is
+an engineering minimum, not approval for a production backup or upgrade.
+Never alter swap, reboot/stop business services, prune shared Docker assets or
+delete backups to meet it. Only exact, verified, task-owned rebuildable caches
+may be retired; preserve source, evidence and candidate artifacts.
