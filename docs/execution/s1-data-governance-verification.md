@@ -43,3 +43,11 @@
 基线 `9dd4561d` 的 Internal CI 40367389770 全通过；同 SHA 桌面工作流 40367389882 实际阻断于 **L3 商业许可发布要求**，平台打包跳过，未产出新安装器或 Release。不得沿用上一 SHA 的依赖审计失败解释这次阻断，也不得放宽正式闸门。当前批次提交后的 CI、干净源码复验及新资源检查追加在检查点。
 
 日志仅留本机 `/tmp/rehab-s1-origin-*.log` 和 `/tmp/rehab-s1-data-origin-mysql.log`，不提交原始日志、数据库、凭据、真实患者资料。
+
+## 提交后的补验
+
+代码提交 `15659d3561807b81da4de1e6047eabdc13a50363` 已推送同名分支。干净源码副本中的康复60项、Web安全6项全部通过，零跳过；第一份导出缺少根聚合要求的BPM/CRM模块，已补齐同一提交的源码后重跑，未修改项目模块配置或取消断言。
+
+同SHA重新内部前端构建（1013文件与构建凭据匹配）、035脱敏SQL实际空库恢复、最小运行资源生成和完整性检查均通过。新随机Docker项目 `rehab-desktop-e2e-bdbd567d86ad` 四服务健康、严格CA验证、匿名认证拒绝、患者0/账本35通过，自己的容器和随机卷按既有测试清理；不是业务部署/正常身份正向验收/签名安装器。CI最终状态见检查点，不将旧SHA结果充当新提交证明。
+
+[Internal release CI 40377098019](https://github.com/SaberAltriaYi/rehab-management-system/actions/runs/40377098019) 针对15659的六项任务全部成功：backend、business-integration、frontend、mobile、deployment、powershell。新增MySQL专项在Linux CI中实际通过。重复push任务因互斥被取消，未重复计算。正式桌面许可/签名门槛独立，不因这六项成功而批准发布。
