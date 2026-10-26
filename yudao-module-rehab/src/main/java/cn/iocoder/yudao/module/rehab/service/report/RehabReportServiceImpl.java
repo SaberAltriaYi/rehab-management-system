@@ -77,6 +77,9 @@ import static cn.iocoder.yudao.module.rehab.enums.ErrorCodeConstants.*;
 @Validated
 public class RehabReportServiceImpl implements RehabReportService {
 
+    @Resource
+    private RehabReportVersionSequence reportVersionSequence;
+
     private static final DateTimeFormatter REPORT_NO_DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyyMMdd");
     private static final String SOFTWARE_NAME = "运动康复评估与业务管理系统";
     private static final String SOFTWARE_VERSION = "V1.0";
@@ -187,7 +190,7 @@ public class RehabReportServiceImpl implements RehabReportService {
         RehabEpisodeDO episode = episodeMapper.selectById(assessment.getEpisodeId());
         List<RehabAssessmentModuleDataDO> modules = moduleDataMapper.selectListByAssessmentId(assessment.getId());
 
-        int reportVersion = reportMapper.selectListByAssessmentId(assessment.getId()).size() + 1;
+        int reportVersion = reportVersionSequence.nextVersion(assessment.getId());
         RehabReportDO report = RehabReportDO.builder()
                 .patientId(assessment.getPatientId())
                 .episodeId(assessment.getEpisodeId())

@@ -58,6 +58,7 @@ public interface ErrorCodeConstants {
     ErrorCode REPORT_VERSION_NOT_EXISTS = new ErrorCode(1_011_005_008, "报告版本记录不存在");
     ErrorCode REPORT_CAN_NOT_EXPORT = new ErrorCode(1_011_005_009, "报告未审批，不能导出");
     ErrorCode REPORT_DATA_ORIGIN_CHANGED = new ErrorCode(1_011_005_010, "资料已标为模拟，请创建带模拟标识的新报告修订；旧原件保持不变");
+    ErrorCode REPORT_VERSION_SEQUENCE_INVALID = new ErrorCode(1_011_005_011, "报告历史版本异常，请管理员复核；既有报告不会被覆盖");
 
     ErrorCode PLAN_NOT_EXISTS = new ErrorCode(1_011_006_000, "训练计划不存在");
     ErrorCode PLAN_PATIENT_EPISODE_MISMATCH = new ErrorCode(1_011_006_001, "计划关联的患者与 episode 不匹配");

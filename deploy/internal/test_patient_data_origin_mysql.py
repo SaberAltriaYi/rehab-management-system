@@ -3,70 +3,26 @@
 Explicit MySQL 8.4 migration proof, synthetic data only. No ports, network or
 persistent volumes; never uses clinic configuration or native database targets.
 """
-import json
 import os
 from pathlib import Path
 import secrets
-import subprocess
-import time
 import unittest
+from synthetic_mysql import SyntheticMySQL
 
-IMAGE = "mysql:8.4.10@sha256:8dbcf531a03aade657e181b9cf2f1d1803ce621a1d55610cb44cb531ab7d7db6"
 ROOT = Path(__file__).resolve().parents[2]
 
 
 @unittest.skipUnless(os.environ.get("REHAB_TEST_MYSQL") == "1", "explicit isolated MySQL opt-in required")
 class PatientDataOriginMySQLTest(unittest.TestCase):
     @classmethod
-    def command(cls, args, data=None, check=True, timeout=60):
-        env = dict(os.environ, MYSQL_PWD=cls.password, MYSQL_ROOT_PASSWORD=cls.password)
-        result = subprocess.run(["docker", *args], input=data, capture_output=True,
-                                text=True, env=env, timeout=timeout)
-        if check and result.returncode:
-            # Do not include SQL, dump, environment, or possibly sensitive error text.
-            raise RuntimeError(f"isolated MySQL command failed (exit {result.returncode})")
-        return result
-
-    @classmethod
     def setUpClass(cls):
-        cls.password = secrets.token_urlsafe(40)
-        host = os.environ.get("DOCKER_HOST", "")
-        if host and not host.startswith(("unix://", "npipe://")):
-            raise RuntimeError("test refuses a remote Docker daemon")
-        context = cls.command(["context", "inspect"]).stdout
-        endpoint = json.loads(context)[0]["Endpoints"]["docker"]["Host"]
-        if not endpoint.startswith(("unix://", "npipe://")):
-            raise RuntimeError("test requires a local Docker socket")
-        cls.container = "rehab-origin-mysql-" + secrets.token_hex(6)
-        cls.command(["run", "--detach", "--name", cls.container, "--network", "none",
-                     "--tmpfs", "/var/lib/mysql:rw,size=512m", "--env", "MYSQL_ROOT_PASSWORD", IMAGE], timeout=180)
-        cls.addClassCleanup(lambda: cls.command(["rm", "--force", cls.container], check=False))
-        info = json.loads(cls.command(["inspect", cls.container]).stdout)[0]
-        if (info["Name"] != "/" + cls.container or info["HostConfig"]["NetworkMode"] != "none"
-                or info["HostConfig"].get("Binds") or info["HostConfig"].get("PortBindings")
-                or any(m["Type"] != "tmpfs" for m in info.get("Mounts", []))):
-            raise RuntimeError("unexpected test container identity or persistent/network configuration")
-        for _ in range(90):
-            # The image starts a temporary socket server during initialization.
-            # mysqladmin ping can succeed before that server is shut down again.
-            # Only the final mysqld replaces PID 1; require an authenticated query too.
-            process = cls.command(["exec", cls.container, "cat", "/proc/1/comm"], check=False, timeout=10)
-            result = cls.command(["exec", "--env", "MYSQL_PWD", cls.container,
-                                  "mysql", "-uroot", "--batch", "--skip-column-names",
-                                  "--execute", "SELECT 1"], check=False, timeout=10)
-            if process.stdout.strip() == "mysqld" and result.returncode == 0 and result.stdout.strip() == "1":
-                break
-            time.sleep(1)
-        else:
-            raise RuntimeError("synthetic MySQL startup timeout")
+        cls.mysql = SyntheticMySQL()
+        cls.addClassCleanup(cls.mysql.close)
+        cls.mysql.start()
         cls.migration = (ROOT / "sql/mysql/rehab-patient-data-origin-v1.sql").read_text()
 
     def sql(self, value, database=None, check=True):
-        args = ["exec", "--interactive", "--env", "MYSQL_PWD", self.container,
-                "mysql", "-uroot", "--default-character-set=utf8mb4", "--batch", "--skip-column-names", "--binary-mode"]
-        if database:
-            args.append(database)
-        return self.command(args, value, check=check)
+        return self.mysql.sql(value, database, check)
 
     def setUp(self):
         self.database = "origin_case_" + secrets.token_hex(4)
@@ -132,7 +88,7 @@ INSERT INTO rehab_patient(id,tenant_id,patient_no,name,clinical_payload) VALUES
         self.migrate()
         self.sql("UPDATE rehab_patient SET data_origin='SYNTHETIC_ARCHIVED' WHERE id=801;", self.database)
         before = self.original_fields()
-        dump = self.command(["exec", "--env", "MYSQL_PWD", self.container, "mysqldump", "-uroot",
+        dump = self.mysql.command(["exec", "--env", "MYSQL_PWD", self.mysql.container, "mysqldump", "-uroot",
                              "--no-tablespaces", "--set-gtid-purged=OFF", "--default-character-set=utf8mb4", self.database]).stdout
         restored = "origin_restored_" + secrets.token_hex(4)
         self.sql(f"CREATE DATABASE `{restored}` CHARACTER SET utf8mb4;")

@@ -55,6 +55,9 @@ class RehabReportServiceImplTest {
     private RehabReportServiceImpl reportService;
 
     @Mock
+    private RehabReportVersionSequence reportVersionSequence;
+
+    @Mock
     private RehabReportMapper reportMapper;
     @Mock
     private RehabAssessmentRecordMapper assessmentRecordMapper;
@@ -82,6 +85,7 @@ class RehabReportServiceImplTest {
     @BeforeEach
     void setUp() throws IOException {
         reportService = new RehabReportServiceImpl();
+        ReflectionTestUtils.setField(reportService, "reportVersionSequence", reportVersionSequence);
 
         RehabDataPermissionService dataPermissionService = new RehabDataPermissionService();
         ReflectionTestUtils.setField(dataPermissionService, "permissionApi", permissionApi);
@@ -186,7 +190,7 @@ class RehabReportServiceImplTest {
                 .status("active")
                 .build());
         when(moduleDataMapper.selectListByAssessmentId(20001L)).thenReturn(Collections.emptyList());
-        when(reportMapper.selectListByAssessmentId(20001L)).thenReturn(Collections.emptyList());
+        when(reportVersionSequence.nextVersion(20001L)).thenReturn(1);
         doAnswer(invocation -> {
             RehabReportDO report = invocation.getArgument(0);
             report.setId(30001L);
@@ -243,7 +247,7 @@ class RehabReportServiceImplTest {
                         .sourceType("manual")
                         .dataJson("{\"selectedModules\":[\"fms\"],\"modules\":{\"fms\":{\"summary\":{\"totalScore\":16,\"asymmetryCount\":1,\"painDetected\":false,\"riskLevel\":\"normal\",\"conclusion\":\"髋稳定性需继续训练\"}}},\"summary\":{\"conclusion\":\"优先改善髋部控制\"}}")
                         .build()));
-        when(reportMapper.selectListByAssessmentId(20002L)).thenReturn(Collections.emptyList());
+        when(reportVersionSequence.nextVersion(20002L)).thenReturn(1);
         doAnswer(invocation -> {
             RehabReportDO report = invocation.getArgument(0);
             report.setId(30002L);

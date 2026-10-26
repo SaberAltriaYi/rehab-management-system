@@ -63,6 +63,9 @@ MySQL container, no ports or business volumes):
 ```bash
 REHAB_TEST_MYSQL=1 python3 -B -m unittest discover -s deploy/internal \
   -p 'test_patient_data_origin_mysql.py' -v
+REHAB_TEST_MYSQL=1 python3 -B -m unittest discover -s deploy/internal \
+  -p 'test_report_version_mysql.py' -v
+python3 -B -m unittest discover -s deploy/internal -p 'test_synthetic_mysql.py' -v
 ```
 
 Migration 035 is required before running the new backend. Never grant its
