@@ -11,6 +11,12 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  # Push + an existing PR otherwise run the same full suite twice. Include
+  # source repository so a fork cannot cancel the main repository's checks.
+  group: internal-release-${{ github.event.pull_request.head.repo.full_name || github.repository }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
 jobs:
   backend:
     runs-on: ubuntu-latest

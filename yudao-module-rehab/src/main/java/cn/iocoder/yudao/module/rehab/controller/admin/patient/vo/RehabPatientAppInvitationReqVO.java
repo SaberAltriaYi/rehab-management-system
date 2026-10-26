@@ -4,6 +4,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 
 import javax.validation.constraints.Min;
+import javax.validation.constraints.Max;
 import javax.validation.constraints.NotNull;
 
 @Schema(description = "管理后台 - 患者端一次性邀请 Request VO")
@@ -14,7 +15,8 @@ public class RehabPatientAppInvitationReqVO {
     @NotNull
     private Long patientId;
 
-    @Schema(description = "邀请有效分钟数，5-10080", example = "30")
+    @Schema(description = "邀请有效分钟数，5-1440，默认 30 分钟", example = "30")
     @Min(5)
+    @Max(1440)
     private Integer expiresMinutes = 30;
 }

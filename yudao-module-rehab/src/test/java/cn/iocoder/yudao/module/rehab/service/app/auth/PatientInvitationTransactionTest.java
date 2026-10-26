@@ -57,6 +57,9 @@ class PatientInvitationTransactionTest {
                         + ";MODE=MySQL;DB_CLOSE_DELAY=-1;LOCK_TIMEOUT=5000", "sa", "");
         jdbc = new JdbcTemplate(dataSource);
         transaction = new TransactionTemplate(new DataSourceTransactionManager(dataSource));
+        jdbc.execute("CREATE TABLE rehab_patient (tenant_id BIGINT NOT NULL,id BIGINT NOT NULL,"
+                + "deleted BOOLEAN DEFAULT FALSE,PRIMARY KEY(tenant_id,id))");
+        jdbc.update("INSERT INTO rehab_patient (tenant_id,id) VALUES (?,?)", TENANT, PATIENT);
         jdbc.execute("CREATE TABLE rehab_patient_app_invitation (id BIGINT AUTO_INCREMENT PRIMARY KEY, "
                 + "tenant_id BIGINT NOT NULL,patient_id BIGINT NOT NULL,phone VARCHAR(32) NOT NULL,"
                 + "invitation_digest CHAR(64) NOT NULL,expires_at TIMESTAMP NOT NULL,status VARCHAR(16) NOT NULL,"
@@ -228,5 +231,59 @@ class PatientInvitationTransactionTest {
         assertEquals("PENDING", jdbc.queryForObject("SELECT status FROM rehab_patient_app_invitation "
                 + "WHERE tenant_id=? AND invitation_digest=?", String.class, 72L, codec.digest(72L, foreign)));
         assertEquals(PATIENT, redeem(issued));
+    }
+
+    @Test
+    void issuanceLifetimeIsAtMostOneDayWithoutRewritingExistingInvitations() {
+        String previous = validInvitation();
+        assertThrows(ServiceException.class, () -> transaction.execute(ignored ->
+                service.issueInvitation(PATIENT, 1441, 601L)));
+        assertThrows(ServiceException.class, () -> transaction.execute(ignored ->
+                service.issueInvitation(PATIENT, 4, 601L)));
+        assertEquals("PENDING", jdbc.queryForObject("SELECT status FROM rehab_patient_app_invitation "
+                + "WHERE invitation_digest=?", String.class, codec.digest(TENANT, previous)));
+        String issued = transaction.execute(ignored -> service.issueInvitation(PATIENT, 1440, 601L));
+        assertEquals(PATIENT, redeem(issued));
+    }
+
+    @Test
+    void concurrentIssuersLeaveOnlyOneUsableInvitation() throws Exception {
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        CountDownLatch ready = new CountDownLatch(2);
+        CountDownLatch start = new CountDownLatch(1);
+        java.util.concurrent.Callable<String> issue = () -> {
+            TenantContextHolder.setTenantId(TENANT);
+            try {
+                ready.countDown();
+                assertTrue(start.await(10, TimeUnit.SECONDS));
+                return transaction.execute(ignored -> service.issueInvitation(PATIENT, 30, 601L));
+            } finally {
+                TenantContextHolder.clear();
+            }
+        };
+        try {
+            Future<String> first = executor.submit(issue);
+            Future<String> second = executor.submit(issue);
+            assertTrue(ready.await(10, TimeUnit.SECONDS));
+            start.countDown();
+            List<String> codes = Arrays.asList(first.get(10, TimeUnit.SECONDS), second.get(10, TimeUnit.SECONDS));
+            assertNotEquals(codes.get(0), codes.get(1));
+            assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM rehab_patient_app_invitation "
+                    + "WHERE status='PENDING'", Integer.class));
+            int usable = 0;
+            for (String code : codes) {
+                try {
+                    redeem(code);
+                    usable++;
+                } catch (ServiceException expected) {
+                    // One code was explicitly superseded by the later issuance.
+                }
+            }
+            assertEquals(1, usable);
+        } finally {
+            start.countDown();
+            executor.shutdownNow();
+            assertTrue(executor.awaitTermination(10, TimeUnit.SECONDS));
+        }
     }
 }

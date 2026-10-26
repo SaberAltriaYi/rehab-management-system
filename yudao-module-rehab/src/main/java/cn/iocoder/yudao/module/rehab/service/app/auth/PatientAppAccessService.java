@@ -52,16 +52,22 @@ public class PatientAppAccessService {
 
     @Transactional(rollbackFor = Exception.class)
     public String issueInvitation(Long patientId, Integer expiresMinutes, Long operatorUserId) {
-        RehabPatientDO patient = patientMapper.selectById(patientId);
-        if (patient == null || StrUtil.isBlank(patient.getPhone())) {
-            throw exception(PATIENT_NOT_EXISTS);
-        }
         int minutes = expiresMinutes == null ? 30 : expiresMinutes;
-        if (minutes < 5 || minutes > 7 * 24 * 60) {
+        if (minutes < 5 || minutes > 24 * 60) {
             throw exception(APP_PATIENT_INVITATION_INVALID);
         }
         Long tenantId = TenantContextHolder.getRequiredTenantId();
         PatientInvitationTokens tokenCodec = tokens();
+        // Serialize issuance and redemption using the same lock order:
+        // patient row first, invitation row second. Two issuers must not leave
+        // two pending codes, and an issuer/redeemer must not deadlock on FKs.
+        if (!lockPatient(tenantId, patientId)) {
+            throw exception(PATIENT_NOT_EXISTS);
+        }
+        RehabPatientDO patient = patientMapper.selectById(patientId);
+        if (patient == null || StrUtil.isBlank(patient.getPhone())) {
+            throw exception(PATIENT_NOT_EXISTS);
+        }
         String token = tokenCodec.generate();
         String digest = tokenCodec.digest(tenantId, token);
         jdbcTemplate.update("UPDATE rehab_patient_app_invitation SET status='REVOKED' "
@@ -91,11 +97,23 @@ public class PatientAppAccessService {
         } catch (IllegalArgumentException ignored) {
             throw exception(APP_PATIENT_INVITATION_INVALID);
         }
-        // The existing unique (tenant_id, invitation_digest) index limits the
-        // row lock to this invitation, rather than all pending tenant invites.
-        List<Map<String, Object>> rows = jdbcTemplate.queryForList("SELECT id,patient_id,phone,invitation_digest "
-                        + "FROM rehab_patient_app_invitation WHERE tenant_id=? AND invitation_digest=? "
-                        + "AND status='PENDING' AND deleted=FALSE AND expires_at>? FOR UPDATE",
+        String invitationQuery = "SELECT id,patient_id,phone,invitation_digest "
+                + "FROM rehab_patient_app_invitation WHERE tenant_id=? AND invitation_digest=? "
+                + "AND status='PENDING' AND deleted=FALSE AND expires_at>?";
+        // First resolve the patient without holding the invitation lock. Then
+        // lock the patient and revalidate the invitation under its own row lock.
+        List<Map<String, Object>> rows = jdbcTemplate.queryForList(invitationQuery,
+                tenantId, requestedDigest, LocalDateTime.now());
+        if (rows.isEmpty()) {
+            throw exception(APP_PATIENT_INVITATION_INVALID);
+        }
+        Long candidatePatientId = ((Number) rows.get(0).get("patient_id")).longValue();
+        if (!lockPatient(tenantId, candidatePatientId)) {
+            throw exception(APP_PATIENT_INVITATION_INVALID);
+        }
+        // The existing unique (tenant_id, invitation_digest) index limits this
+        // lock to the selected invitation, not the institution's entire queue.
+        rows = jdbcTemplate.queryForList(invitationQuery + " FOR UPDATE",
                 tenantId, requestedDigest, LocalDateTime.now());
         Map<String, Object> matched = null;
         for (Map<String, Object> row : rows) {
@@ -109,6 +127,9 @@ public class PatientAppAccessService {
             throw exception(APP_PATIENT_INVITATION_INVALID);
         }
         Long patientId = ((Number) matched.get("patient_id")).longValue();
+        if (!candidatePatientId.equals(patientId)) {
+            throw exception(APP_PATIENT_INVITATION_INVALID);
+        }
         RehabPatientDO patient = patientMapper.selectById(patientId);
         if (patient == null || !phone.equals(patient.getPhone())
                 || (StrUtil.isNotBlank(patientNo) && !patientNo.equals(patient.getPatientNo()))) {
@@ -160,5 +181,11 @@ public class PatientAppAccessService {
                 || StrUtil.isBlank(phone) || !phone.equals(member.getMobile())) {
             throw exception(APP_PATIENT_INVITATION_INVALID);
         }
+    }
+
+    private boolean lockPatient(Long tenantId, Long patientId) {
+        return patientId != null && jdbcTemplate.queryForList(
+                "SELECT id FROM rehab_patient WHERE tenant_id=? AND id=? AND deleted=FALSE FOR UPDATE",
+                tenantId, patientId).size() == 1;
     }
 }

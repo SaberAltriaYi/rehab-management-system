@@ -68,6 +68,8 @@ class PatientAppAccessServiceTest {
     }
 
     private void pendingInvitation() {
+        when(jdbcTemplate.queryForList(anyString(), eq(TENANT), eq(PATIENT)))
+                .thenReturn(Collections.singletonList(Collections.singletonMap("id", PATIENT)));
         Map<String, Object> row = new HashMap<>();
         row.put("id", 901L);
         row.put("patient_id", PATIENT);
@@ -155,10 +157,13 @@ class PatientAppAccessServiceTest {
         when(jdbcTemplate.update(anyString(), eq(MEMBER), eq(TENANT), eq(901L))).thenReturn(1);
         assertEquals(PATIENT, redeem(PHONE, null));
         ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
-        verify(jdbcTemplate).queryForList(sql.capture(), eq(TENANT), anyString(), any(LocalDateTime.class));
-        assertTrue(sql.getValue().contains("tenant_id=? AND invitation_digest=?"));
-        assertTrue(sql.getValue().contains("deleted=FALSE"));
-        assertTrue(sql.getValue().endsWith("FOR UPDATE"));
+        verify(jdbcTemplate, times(2)).queryForList(sql.capture(), eq(TENANT), anyString(), any(LocalDateTime.class));
+        for (String query : sql.getAllValues()) {
+            assertTrue(query.contains("tenant_id=? AND invitation_digest=?"));
+            assertTrue(query.contains("deleted=FALSE"));
+        }
+        assertFalse(sql.getAllValues().get(0).endsWith("FOR UPDATE"));
+        assertTrue(sql.getAllValues().get(1).endsWith("FOR UPDATE"));
         ArgumentCaptor<RehabPatientUserBindingDO> binding = ArgumentCaptor.forClass(RehabPatientUserBindingDO.class);
         verify(bindingMapper).insert(binding.capture());
         assertEquals("self", binding.getValue().getBindType());
