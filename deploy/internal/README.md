@@ -50,7 +50,7 @@ Compose 内部网络通信。AI 在前端、后端和数据库菜单三处关闭
 # 后端测试和隔离构建
 mvn -pl yudao-module-rehab -am test
 mvn -pl yudao-framework/yudao-spring-boot-starter-web \
-  -am -Dtest=ApiAccessLogInterceptorTest,GlobalExceptionHandlerTest \
+  -am -Dtest=ApiAccessLogPrivacyTest,ApiAccessLogInterceptorTest,GlobalExceptionHandlerTest \
   -Dsurefire.failIfNoSpecifiedTests=false test
 deploy/internal/build-server-isolated.sh
 

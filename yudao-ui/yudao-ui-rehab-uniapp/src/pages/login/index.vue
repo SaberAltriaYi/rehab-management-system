@@ -24,9 +24,9 @@
         <template v-if="patientLoginEnabled">
           <view class="field-group"><text class="field-label">已登记手机号</text><input v-model="patientPhone" class="field-input" type="number" placeholder="请输入手机号" maxlength="11" /></view>
           <view class="field-group code-row"><view class="code-field"><text class="field-label">短信验证码</text><input v-model="patientCode" class="field-input" type="number" placeholder="请输入验证码" maxlength="6" /></view><button class="code-button" :disabled="busy || smsCountdown > 0" @tap="sendCode">{{ smsCountdown > 0 ? `${smsCountdown}s` : '获取验证码' }}</button></view>
-          <view class="field-group"><text class="field-label">患者编号</text><input v-model="patientNo" class="field-input" placeholder="机构提供的患者编号" maxlength="64" /></view>
-          <view class="field-group"><text class="field-label">一次性邀请</text><input v-model="invitationCode" class="field-input" placeholder="机构签发的短期邀请码" maxlength="128" /></view>
-          <view class="notice-box patient-warning">短信登录只建立会员会话；患者数据须经机构邀请绑定后才能访问。患者端不提供全量动作库或自由组课。</view>
+          <view class="field-group"><text class="field-label">患者编号（首次绑定填写）</text><input v-model="patientNo" class="field-input" placeholder="机构提供的患者编号" maxlength="64" /></view>
+          <view class="field-group"><text class="field-label">一次性邀请（首次绑定填写）</text><input v-model="invitationCode" class="field-input" placeholder="已绑定者不需要重复填写" maxlength="43" /></view>
+          <view class="notice-box patient-warning">首次使用须经机构邀请绑定，之后使用已绑定手机号和短信验证码登录。关闭或刷新页面后需重新登录；患者端不提供全量动作库或自由组课。</view>
         </template>
         <view v-else class="notice-box patient-warning patient-login-closed">患者端登录暂未开放。完成短信服务、邀请绑定、令牌安全存储和安全验收后才会开放。</view>
       </template>
@@ -107,8 +107,12 @@ async function sendCode(): Promise<void> {
 
 async function submitPatient(): Promise<void> {
   if (!patientLoginEnabled) { errorMessage.value = '患者端当前未开放。'; return }
-  if (!tenantName.value.trim() || !/^1\d{10}$/.test(patientPhone.value) || !patientCode.value || !patientNo.value.trim() || !invitationCode.value.trim()) {
-    errorMessage.value = '请完整填写租户、手机号、验证码、患者编号和邀请码。'
+  if (!tenantName.value.trim() || !/^1\d{10}$/.test(patientPhone.value) || !patientCode.value) {
+    errorMessage.value = '请完整填写租户、手机号和验证码。'
+    return
+  }
+  if (invitationCode.value.trim() && (!patientNo.value.trim() || !/^[A-Za-z0-9_-]{43}$/.test(invitationCode.value.trim()))) {
+    errorMessage.value = '首次绑定请填写患者编号和完整的 43 位一次性邀请码。'
     return
   }
   busy.value = true

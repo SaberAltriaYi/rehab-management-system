@@ -10,6 +10,9 @@ export interface MobileSession {
 }
 
 const STORAGE_KEY = 'rehab.mobile.session.v1'
+// Patient credentials live only for this process/page lifecycle. Never put
+// health-data access or refresh tokens into generic persistent UniApp storage.
+let patientSession: MobileSession | null = null
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
@@ -47,11 +50,16 @@ function isValidPatientSession(value: unknown): value is MobileSession {
 }
 
 export function getSession(): MobileSession | null {
+  if (patientSession) {
+    if (isValidPatientSession(patientSession)) return { ...patientSession }
+    patientSession = null
+  }
   try {
     const value: unknown = uni.getStorageSync(STORAGE_KEY)
     if (value === '' || value === null || value === undefined) return null
-    // Storage is untrusted. Patient sessions are short-lived and never carry a refresh token.
-    if (!isValidStaffSession(value) && !isValidPatientSession(value)) {
+    // All persisted patient credentials, including previously valid short-lived
+    // ones, are legacy data and must be removed rather than silently restored.
+    if (!isValidStaffSession(value)) {
       clearSession()
       return null
     }
@@ -71,10 +79,17 @@ export function saveSession(session: MobileSession): void {
     clearSession()
     throw new Error('会话无效或已过期，请重新登录。')
   }
-  uni.setStorageSync(STORAGE_KEY, session)
+  if (session.mode === 'patient') {
+    uni.removeStorageSync(STORAGE_KEY)
+    patientSession = { ...session }
+  } else {
+    patientSession = null
+    uni.setStorageSync(STORAGE_KEY, session)
+  }
 }
 
 export function clearSession(): void {
+  patientSession = null
   try {
     uni.removeStorageSync(STORAGE_KEY)
   } catch {

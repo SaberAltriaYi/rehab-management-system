@@ -1,12 +1,16 @@
 package cn.iocoder.yudao.module.rehab.service.app.auth;
 
 import cn.hutool.core.util.StrUtil;
+import cn.iocoder.yudao.framework.common.enums.CommonStatusEnum;
 import cn.iocoder.yudao.framework.tenant.core.context.TenantContextHolder;
+import cn.iocoder.yudao.module.member.api.user.MemberUserApi;
+import cn.iocoder.yudao.module.member.api.user.dto.MemberUserRespDTO;
 import cn.iocoder.yudao.module.rehab.dal.dataobject.binding.RehabPatientUserBindingDO;
 import cn.iocoder.yudao.module.rehab.dal.dataobject.patient.RehabPatientDO;
 import cn.iocoder.yudao.module.rehab.dal.mysql.binding.RehabPatientUserBindingMapper;
 import cn.iocoder.yudao.module.rehab.dal.mysql.patient.RehabPatientMapper;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -33,6 +37,8 @@ public class PatientAppAccessService {
     private RehabPatientMapper patientMapper;
     @Resource
     private RehabPatientUserBindingMapper bindingMapper;
+    @Resource
+    private MemberUserApi memberUserApi;
 
     @Value("${yudao.rehab.patient-auth.invitation-secret:}")
     private String invitationSecret;
@@ -70,14 +76,27 @@ public class PatientAppAccessService {
     @Transactional(rollbackFor = Exception.class)
     public Long redeemInvitation(String patientNo, String phone, String invitation, String bindType,
                                  String nickname, Long appUserId) {
-        if (appUserId == null || StrUtil.isBlank(phone) || StrUtil.isBlank(invitation)) {
+        // Only self-enrollment is supported by this invitation schema. A client
+        // cannot claim caregiver/imported status without a separate consent flow.
+        if (appUserId == null || StrUtil.isBlank(phone) || StrUtil.isBlank(invitation)
+                || (StrUtil.isNotBlank(bindType) && !"self".equals(bindType))) {
             throw exception(APP_PATIENT_INVITATION_INVALID);
         }
         Long tenantId = TenantContextHolder.getRequiredTenantId();
+        requireCurrentMemberPhone(appUserId, phone);
         PatientInvitationTokens tokenCodec = tokens();
+        String requestedDigest;
+        try {
+            requestedDigest = tokenCodec.digest(tenantId, invitation);
+        } catch (IllegalArgumentException ignored) {
+            throw exception(APP_PATIENT_INVITATION_INVALID);
+        }
+        // The existing unique (tenant_id, invitation_digest) index limits the
+        // row lock to this invitation, rather than all pending tenant invites.
         List<Map<String, Object>> rows = jdbcTemplate.queryForList("SELECT id,patient_id,phone,invitation_digest "
-                        + "FROM rehab_patient_app_invitation WHERE tenant_id=? AND status='PENDING' "
-                        + "AND expires_at>? ORDER BY id DESC FOR UPDATE", tenantId, LocalDateTime.now());
+                        + "FROM rehab_patient_app_invitation WHERE tenant_id=? AND invitation_digest=? "
+                        + "AND status='PENDING' AND deleted=FALSE AND expires_at>? FOR UPDATE",
+                tenantId, requestedDigest, LocalDateTime.now());
         Map<String, Object> matched = null;
         for (Map<String, Object> row : rows) {
             String digest = String.valueOf(row.get("invitation_digest"));
@@ -100,9 +119,15 @@ public class PatientAppAccessService {
             throw exception(APP_PATIENT_BINDING_CONFLICT);
         }
         if (existing == null) {
-            bindingMapper.insert(RehabPatientUserBindingDO.builder().patientId(patientId).appUserId(appUserId)
-                    .bindType(StrUtil.blankToDefault(bindType, "self")).bindStatus("active")
-                    .phone(phone).nickname(StrUtil.blankToDefault(nickname, patient.getName())).build());
+            try {
+                bindingMapper.insert(RehabPatientUserBindingDO.builder().patientId(patientId).appUserId(appUserId)
+                        .bindType("self").bindStatus("active")
+                        .phone(phone).nickname(StrUtil.blankToDefault(nickname, patient.getName())).build());
+            } catch (DuplicateKeyException ignored) {
+                // A concurrent invitation for another patient may win the unique
+                // active-member binding. Roll back this entire redemption.
+                throw exception(APP_PATIENT_BINDING_CONFLICT);
+            }
         }
         int updated = jdbcTemplate.update("UPDATE rehab_patient_app_invitation SET status='REDEEMED', "
                         + "redeemed_by_user_id=?,redeemed_at=NOW() WHERE tenant_id=? AND id=? AND status='PENDING'",
@@ -114,8 +139,26 @@ public class PatientAppAccessService {
     }
 
     public void validateActiveBinding(Long appUserId) {
-        if (appUserId == null || bindingMapper.selectActiveByAppUserId(appUserId) == null) {
+        RehabPatientUserBindingDO binding = appUserId == null ? null
+                : bindingMapper.selectActiveByAppUserId(appUserId);
+        if (binding == null) {
             throw exception(APP_PATIENT_BINDING_REQUIRED);
+        }
+        // Binding rows alone must not keep access alive after disabling a member
+        // or changing either side's phone. Re-enrollment requires a new invitation.
+        requireCurrentMemberPhone(appUserId, binding.getPhone());
+        RehabPatientDO patient = patientMapper.selectById(binding.getPatientId());
+        if (patient == null || !StrUtil.equals(binding.getPhone(), patient.getPhone())) {
+            throw exception(APP_PATIENT_BINDING_REQUIRED);
+        }
+    }
+
+    private void requireCurrentMemberPhone(Long appUserId, String phone) {
+        MemberUserRespDTO member = memberUserApi.getUser(appUserId);
+        if (member == null || !appUserId.equals(member.getId())
+                || !CommonStatusEnum.ENABLE.getStatus().equals(member.getStatus())
+                || StrUtil.isBlank(phone) || !phone.equals(member.getMobile())) {
+            throw exception(APP_PATIENT_INVITATION_INVALID);
         }
     }
 }

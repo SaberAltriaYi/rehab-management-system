@@ -80,7 +80,7 @@ jobs:
           mvn -B -ntp
           -pl yudao-framework/yudao-spring-boot-starter-web
           -am
-          -Dtest=ApiAccessLogInterceptorTest,GlobalExceptionHandlerTest
+          -Dtest=ApiAccessLogPrivacyTest,ApiAccessLogInterceptorTest,GlobalExceptionHandlerTest
           -Dsurefire.failIfNoSpecifiedTests=false
           test
 

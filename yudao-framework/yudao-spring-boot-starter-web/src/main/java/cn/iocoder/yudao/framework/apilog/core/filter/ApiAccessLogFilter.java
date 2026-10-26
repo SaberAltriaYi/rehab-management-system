@@ -9,6 +9,7 @@ import cn.hutool.core.util.BooleanUtil;
 import cn.hutool.core.util.StrUtil;
 import cn.iocoder.yudao.framework.apilog.core.annotation.ApiAccessLog;
 import cn.iocoder.yudao.framework.apilog.core.enums.OperateTypeEnum;
+import cn.iocoder.yudao.framework.apilog.core.util.ApiLogPrivacy;
 import cn.iocoder.yudao.framework.common.biz.infra.logger.ApiAccessLogCommonApi;
 import cn.iocoder.yudao.framework.common.biz.infra.logger.dto.ApiAccessLogCreateReqDTO;
 import cn.iocoder.yudao.framework.common.exception.enums.GlobalErrorCodeConstants;
@@ -49,7 +50,8 @@ import static cn.iocoder.yudao.framework.common.util.json.JsonUtils.toJsonString
 @Slf4j
 public class ApiAccessLogFilter extends ApiRequestFilter {
 
-    private static final String[] SANITIZE_KEYS = new String[]{"password", "token", "accessToken", "refreshToken"};
+    private static final String[] SANITIZE_KEYS = new String[]{"password", "token", "accessToken", "refreshToken",
+            "invitation", "invitationCode", "code", "smsCode", "verificationCode", "authorization"};
 
     private final String applicationName;
 
@@ -127,15 +129,16 @@ public class ApiAccessLogFilter extends ApiRequestFilter {
                 .setRequestUrl(request.getRequestURI()).setRequestMethod(request.getMethod())
                 .setUserAgent(ServletUtils.getUserAgent(request)).setUserIp(ServletUtils.getClientIP(request));
         String[] sanitizeKeys = accessLogAnnotation != null ? accessLogAnnotation.sanitizeKeys() : null;
+        boolean omitPayload = ApiLogPrivacy.omitPayload(request.getRequestURI(), handlerMethod);
         Boolean requestEnable = accessLogAnnotation != null ? accessLogAnnotation.requestEnable() : Boolean.TRUE;
-        if (!BooleanUtil.isFalse(requestEnable)) { // 默认记录，所以判断 !false
+        if (!omitPayload && !BooleanUtil.isFalse(requestEnable)) {
             Map<String, Object> requestParams = MapUtil.<String, Object>builder()
                     .put("query", sanitizeMap(queryString, sanitizeKeys))
                     .put("body", sanitizeJson(requestBody, sanitizeKeys)).build();
             accessLog.setRequestParams(toJsonString(requestParams));
         }
         Boolean responseEnable = accessLogAnnotation != null ? accessLogAnnotation.responseEnable() : Boolean.FALSE;
-        if (BooleanUtil.isTrue(responseEnable)) { // 默认不记录，默认强制要求 true
+        if (!omitPayload && BooleanUtil.isTrue(responseEnable)) {
             accessLog.setResponseBody(sanitizeJson(result, sanitizeKeys));
         }
         // 持续时间
@@ -199,13 +202,15 @@ public class ApiAccessLogFilter extends ApiRequestFilter {
             return null;
         }
         try {
-            JsonNode rootNode = JsonUtils.parseTree(jsonString);
+            // JsonUtils.parseTree logs its raw input on parser failure; the
+            // diagnostic path must use the parser without that side effect.
+            JsonNode rootNode = JsonUtils.getObjectMapper().readTree(jsonString);
             sanitizeJson(rootNode, sanitizeKeys);
             return JsonUtils.toJsonString(rootNode);
         } catch (Exception e) {
             // 脱敏失败的情况下，直接忽略异常，避免影响用户请求
-            log.error("[sanitizeJson][脱敏({}) 发生异常]", jsonString, e);
-            return jsonString;
+            log.warn("[sanitizeJson][无法安全解析请求参数，已省略原文]");
+            return null;
         }
     }
 
@@ -215,13 +220,13 @@ public class ApiAccessLogFilter extends ApiRequestFilter {
         }
         String jsonString = toJsonString(commonResult);
         try {
-            JsonNode rootNode = JsonUtils.parseTree(jsonString);
+            JsonNode rootNode = JsonUtils.getObjectMapper().readTree(jsonString);
             sanitizeJson(rootNode.get("data"), sanitizeKeys); // 只处理 data 字段，不处理 code、msg 字段，避免错误被脱敏掉
             return JsonUtils.toJsonString(rootNode);
         } catch (Exception e) {
             // 脱敏失败的情况下，直接忽略异常，避免影响用户请求
-            log.error("[sanitizeJson][脱敏({}) 发生异常]", jsonString, e);
-            return jsonString;
+            log.warn("[sanitizeJson][无法安全解析响应参数，已省略原文]");
+            return null;
         }
     }
 

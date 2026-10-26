@@ -29,7 +29,7 @@ Use JDK 17 for Maven; the current tests fail with Byte Buddy/Mockito on JDK 23.
 ```bash
 mvn -B -pl yudao-module-rehab -am test
 mvn -B -pl yudao-framework/yudao-spring-boot-starter-web \
-  -am -Dtest=ApiAccessLogInterceptorTest,GlobalExceptionHandlerTest \
+  -am -Dtest=ApiAccessLogPrivacyTest,ApiAccessLogInterceptorTest,GlobalExceptionHandlerTest \
   -Dsurefire.failIfNoSpecifiedTests=false test
 deploy/internal/build-server-isolated.sh
 # CRM 候选验收包（正式内部版本仍默认关闭 CRM）
