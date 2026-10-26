@@ -43,8 +43,11 @@ if git grep -n -I -E \
   ':(exclude)script/rehab/check-repository-sensitive-materials.sh' \
   ':(exclude)yudao-ui/yudao-ui-admin-vue3-app/package-lock.json' \
   ':(exclude)yudao-ui/yudao-ui-admin-vue3-app/pnpm-lock.yaml' > "$RESULT_FILE"; then
-  sed 's/^/  /' "$RESULT_FILE" >&2
-  fail "发现高置信度私钥或访问令牌"
+  # One exact PEM-header stripping expression is not a key. Keep every real
+  # payload/other finding blocking and never echo its credential contents.
+  if ! python3 "$SCRIPT_DIR/sensitive_findings.py" < "$RESULT_FILE"; then
+    fail "发现高置信度私钥或访问令牌，或匹配结果无法安全复核"
+  fi
 else
   grep_status=$?
   [ "$grep_status" -eq 1 ] || fail "Git 工作树凭据扫描失败（git grep 退出 ${grep_status}）"

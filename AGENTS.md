@@ -57,6 +57,20 @@ node --test desktop/scripts/*.test.mjs
 desktop/scripts/test-runtime-e2e.sh # controlled test Docker environment; uses unique test volumes/images, never business volumes
 ```
 
+## S0 inventory
+
+Python 3.11+, read-only; not a production release gate:
+
+```bash
+python3 -B script/rehab/s0_inventory.py
+python3 -B script/rehab/s0_inventory.py --probe
+python3 -B -m unittest discover -s script/rehab -p 'test_s0_inventory.py' -v
+```
+
+Keep runtime directories in place. S0 registry classifications are preservation/review decisions,
+not authorization to delete, move, merge or deploy assets. Do not collect `.env`, databases,
+patient media or private archive contents into snapshots. See `docs/s0/README.md`.
+
 ## Files that must never be committed
 
 - Runtime `.env` files or generated settings containing passwords.

@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "product": "运动康复评估与业务管理系统",
+  "scope": "my-project 康复产品线；只登记目录，不授权搬迁、删除或自动升级",
+  "gitFieldMeaning": "git表示允许查询该路径的Git元数据，不代替实际sourceVersion结果；false表示不查询而不是全目录没有Git的证明",
+  "assets": [
+    {"id":"core","path":"rehab/rehab-management-system","class":"active_business_source","decision":"keep","purpose":"机构业务、患者/疗程、现场评估与正式归档主入口","git":true},
+    {"id":"reporter","path":"rehab/services/rehab-reporter","class":"active_business_source","decision":"keep","purpose":"独立评估/报告工作区唯一新业务开发入口；旧服务兼容维护","git":true},
+    {"id":"hep","path":"hep-home-training-platform","class":"active_business_source","decision":"keep","purpose":"HEP 后端、动作内容及患者执行端；机构/治疗师壳不重复扩建","git":true},
+    {"id":"research-engine","path":"rehab/services/rehab-biomechanics-engine","class":"research_source","decision":"keep_research","purpose":"研究算法与合同来源，不冒充已临床验收的生产引擎","git":true},
+    {"id":"unversioned-engine-copy","path":"rehab-biomechanics-engine","class":"divergence_review","decision":"preserve_pending_provenance","purpose":"同名但非已证明重复；先做源码摘要差异登记，禁止直接删除","git":false},
+    {"id":"core-motion-worktree","path":"rehab/worktrees/motion-assessment","class":"historical_worktree","decision":"preserve_pending_owner_review","purpose":"旧主系统工作树，不作为本版主入口","git":true},
+    {"id":"core-license-worktree","path":"rehab/worktrees/l7-motion-license-integration-20261010","class":"historical_worktree","decision":"preserve_pending_owner_review","purpose":"许可集成历史状态，先保留恢复能力","git":true},
+    {"id":"saas-worktree","path":"rehab/worktrees/saas-platform-v2","class":"deferred_product_worktree","decision":"preserve_not_first_release","purpose":"SaaS 开发线，不能与内部版自动合并部署","git":true},
+    {"id":"engine-motion-worktree","path":"rehab/worktrees/engine-motion-assessment","class":"research_worktree","decision":"preserve_pending_comparison","purpose":"研究/报告集成来源，未确认合并等同性","git":true},
+    {"id":"engine-suite-worktree","path":"rehab/worktrees/engine-unified-suite","class":"research_worktree","decision":"preserve_pending_comparison","purpose":"另一研究分支，记录而不切换","git":true},
+    {"id":"synthetic-one","path":"rehab/services/saas-synthetic-20261013-9864e56ffa","class":"historical_rehearsal","decision":"preserve_pending_cleanup_review","purpose":"历史合成演练目录，不作为交付来源","git":false},
+    {"id":"synthetic-two","path":"rehab/services/saas-synthetic-20261013-a385b8b92a","class":"historical_rehearsal","decision":"preserve_pending_cleanup_review","purpose":"历史合成演练目录，不自动运行","git":false},
+    {"id":"synthetic-unified","path":"rehab/services/saas-unified-synthetic-bf90e30-20261013","class":"historical_rehearsal","decision":"preserve_pending_cleanup_review","purpose":"历史合成演练目录，不自动运行","git":false},
+    {"id":"runtime","path":"rehab-runtime","class":"private_runtime","decision":"preserve_in_place","purpose":"目录只登记；另行校验已明确固定的后端JAR，不读取env/业务库/媒体/日志/备份","git":false},
+    {"id":"archive","path":"archives","class":"private_archive","decision":"preserve_in_place","purpose":"历史归档及可能含秘密的运维备份；不扫描内容","git":false},
+    {"id":"release-artifacts","path":"rehab/releases","class":"release_archive","decision":"preserve_in_place","purpose":"历史发布材料，不依据文件存在认定当前已发布","git":false},
+    {"id":"qa-evidence","path":"rehab/validation-evidence","class":"private_evidence","decision":"preserve_in_place","purpose":"历史验收材料，可能含敏感数据，不扫描内容","git":false},
+    {"id":"rehab-data","path":"rehab/data","class":"private_data","decision":"preserve_in_place","purpose":"业务/历史数据目录，不扫描内容","git":false},
+    {"id":"rehab-artifacts","path":"rehab/artifacts","class":"generated_artifacts","decision":"preserve_pending_provenance","purpose":"已有产物，不直接作为源码或发布版本","git":false},
+    {"id":"dev-bridge","path":"shuncode-bridge-auto-resume","class":"development_tool","decision":"keep_outside_clinical_runtime","purpose":"开发恢复工具，不成为临床部署必需依赖","git":true}
+  ],
+  "outOfScope": ["顶层隐藏视频/审阅目录和个人素材不读取、不整理", "未登记路径不自动发现或扫描", "本轮不合并分支，不重构目录，不删除历史资产"]
+}

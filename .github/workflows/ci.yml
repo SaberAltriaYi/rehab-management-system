@@ -118,6 +118,10 @@ jobs:
           sh -n rehabctl.sh
       - name: Test migration safety guards
         run: python3 -m unittest discover -s deploy/internal -p 'test_migration_guard.py' -v
+      - name: Test S0 inventory and secret finding boundaries with synthetic inputs
+        run: |
+          python3 -c 'import sys; assert sys.version_info >= (3, 11), "Python 3.11+ required"'
+          python3 -B -m unittest discover -s script/rehab -p 'test_s0_inventory.py' -v
       - name: Verify migration checksums
         run: deploy/internal/migrate.sh verify-files
       - name: Validate Compose configuration
