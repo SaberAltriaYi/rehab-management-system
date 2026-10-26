@@ -24,12 +24,25 @@
         <el-skeleton-item variant="rect" style="height: 180px" />
       </template>
       <template #default>
+        <el-alert
+          v-if="detail?.patient?.dataOrigin && detail.patient.dataOrigin !== 'REAL'"
+          class="mb-12px"
+          type="warning"
+          :closable="false"
+          show-icon
+          :title="
+            detail.patient.dataOrigin === 'SYNTHETIC_ARCHIVED'
+              ? '已归档模拟资料：原记录保留，可由获授权管理员恢复；不计入业务统计。'
+              : '模拟数据／非临床用途：仅供软件验收，不计入业务统计。'
+          "
+        />
         <el-row :gutter="12" class="mb-12px">
           <el-col :span="16">
             <el-card shadow="never">
               <template #header>基本信息</template>
               <el-descriptions :column="2" border>
                 <el-descriptions-item label="患者编号">{{ detail?.patient?.patientNo || '-' }}</el-descriptions-item>
+                <el-descriptions-item label="数据来源">{{ detail?.patient?.dataOrigin || '旧版后端未提供' }}</el-descriptions-item>
                 <el-descriptions-item label="姓名">{{ detail?.patient?.name || '-' }}</el-descriptions-item>
                 <el-descriptions-item label="性别">
                   <dict-tag :type="DICT_TYPE.SYSTEM_USER_SEX" :value="detail?.patient?.gender ?? ''" />

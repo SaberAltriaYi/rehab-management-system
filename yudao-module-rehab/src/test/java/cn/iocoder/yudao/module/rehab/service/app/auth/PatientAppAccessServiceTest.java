@@ -254,6 +254,17 @@ class PatientAppAccessServiceTest {
     }
 
     @Test
+    void archivedSyntheticPatientCannotContinueBoundSession() {
+        activeBinding();
+        currentMember();
+        when(patientMapper.selectById(PATIENT)).thenReturn(RehabPatientDO.builder()
+                .id(PATIENT).phone(PHONE).dataOrigin("SYNTHETIC_ARCHIVED").build());
+        ServiceException error = assertThrows(ServiceException.class, () -> service.validateActiveBinding(MEMBER));
+        assertEquals(APP_PATIENT_BINDING_REQUIRED.getCode(), error.getCode());
+        verify(bindingMapper, never()).updateById(any(RehabPatientUserBindingDO.class));
+    }
+
+    @Test
     void unchangedActiveMemberAndPatientCanContinueSession() {
         activeBinding();
         currentMember();

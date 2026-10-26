@@ -116,6 +116,14 @@
       </template>
       <el-table-column label="患者编号" prop="patientNo" min-width="160" />
       <el-table-column label="患者姓名" prop="patientName" min-width="150" />
+      <el-table-column label="数据来源" min-width="150">
+        <template #default="scope">
+          <el-tag v-if="scope.row.dataOrigin && scope.row.dataOrigin !== 'REAL'" type="warning"
+            >模拟／非临床用途</el-tag
+          >
+          <span v-else>{{ scope.row.dataOrigin === 'REAL' ? '业务数据' : '旧版未提供' }}</span>
+        </template>
+      </el-table-column>
       <el-table-column label="评估数量" prop="assessmentCount" min-width="110" align="center" />
       <el-table-column label="报告数量" prop="reportCount" min-width="110" align="center">
         <template #default="scope">

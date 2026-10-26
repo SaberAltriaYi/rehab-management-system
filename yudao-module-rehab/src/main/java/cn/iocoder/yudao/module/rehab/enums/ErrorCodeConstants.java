@@ -15,6 +15,9 @@ public interface ErrorCodeConstants {
     ErrorCode PATIENT_DUPLICATE_SUSPECTED = new ErrorCode(1_011_000_003, "存在可能重复建档患者");
     ErrorCode PATIENT_IMPORT_FILE_TOO_LARGE = new ErrorCode(1_011_000_004, "患者导入文件不能超过 5 MB");
     ErrorCode PATIENT_IMPORT_ROWS_EXCEEDED = new ErrorCode(1_011_000_005, "患者单次导入不能超过 2000 行");
+    ErrorCode PATIENT_DATA_ORIGIN_CONFLICT = new ErrorCode(1_011_000_006, "资料来源状态已变化，请刷新后重新确认");
+    ErrorCode PATIENT_DATA_ORIGIN_INVALID = new ErrorCode(1_011_000_007, "资料来源操作无效，模拟资料不能改回真实资料");
+    ErrorCode PATIENT_DATA_CONFIRMATION_REQUIRED = new ErrorCode(1_011_000_008, "请准确输入患者编号并填写操作理由");
 
     ErrorCode CRM_BINDING_NOT_EXISTS = new ErrorCode(1_011_001_000, "CRM 绑定记录不存在");
     ErrorCode CRM_BINDING_CONFLICT = new ErrorCode(1_011_001_001, "CRM 客户已绑定其他患者，发生冲突");
@@ -54,6 +57,7 @@ public interface ErrorCodeConstants {
     ErrorCode REPORT_CAN_NOT_UNLOCK = new ErrorCode(1_011_005_007, "当前报告状态不可解锁");
     ErrorCode REPORT_VERSION_NOT_EXISTS = new ErrorCode(1_011_005_008, "报告版本记录不存在");
     ErrorCode REPORT_CAN_NOT_EXPORT = new ErrorCode(1_011_005_009, "报告未审批，不能导出");
+    ErrorCode REPORT_DATA_ORIGIN_CHANGED = new ErrorCode(1_011_005_010, "资料已标为模拟，请创建带模拟标识的新报告修订；旧原件保持不变");
 
     ErrorCode PLAN_NOT_EXISTS = new ErrorCode(1_011_006_000, "训练计划不存在");
     ErrorCode PLAN_PATIENT_EPISODE_MISMATCH = new ErrorCode(1_011_006_001, "计划关联的患者与 episode 不匹配");

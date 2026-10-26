@@ -7,6 +7,7 @@ import cn.iocoder.yudao.module.member.api.user.MemberUserApi;
 import cn.iocoder.yudao.module.member.api.user.dto.MemberUserRespDTO;
 import cn.iocoder.yudao.module.rehab.dal.dataobject.binding.RehabPatientUserBindingDO;
 import cn.iocoder.yudao.module.rehab.dal.dataobject.patient.RehabPatientDO;
+import cn.iocoder.yudao.module.rehab.enums.RehabPatientDataOrigin;
 import cn.iocoder.yudao.module.rehab.dal.mysql.binding.RehabPatientUserBindingMapper;
 import cn.iocoder.yudao.module.rehab.dal.mysql.patient.RehabPatientMapper;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -65,7 +66,7 @@ public class PatientAppAccessService {
             throw exception(PATIENT_NOT_EXISTS);
         }
         RehabPatientDO patient = patientMapper.selectById(patientId);
-        if (patient == null || StrUtil.isBlank(patient.getPhone())) {
+        if (patient == null || StrUtil.isBlank(patient.getPhone()) || RehabPatientDataOrigin.ARCHIVED.equals(patient.getDataOrigin())) {
             throw exception(PATIENT_NOT_EXISTS);
         }
         String token = tokenCodec.generate();
@@ -131,7 +132,7 @@ public class PatientAppAccessService {
             throw exception(APP_PATIENT_INVITATION_INVALID);
         }
         RehabPatientDO patient = patientMapper.selectById(patientId);
-        if (patient == null || !phone.equals(patient.getPhone())
+        if (patient == null || RehabPatientDataOrigin.ARCHIVED.equals(patient.getDataOrigin()) || !phone.equals(patient.getPhone())
                 || (StrUtil.isNotBlank(patientNo) && !patientNo.equals(patient.getPatientNo()))) {
             throw exception(APP_PATIENT_INVITATION_INVALID);
         }
@@ -169,7 +170,8 @@ public class PatientAppAccessService {
         // or changing either side's phone. Re-enrollment requires a new invitation.
         requireCurrentMemberPhone(appUserId, binding.getPhone());
         RehabPatientDO patient = patientMapper.selectById(binding.getPatientId());
-        if (patient == null || !StrUtil.equals(binding.getPhone(), patient.getPhone())) {
+        if (patient == null || RehabPatientDataOrigin.ARCHIVED.equals(patient.getDataOrigin())
+                || !StrUtil.equals(binding.getPhone(), patient.getPhone())) {
             throw exception(APP_PATIENT_BINDING_REQUIRED);
         }
     }

@@ -13,6 +13,9 @@ public class RehabPatientExportRespVO {
     @ExcelProperty("患者编号")
     private String patientNo;
 
+    @ExcelProperty("数据来源（REAL业务/SYNTHETIC模拟/SYNTHETIC_ARCHIVED已归档模拟）")
+    private String dataOrigin;
+
     @ExcelProperty("姓名")
     private String name;
 

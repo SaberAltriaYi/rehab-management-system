@@ -57,6 +57,17 @@ node --test desktop/scripts/*.test.mjs
 desktop/scripts/test-runtime-e2e.sh # controlled test Docker environment; uses unique test volumes/images, never business volumes
 ```
 
+Synthetic patient provenance migration (local Docker only, random disposable
+MySQL container, no ports or business volumes):
+
+```bash
+REHAB_TEST_MYSQL=1 python3 -B -m unittest discover -s deploy/internal \
+  -p 'test_patient_data_origin_mysql.py' -v
+```
+
+Migration 035 is required before running the new backend. Never grant its
+`rehab:patient:data-governance` permission to existing clinic accounts automatically.
+
 ## S0 inventory
 
 Python 3.11+, read-only; not a production release gate:

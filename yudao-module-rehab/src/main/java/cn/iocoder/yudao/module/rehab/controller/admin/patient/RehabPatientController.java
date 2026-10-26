@@ -7,6 +7,7 @@ import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
 import cn.iocoder.yudao.module.rehab.controller.admin.patient.vo.*;
 import cn.iocoder.yudao.module.rehab.service.app.auth.PatientAppAccessService;
 import cn.iocoder.yudao.module.rehab.service.patient.RehabPatientService;
+import cn.iocoder.yudao.module.rehab.service.patient.RehabPatientDataGovernanceService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -41,6 +42,16 @@ public class RehabPatientController {
 
     @Resource
     private PatientAppAccessService patientAppAccessService;
+
+    @Resource
+    private RehabPatientDataGovernanceService dataGovernanceService;
+
+    @PostMapping("/data-governance")
+    @Operation(summary = "确认模拟资料来源、逻辑归档或恢复（不删除数据）")
+    @PreAuthorize("@ss.hasPermission('rehab:patient:data-governance')")
+    public CommonResult<String> changeDataOrigin(@Valid @RequestBody RehabPatientDataGovernanceReqVO request) {
+        return success(dataGovernanceService.changeOrigin(request, getLoginUserId()));
+    }
 
     @GetMapping("/page")
     @Operation(summary = "获得患者分页")

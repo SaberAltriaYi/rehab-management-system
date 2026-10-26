@@ -22,7 +22,7 @@ class RehabOpsTenantAdminTest {
         RehabPatientMapper patients = mock(RehabPatientMapper.class);
         ReflectionTestUtils.setField(service, "dataPermissionService", permissions);
         ReflectionTestUtils.setField(service, "patientMapper", patients);
-        when(patients.selectList()).thenReturn(Collections.emptyList());
+        when(patients.selectList(any(com.baomidou.mybatisplus.core.conditions.Wrapper.class))).thenReturn(Collections.emptyList());
         assertDoesNotThrow(() -> service.getOpsWorkload(21L));
         assertFalse(permissions.isSuperAdmin(21L));
     }

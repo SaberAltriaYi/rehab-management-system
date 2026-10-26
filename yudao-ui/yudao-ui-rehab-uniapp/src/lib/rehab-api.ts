@@ -3,6 +3,7 @@ import { apiRequest } from './api'
 export interface PageResult<T> { list: T[]; total: number }
 export interface PatientMini {
   id: number; patientNo: string; name: string; currentStage?: string; activePlanStatus?: string;
+  dataOrigin?: string;
   latestCheckinDate?: string; hasHighRiskTrigger?: boolean
 }
 export interface PatientTask {

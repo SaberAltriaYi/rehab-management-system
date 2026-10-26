@@ -3,6 +3,7 @@ import request from '@/config/axios'
 export interface RehabPatientVO {
   id: number
   patientNo: string
+  dataOrigin?: 'REAL' | 'SYNTHETIC' | 'SYNTHETIC_ARCHIVED'
   name: string
   gender?: number
   birthday?: string
@@ -20,6 +21,7 @@ export interface RehabPatientPageReqVO {
   pageNo: number
   pageSize: number
   keyword?: string
+  dataOrigin?: 'REAL' | 'SYNTHETIC' | 'SYNTHETIC_ARCHIVED'
   currentTherapistUserId?: number
   currentStage?: string
   crmBindStatus?: string
@@ -154,6 +156,18 @@ export const getRehabPatient = async (id: number) => {
   return await request.get<RehabPatientDetailVO>({ url: '/rehab/patient/get', params: { id } })
 }
 
+export interface RehabPatientDataGovernanceRequest {
+  patientId: number
+  confirmPatientNo: string
+  expectedDataOrigin: 'REAL' | 'SYNTHETIC' | 'SYNTHETIC_ARCHIVED'
+  operation: 'MARK_SYNTHETIC' | 'ARCHIVE_SYNTHETIC' | 'RESTORE_SYNTHETIC'
+  reason: string
+}
+
+export const changeRehabPatientDataOrigin = async (data: RehabPatientDataGovernanceRequest) => {
+  return await request.post<string>({ url: '/rehab/patient/data-governance', data })
+}
+
 export const createRehabPatient = async (data: RehabPatientCreateReqVO) => {
   return await request.post({ url: '/rehab/patient/create', data })
 }
@@ -183,11 +197,17 @@ export const unbindRehabPatientCrm = async (data: { patientId: number; remark?: 
 }
 
 export const getRehabPatientCrmBinding = async (id: number) => {
-  return await request.get<RehabPatientCrmBindingVO>({ url: '/rehab/patient/crm-binding', params: { id } })
+  return await request.get<RehabPatientCrmBindingVO>({
+    url: '/rehab/patient/crm-binding',
+    params: { id }
+  })
 }
 
 export const getRehabPatientMemberBinding = async (id: number) => {
-  return await request.get<RehabPatientMemberBindingVO>({ url: '/rehab/patient/member-binding', params: { id } })
+  return await request.get<RehabPatientMemberBindingVO>({
+    url: '/rehab/patient/member-binding',
+    params: { id }
+  })
 }
 
 export const checkRehabPatientCrmConflict = async (data: {

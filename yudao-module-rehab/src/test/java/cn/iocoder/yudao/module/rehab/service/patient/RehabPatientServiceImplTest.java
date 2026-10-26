@@ -227,10 +227,42 @@ class RehabPatientServiceImplTest {
         String expectedPrefix = "PT" + LocalDate.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
         assertTrue(respVO.getPatientNo().startsWith(expectedPrefix));
         assertTrue(respVO.getPatientNo().endsWith("0123"));
+        verify(patientMapper).insert(org.mockito.ArgumentMatchers.<RehabPatientDO>argThat(
+                inserted -> "REAL".equals(inserted.getDataOrigin())));
         verify(patientMapper).updateById(org.mockito.ArgumentMatchers.<RehabPatientDO>argThat(update ->
                 Objects.equals(update.getId(), 123L)
                         && Objects.equals(update.getPatientNo(), respVO.getPatientNo())));
         verify(operationLogMapper).insert(any(RehabPatientOperationLogDO.class));
+    }
+
+    @Test
+    void ordinaryImportRejectsSyntheticAndArchivedSourcesBeforeAnyPatientWrite() {
+        RehabPatientImportExcelVO synthetic = new RehabPatientImportExcelVO();
+        synthetic.setName("模拟导入夹具");
+        synthetic.setDataOrigin("SYNTHETIC");
+        RehabPatientImportExcelVO archived = new RehabPatientImportExcelVO();
+        archived.setName("归档导入夹具");
+        archived.setDataOrigin("SYNTHETIC_ARCHIVED");
+        RehabPatientImportRespVO result = patientService.importPatients(List.of(synthetic, archived), 1L);
+        assertEquals(2, result.getFailureCount());
+        assertEquals(0, result.getCreatedCount());
+        assertTrue(result.getFailures().stream().allMatch(row -> row.getReason().contains("不能通过普通导入")));
+        verifyNoInteractions(patientMapper, episodeService, operationLogMapper);
+    }
+
+    @Test
+    void ordinaryPatientUpdateNeverResetsSyntheticOrigin() {
+        RehabPatientDO patient = RehabPatientDO.builder().id(81L).dataOrigin("SYNTHETIC").build();
+        when(patientMapper.selectById(81L)).thenReturn(patient);
+        when(permissionApi.hasAnyRoles(1L, RehabRoleCodeConstants.SUPER_ADMIN)).thenReturn(true);
+        cn.iocoder.yudao.module.rehab.controller.admin.patient.vo.RehabPatientUpdateReqVO request =
+                new cn.iocoder.yudao.module.rehab.controller.admin.patient.vo.RehabPatientUpdateReqVO();
+        request.setId(81L);
+        request.setName("模拟更新夹具");
+        patientService.updatePatient(request, 1L);
+        verify(patientMapper).updateById(org.mockito.ArgumentMatchers.<RehabPatientDO>argThat(
+                update -> update.getId().equals(81L) && update.getDataOrigin() == null));
+        assertEquals("SYNTHETIC", patient.getDataOrigin());
     }
 
     @Test

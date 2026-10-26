@@ -7,6 +7,7 @@ import lombok.EqualsAndHashCode;
 import lombok.ToString;
 
 import java.time.LocalDateTime;
+import javax.validation.constraints.Pattern;
 
 @Schema(description = "管理后台 - 患者分页 Request VO")
 @Data
@@ -16,6 +17,10 @@ public class RehabPatientPageReqVO extends PageParam {
 
     @Schema(description = "关键字（姓名/手机号/患者编号）", example = "张")
     private String keyword;
+
+    @Schema(description = "数据来源；不传时排除已归档模拟资料，不排除普通临床档案")
+    @Pattern(regexp = "|REAL|SYNTHETIC|SYNTHETIC_ARCHIVED")
+    private String dataOrigin;
 
     @Schema(description = "当前治疗师用户编号", example = "105")
     private Long currentTherapistUserId;

@@ -36,6 +36,7 @@ import cn.iocoder.yudao.module.rehab.dal.mysql.trigger.RehabReassessmentTriggerM
 import cn.iocoder.yudao.module.rehab.enums.RehabAlertConstants;
 import cn.iocoder.yudao.module.rehab.enums.RehabAppConstants;
 import cn.iocoder.yudao.module.rehab.enums.RehabPlanConstants;
+import cn.iocoder.yudao.module.rehab.enums.RehabPatientDataOrigin;
 import cn.iocoder.yudao.module.rehab.enums.RehabRoleCodeConstants;
 import cn.iocoder.yudao.module.rehab.service.RehabDataPermissionService;
 import cn.iocoder.yudao.module.rehab.service.alert.RehabAlertService;
@@ -68,6 +69,7 @@ import java.util.stream.Collectors;
 import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static cn.iocoder.yudao.module.rehab.enums.ErrorCodeConstants.APP_ADMIN_LOGIN_FORBIDDEN;
 import static cn.iocoder.yudao.module.rehab.enums.ErrorCodeConstants.PATIENT_NO_PERMISSION;
+import static cn.iocoder.yudao.module.rehab.service.workspace.RehabStatisticsScope.realRecords;
 
 @Service
 @Validated
@@ -128,7 +130,11 @@ public class RehabAppAdminServiceImpl implements RehabAppAdminService {
         Set<Long> visiblePatientIds = dataPermissionService.getVisiblePatientIds(loginUserId);
 
         AppAdminDashboardSummaryRespVO respVO = new AppAdminDashboardSummaryRespVO();
-        respVO.setMyPatientCount(visiblePatientIds == null ? patientMapper.selectCount() : Long.valueOf(visiblePatientIds.size()));
+        respVO.setMyPatientCount(visiblePatientIds != null && visiblePatientIds.isEmpty() ? 0L
+                : patientMapper.selectCount(new LambdaQueryWrapperX<RehabPatientDO>()
+                .eq(RehabPatientDO::getDataOrigin, RehabPatientDataOrigin.REAL)
+                .inIfPresent(RehabPatientDO::getId, visiblePatientIds)));
+        respVO.setUnreadNotificationCount(notificationService.countUnreadForAdminUser(loginUserId));
 
         LambdaQueryWrapperX<RehabReassessmentTriggerDO> pendingQuery = new LambdaQueryWrapperX<RehabReassessmentTriggerDO>()
                 .eq(RehabReassessmentTriggerDO::getTriggerStatus, RehabPlanConstants.TRIGGER_STATUS_PENDING);
@@ -138,16 +144,19 @@ public class RehabAppAdminServiceImpl implements RehabAppAdminService {
                 respVO.setHighRiskCount(0L);
                 respVO.setTodayNeedFocusCount(0L);
                 respVO.setAbnormalCheckinCount(0L);
+                respVO.setPendingAlertCount(0L);
                 return respVO;
             }
             pendingQuery.in(RehabReassessmentTriggerDO::getPatientId, visiblePatientIds);
         }
-        List<RehabReassessmentTriggerDO> pendingTriggers = triggerMapper.selectList(pendingQuery);
+        List<RehabReassessmentTriggerDO> pendingTriggers = triggerMapper.selectList(
+                realRecords(pendingQuery));
         respVO.setPendingReassessmentCount((long) pendingTriggers.size());
         respVO.setHighRiskCount(pendingTriggers.stream()
                 .filter(item -> ObjUtil.equals(item.getTriggerLevel(), RehabPlanConstants.TRIGGER_LEVEL_HIGH))
                 .count());
-        long pendingAlertCount = alertEventMapper.selectCount(new LambdaQueryWrapperX<RehabAlertEventDO>()
+        long pendingAlertCount = alertEventMapper.selectCount(
+                realRecords(new LambdaQueryWrapperX<RehabAlertEventDO>())
                 .eq(RehabAlertEventDO::getStatus, RehabAlertConstants.STATUS_ACTIVE)
                 .inIfPresent(RehabAlertEventDO::getPatientId, visiblePatientIds));
         respVO.setPendingAlertCount(pendingAlertCount);
@@ -158,13 +167,13 @@ public class RehabAppAdminServiceImpl implements RehabAppAdminService {
         if (visiblePatientIds != null) {
             todayQuery.in(RehabDailyCheckinDO::getPatientId, visiblePatientIds);
         }
-        List<RehabDailyCheckinDO> todayCheckins = checkinMapper.selectList(todayQuery);
+        List<RehabDailyCheckinDO> todayCheckins = checkinMapper.selectList(
+                realRecords(todayQuery));
         long abnormalCount = todayCheckins.stream().filter(item ->
                 (item.getPainScoreAfter() != null && item.getPainScoreAfter().compareTo(new BigDecimal("6")) >= 0)
                         || (item.getOverallCompletionRate() != null && item.getOverallCompletionRate().compareTo(new BigDecimal("60")) < 0)
         ).count();
         respVO.setAbnormalCheckinCount(abnormalCount);
-        respVO.setUnreadNotificationCount(notificationService.countUnreadForAdminUser(loginUserId));
         return respVO;
     }
 
@@ -179,6 +188,7 @@ public class RehabAppAdminServiceImpl implements RehabAppAdminService {
             AppAdminPatientMiniRespVO vo = new AppAdminPatientMiniRespVO();
             vo.setId(item.getId());
             vo.setPatientNo(item.getPatientNo());
+            vo.setDataOrigin(item.getDataOrigin());
             vo.setName(item.getName());
             vo.setCurrentStage(item.getCurrentStage());
             vo.setUpdateTime(item.getUpdateTime());

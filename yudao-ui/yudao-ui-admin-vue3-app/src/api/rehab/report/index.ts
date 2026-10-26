@@ -15,6 +15,7 @@ export interface RehabReportPageReqVO {
 }
 
 export interface RehabReportPatientRespVO {
+  dataOrigin?: string
   patientId: number
   patientNo: string
   patientName: string

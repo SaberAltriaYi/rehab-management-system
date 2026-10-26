@@ -28,6 +28,8 @@ public class RehabPatientDO extends BaseDO {
      * 患者编号（系统自动生成）
      */
     private String patientNo;
+    /** REAL / SYNTHETIC / SYNTHETIC_ARCHIVED; null on partial updates means unchanged. */
+    private String dataOrigin;
     private String name;
     private Integer gender;
     private LocalDate birthday;

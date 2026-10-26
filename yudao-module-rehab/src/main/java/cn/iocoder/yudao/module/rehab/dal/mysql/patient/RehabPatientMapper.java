@@ -6,6 +6,7 @@ import cn.iocoder.yudao.framework.mybatis.core.mapper.BaseMapperX;
 import cn.iocoder.yudao.framework.mybatis.core.query.LambdaQueryWrapperX;
 import cn.iocoder.yudao.module.rehab.controller.admin.patient.vo.RehabPatientPageReqVO;
 import cn.iocoder.yudao.module.rehab.dal.dataobject.patient.RehabPatientDO;
+import cn.iocoder.yudao.module.rehab.enums.RehabPatientDataOrigin;
 import org.apache.ibatis.annotations.Mapper;
 
 import java.util.Collection;
@@ -40,6 +41,11 @@ public interface RehabPatientMapper extends BaseMapperX<RehabPatientDO> {
             query.and(wrapper -> wrapper.like(RehabPatientDO::getName, reqVO.getKeyword())
                     .or().like(RehabPatientDO::getPhone, reqVO.getKeyword())
                     .or().like(RehabPatientDO::getPatientNo, reqVO.getKeyword()));
+        }
+        if (StrUtil.isBlank(reqVO.getDataOrigin())) {
+            query.ne(RehabPatientDO::getDataOrigin, RehabPatientDataOrigin.ARCHIVED);
+        } else {
+            query.eq(RehabPatientDO::getDataOrigin, reqVO.getDataOrigin());
         }
         if (visiblePatientIds != null) {
             query.in(RehabPatientDO::getId, visiblePatientIds);

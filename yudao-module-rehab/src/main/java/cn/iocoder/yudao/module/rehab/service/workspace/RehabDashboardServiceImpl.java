@@ -20,6 +20,7 @@ import cn.iocoder.yudao.module.rehab.dal.mysql.report.RehabReportMapper;
 import cn.iocoder.yudao.module.rehab.dal.mysql.trigger.RehabReassessmentTriggerMapper;
 import cn.iocoder.yudao.module.rehab.enums.RehabAlertConstants;
 import cn.iocoder.yudao.module.rehab.enums.RehabPatientStatusConstants;
+import cn.iocoder.yudao.module.rehab.enums.RehabPatientDataOrigin;
 import cn.iocoder.yudao.module.rehab.enums.RehabPlanConstants;
 import cn.iocoder.yudao.module.rehab.enums.RehabReportConstants;
 import cn.iocoder.yudao.module.rehab.service.RehabDataPermissionService;
@@ -40,6 +41,7 @@ import java.util.stream.Collectors;
 
 import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static cn.iocoder.yudao.module.rehab.enums.ErrorCodeConstants.PATIENT_NO_PERMISSION;
+import static cn.iocoder.yudao.module.rehab.service.workspace.RehabStatisticsScope.realRecords;
 
 @Service
 @Validated
@@ -81,16 +83,18 @@ public class RehabDashboardServiceImpl implements RehabDashboardService {
             return vo;
         }
 
-        vo.setMyPatientCount(visiblePatientIds == null ? patientMapper.selectCount() : (long) visiblePatientIds.size());
-        vo.setActivePlanCount(planMapper.selectCount(new LambdaQueryWrapperX<RehabCarePlanDO>()
+        vo.setMyPatientCount(patientMapper.selectCount(new LambdaQueryWrapperX<RehabPatientDO>()
+                .eq(RehabPatientDO::getDataOrigin, RehabPatientDataOrigin.REAL)
+                .inIfPresent(RehabPatientDO::getId, visiblePatientIds)));
+        vo.setActivePlanCount(planMapper.selectCount(realRecords(new LambdaQueryWrapperX<RehabCarePlanDO>())
                 .eq(RehabCarePlanDO::getStatus, RehabPlanConstants.PLAN_STATUS_ACTIVE)
                 .inIfPresent(RehabCarePlanDO::getPatientId, visiblePatientIds)));
         vo.setPendingReassessmentCount(reassessmentTriggerMapper.selectCount(
-                new LambdaQueryWrapperX<cn.iocoder.yudao.module.rehab.dal.dataobject.trigger.RehabReassessmentTriggerDO>()
+                realRecords(new LambdaQueryWrapperX<cn.iocoder.yudao.module.rehab.dal.dataobject.trigger.RehabReassessmentTriggerDO>())
                         .eq(cn.iocoder.yudao.module.rehab.dal.dataobject.trigger.RehabReassessmentTriggerDO::getTriggerStatus, RehabPlanConstants.TRIGGER_STATUS_PENDING)
                         .inIfPresent(cn.iocoder.yudao.module.rehab.dal.dataobject.trigger.RehabReassessmentTriggerDO::getPatientId, visiblePatientIds)));
 
-        List<RehabAlertEventDO> activeAlerts = alertEventMapper.selectList(new LambdaQueryWrapperX<RehabAlertEventDO>()
+        List<RehabAlertEventDO> activeAlerts = alertEventMapper.selectList(realRecords(new LambdaQueryWrapperX<RehabAlertEventDO>())
                 .eq(RehabAlertEventDO::getStatus, RehabAlertConstants.STATUS_ACTIVE)
                 .inIfPresent(RehabAlertEventDO::getPatientId, visiblePatientIds));
         vo.setHighRiskPatientCount(activeAlerts.stream()
@@ -107,7 +111,7 @@ public class RehabDashboardServiceImpl implements RehabDashboardService {
         if (visiblePatientIds != null) {
             assessmentQuery.in(RehabAssessmentRecordDO::getPatientId, visiblePatientIds);
         }
-        vo.setWeeklyNewAssessmentCount(assessmentRecordMapper.selectCount(assessmentQuery));
+        vo.setWeeklyNewAssessmentCount(assessmentRecordMapper.selectCount(realRecords(assessmentQuery)));
         vo.setUnreadNotificationCount(notificationService.countUnreadForAdminUser(operatorUserId));
         return vo;
     }
@@ -215,30 +219,32 @@ public class RehabDashboardServiceImpl implements RehabDashboardService {
         validateOpsPermission(operatorUserId);
         RehabOpsDashboardSummaryRespVO vo = new RehabOpsDashboardSummaryRespVO();
 
-        vo.setPatientTotal(patientMapper.selectCount());
+        vo.setPatientTotal(patientMapper.selectCount(new LambdaQueryWrapperX<RehabPatientDO>()
+                .eq(RehabPatientDO::getDataOrigin, RehabPatientDataOrigin.REAL)));
         vo.setActivePatientTotal(patientMapper.selectCount(new LambdaQueryWrapperX<RehabPatientDO>()
+                .eq(RehabPatientDO::getDataOrigin, RehabPatientDataOrigin.REAL)
                 .eq(RehabPatientDO::getCurrentStatus, RehabPatientStatusConstants.ACTIVE)));
-        vo.setActivePlanTotal(planMapper.selectCount(new LambdaQueryWrapperX<RehabCarePlanDO>()
+        vo.setActivePlanTotal(planMapper.selectCount(realRecords(new LambdaQueryWrapperX<RehabCarePlanDO>())
                 .eq(RehabCarePlanDO::getStatus, RehabPlanConstants.PLAN_STATUS_ACTIVE)));
 
         LocalDate weekStart = LocalDate.now().with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
         LocalDate weekEnd = LocalDate.now().with(TemporalAdjusters.nextOrSame(DayOfWeek.SUNDAY));
-        vo.setWeeklyNewAssessmentTotal(assessmentRecordMapper.selectCount(new LambdaQueryWrapperX<RehabAssessmentRecordDO>()
+        vo.setWeeklyNewAssessmentTotal(assessmentRecordMapper.selectCount(realRecords(new LambdaQueryWrapperX<RehabAssessmentRecordDO>())
                 .between(RehabAssessmentRecordDO::getAssessmentDate, weekStart, weekEnd)));
 
-        vo.setPendingReassessmentTotal(reassessmentTriggerMapper.selectCount(new LambdaQueryWrapperX<RehabReassessmentTriggerDO>()
+        vo.setPendingReassessmentTotal(reassessmentTriggerMapper.selectCount(realRecords(new LambdaQueryWrapperX<RehabReassessmentTriggerDO>())
                 .eq(RehabReassessmentTriggerDO::getTriggerStatus, RehabPlanConstants.TRIGGER_STATUS_PENDING)));
-        vo.setHighRiskTotal(alertEventMapper.selectCount(new LambdaQueryWrapperX<RehabAlertEventDO>()
+        vo.setHighRiskTotal(alertEventMapper.selectCount(realRecords(new LambdaQueryWrapperX<RehabAlertEventDO>())
                 .eq(RehabAlertEventDO::getStatus, RehabAlertConstants.STATUS_ACTIVE)
                 .eq(RehabAlertEventDO::getSeverity, RehabAlertConstants.SEVERITY_HIGH)));
-        vo.setReportGeneratedTotal(reportMapper.selectCount());
-        vo.setReportExportedTotal(reportMapper.selectCount(new LambdaQueryWrapperX<RehabReportDO>()
+        vo.setReportGeneratedTotal(reportMapper.selectCount(realRecords(new LambdaQueryWrapperX<RehabReportDO>())));
+        vo.setReportExportedTotal(reportMapper.selectCount(realRecords(new LambdaQueryWrapperX<RehabReportDO>())
                 .in(RehabReportDO::getReportStatus, Arrays.asList(RehabReportConstants.STATUS_EXPORTED, RehabReportConstants.STATUS_LOCKED))));
-        vo.setLowAdherenceTotal(alertEventMapper.selectCount(new LambdaQueryWrapperX<RehabAlertEventDO>()
+        vo.setLowAdherenceTotal(alertEventMapper.selectCount(realRecords(new LambdaQueryWrapperX<RehabAlertEventDO>())
                 .eq(RehabAlertEventDO::getStatus, RehabAlertConstants.STATUS_ACTIVE)
                 .eq(RehabAlertEventDO::getAlertType, RehabAlertConstants.TYPE_LOW_ADHERENCE)));
 
-        List<RehabDailyCheckinDO> checkins = checkinMapper.selectList(new LambdaQueryWrapperX<RehabDailyCheckinDO>()
+        List<RehabDailyCheckinDO> checkins = checkinMapper.selectList(realRecords(new LambdaQueryWrapperX<RehabDailyCheckinDO>())
                 .between(RehabDailyCheckinDO::getCheckinDate, weekStart, weekEnd));
         if (CollUtil.isEmpty(checkins)) {
             vo.setAvgCheckinCompletionRate(BigDecimal.ZERO);
@@ -259,7 +265,8 @@ public class RehabDashboardServiceImpl implements RehabDashboardService {
     @Override
     public List<RehabOpsWorkloadRespVO> getOpsWorkload(Long operatorUserId) {
         validateOpsPermission(operatorUserId);
-        List<RehabPatientDO> patients = patientMapper.selectList();
+        List<RehabPatientDO> patients = patientMapper.selectList(new LambdaQueryWrapperX<RehabPatientDO>()
+                .eq(RehabPatientDO::getDataOrigin, RehabPatientDataOrigin.REAL));
         Map<Long, List<RehabPatientDO>> grouped = patients.stream()
                 .filter(item -> item.getCurrentTherapistUserId() != null)
                 .collect(Collectors.groupingBy(RehabPatientDO::getCurrentTherapistUserId));
@@ -288,7 +295,7 @@ public class RehabDashboardServiceImpl implements RehabDashboardService {
     @Override
     public List<RehabOpsRiskOverviewRespVO> getOpsRiskOverview(Long operatorUserId) {
         validateOpsPermission(operatorUserId);
-        List<RehabAlertEventDO> alerts = alertEventMapper.selectList(new LambdaQueryWrapperX<RehabAlertEventDO>()
+        List<RehabAlertEventDO> alerts = alertEventMapper.selectList(realRecords(new LambdaQueryWrapperX<RehabAlertEventDO>())
                 .eq(RehabAlertEventDO::getStatus, RehabAlertConstants.STATUS_ACTIVE));
         Map<String, Long> grouped = alerts.stream().collect(Collectors.groupingBy(RehabAlertEventDO::getAlertType, Collectors.counting()));
         return grouped.entrySet().stream()

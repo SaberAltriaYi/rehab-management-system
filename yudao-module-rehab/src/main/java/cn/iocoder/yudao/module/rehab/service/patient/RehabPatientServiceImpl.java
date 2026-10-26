@@ -96,6 +96,8 @@ public class RehabPatientServiceImpl implements RehabPatientService {
         List<RehabPatientDO> duplicatePatients = patientMapper.selectListByNameAndPhone(createReqVO.getName(), createReqVO.getPhone());
 
         RehabPatientDO patient = BeanUtils.toBean(createReqVO, RehabPatientDO.class);
+        // Ordinary create/import can never classify data through client input.
+        patient.setDataOrigin(RehabPatientDataOrigin.REAL);
         if (StrUtil.isBlank(patient.getCurrentStatus())) {
             patient.setCurrentStatus(RehabPatientStatusConstants.ACTIVE);
         }
@@ -256,8 +258,8 @@ public class RehabPatientServiceImpl implements RehabPatientService {
             } catch (Exception ex) {
                 String reason = getSafeImportFailureReason(ex);
                 if (!(ex instanceof IllegalArgumentException) && !(ex instanceof ServiceException)) {
-                    log.warn("患者批量导入单行失败，rowNumber={}, patientIdentity={}",
-                            excelRowNumber, identity, ex);
+                    log.warn("患者批量导入单行失败，rowNumber={}, exceptionType={}",
+                            excelRowNumber, ex.getClass().getSimpleName());
                 }
                 failures.add(new RehabPatientImportFailureVO(excelRowNumber, identity, reason));
             }
@@ -278,6 +280,9 @@ public class RehabPatientServiceImpl implements RehabPatientService {
     private void validateImportRow(RehabPatientImportExcelVO row) {
         if (row == null || StrUtil.isBlank(row.getName())) {
             throw new IllegalArgumentException("姓名不能为空");
+        }
+        if (StrUtil.isNotBlank(row.getDataOrigin()) && !RehabPatientDataOrigin.REAL.equals(row.getDataOrigin())) {
+            throw new IllegalArgumentException("模拟资料不能通过普通导入转为业务数据；请使用完整数据迁移或专属资料治理流程");
         }
         if (row.getName().trim().length() > 64) {
             throw new IllegalArgumentException("姓名不能超过 64 个字符");

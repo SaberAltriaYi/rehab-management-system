@@ -169,10 +169,17 @@ if (( last_count >= 25 )); then
   ENV_FILE_OVERRIDE="${ENV_FILE}" sh "${MIGRATOR}" apply > "${STAGE}/later.log" 2>&1 ||
     { tail -22 "${STAGE}/later.log"; exit 1; }
   cat "${STAGE}/earlier.log" "${STAGE}/later.log" > "${STAGE}/applied.log"
-  [[ "$(sql "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name LIKE 'rehab_motion_%';")" == 11 ]] ||
+  # Check the immutable 024 set, not a prefix whose cardinality grows when
+  # later migrations add the independent workspace inbox (032).
+  MOTION_024_TABLES="'rehab_motion_assessment','rehab_motion_task','rehab_motion_file','rehab_motion_trial','rehab_motion_metric','rehab_motion_rule_result','rehab_motion_score','rehab_motion_manual_edit','rehab_motion_ai_draft','rehab_motion_report','rehab_motion_protocol_version'"
+  [[ "$(sql "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name IN (${MOTION_024_TABLES});")" == 11 ]] ||
     { echo 'FAIL: 024 did not create 11 tenant motion tables'; exit 1; }
-  [[ "$(sql "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name LIKE 'rehab_motion_%' AND column_name IN ('creator','updater') AND is_nullable='YES';")" == 22 ]] ||
+  [[ "$(sql "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name IN (${MOTION_024_TABLES}) AND column_name IN ('creator','updater') AND is_nullable='YES';")" == 22 ]] ||
     { echo 'FAIL: 025 audit columns were not made nullable'; exit 1; }
+  if (( last_count >= 32 )); then
+    [[ "$(sql "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name='rehab_motion_workspace_inbox';")" == 1 ]] ||
+      { echo 'FAIL: 032 workspace inbox missing'; exit 1; }
+  fi
   [[ "$(sql "SELECT COUNT(*) FROM system_menu WHERE id IN (9700,9710,9711,9712,9713,9714,9715,9716,9717);")" == 9 ]] ||
     { echo 'FAIL: 024 menu entries missing'; exit 1; }
   echo 'PASS: 024-025 created 11 tables, relaxed 22 audit fields, created 9 menus'
