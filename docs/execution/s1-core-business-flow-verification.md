@@ -26,7 +26,19 @@
 - 新ORM夹具初次因Mockito旧接口无getRawArguments编译失败，改为兼容已有版本；H2 SHUTDOWN触发模板重置已关闭连接，改为关闭精确临时数据库的原始连接。首次仅一个周期没有疼痛升级触发，改为两个独立周期验证现有规则，没有降低阈值或放宽断言。
 - Core新闭环3项、当前源H2 5项、摘要稳定/持久化精度2项均通过。最终JDK17全量康复 **309项（308通过/1原L7真实引擎证据跳过）**、Web10通过；显式启用已有合成运动HTTP交接。前一轮308结果被此结果取代，没有在Maven执行时继续改Java源码。
 - 真实MySQL `test_clinical_sources_mysql.py` **6/6通过**：实际生产SQL读取当前源、不混机构、患者首锁序列、活动疗程/计划的旧空快照、模块存在性旧空快照、已删除拒绝。随机无网络tmpfs容器，不用业务库/端口/卷，结束清理。已加入常规CI独立门禁，原2项诊断仍只作历史风险证据。
-- 本机管理端97/97、运行资源工具67/67通过；最终差异、敏感扫描、后端隔离构建/管理端构建和CI结果待追加。没有修改前端业务代码、依赖或旧迁移校验和。
+- 本机管理端97/97、运行资源工具67/67通过。没有修改前端业务代码、依赖或旧迁移校验和。
+
+## 提交与制品验证
+
+- 修复提交 `a8071dc64c3013ed9228448100d42994e45675c8` 已推送既有分支 `feature/reporter-engine-assessment-20261013`，24文件；未合并master或创建Release。
+- `git diff --check`、仓库敏感材料扫描通过；临时MySQL清理/目标隔离5项通过，既有迁移SHA-256账本校验通过。扫描只证明规则范围内未发现阻断项，不等于患者隐私或权属人工审查全部完成。
+- JDK17 `deploy/internal/build-server-isolated.sh` 成功，候选JAR SHA-256：`1be6043566c3d4fd43732e0fc03fa409cadca7cae9926d02f50eda286def4c9a`。包内含康复、会员模块，无CRM；未复制到现用不可变release目录，未重启后端/升级业务库。
+- `pnpm build:internal` 成功，构建凭据对应上述修复提交，1014文件；随后本机 `pnpm ts:check` 退出0、`pnpm audit:prod` 返回 `No known vulnerabilities found`。保留原有Vite CJS/Browserslist警告，不自动升级锁文件；生产npm依赖审计不覆盖全部Java/Rust/Python及开发依赖。
+- HEP仓库保持 `5f42356` 无修改，患者UI现有安全约束3/3通过；该测试为静态源码契约检查，不能替代HEP身份、接口或训练执行验收。
+- 修复提交的远程常规CI `40449066531` **六项全部成功**：后端测试/隔离构建、前端测试/构建/类型/审计、可选业务模块、移动端、部署（含新增MySQL门禁）、PowerShell。首次状态观察遇到GitHub连接EOF，恢复读取确认完成，未当作测试失败或重触发工作流。
+- 该CI康复309项中306通过/3既有条件跳过，分别为独立workspace合成HTTP（CI未配置外部仓库路径）、L7真实引擎证据、中文字体PDF比较；本机显式启用workspace并有字体，因此为308通过/1跳过。不能把CI绿色解释为这三项也通过，更不能当作跨服务浏览器或报告视觉验收。
+- 同提交正式桌面工作流 `40449066528` 实际失败于 `Enforce L3 commercial licensing release requirements`，Windows/macOS安装和Release均跳过；不把常规CI成功当作安装器已生成，不放宽发布者信任/HTTPS配置门槛。
+- 该桌面失败的实际阻断为 `PUBLISHER_ROOTS_MISSING`、`PUBLISHER_HTTPS_ORIGIN_MISSING`，与用户此前确认的缺配置一致。此记录为后续文档提交，不改变a8071dc64c代码/制品的归属，后续文档提交的CI须按其独立SHA核对。
 
 ## 尚未完成
 
