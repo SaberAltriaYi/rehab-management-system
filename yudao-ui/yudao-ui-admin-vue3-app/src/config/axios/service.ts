@@ -17,13 +17,19 @@ import { resetRouter } from '@/router'
 import { deleteUserCache } from '@/hooks/web/useCache'
 import { ApiEncrypt } from '@/utils/encrypt'
 import { isOptionalReportContract404, refreshRequest, safeRequestError } from './privacy'
+import { authSessionScope } from '@/utils/authSession'
+import {
+  AuthRefreshError,
+  createAuthRefreshCoordinator,
+  waitForAuthRefresh
+} from './refreshCoordinator'
 
 const tenantEnable = import.meta.env.VITE_APP_TENANT_ENABLE
 const ownerPortal = import.meta.env.VITE_PORTAL_MODE === 'owner'
 const ownerTenantId = Number(import.meta.env.VITE_OWNER_TENANT_ID || 0)
 const { result_code, base_url, request_timeout } = config
 
-// 需要忽略的提示。忽略后，自动 Promise.reject('error')
+// Known refresh failures use the normal login flow without echoing server text.
 const ignoreMsgs = [
   '无效的刷新令牌', // 刷新令牌被删除时，不用提示
   '刷新令牌已过期' // 使用刷新令牌，刷新获取新的访问令牌时，结果因为过期失败，此时需要忽略。否则，会导致继续 401，无法跳转到登出界面
@@ -36,13 +42,19 @@ const isDisabledModuleMsg = (msg: unknown) =>
 
 // 是否显示重新登录
 export const isRelogin = { show: false }
-// Axios 无感知刷新令牌，参考 https://www.dashingdog.cn/article/11 与 https://segmentfault.com/a/1190000020210980 实现
-// 请求队列
-let requestList: any[] = []
-// 是否正在刷新中
-let isRefreshToken = false
+type SessionRequestConfig = InternalAxiosRequestConfig & {
+  authSessionContext?: string
+  authReplayAttempt?: boolean
+}
+const sessionContext = () =>
+  JSON.stringify([authSessionScope.version, getTenantId() ?? null, getVisitTenantId() ?? null])
+const assertSession = (request: SessionRequestConfig) => {
+  if (request.authSessionContext !== sessionContext()) throw new AuthRefreshError('CONTEXT')
+}
 // 请求白名单，无须 token 的接口
 const whiteList: string[] = ['/login', '/refresh-token']
+const skipsToken = (request: InternalAxiosRequestConfig) =>
+  request.headers.isToken === false || whiteList.some((path) => request.url?.includes(path))
 
 // 创建axios实例
 const service: AxiosInstance = axios.create({
@@ -55,28 +67,32 @@ const service: AxiosInstance = axios.create({
   }
 })
 
+const refreshCoordinator = createAuthRefreshCoordinator({
+  context: sessionContext,
+  subscribe: authSessionScope.subscribe,
+  refresh: (signal) => refreshToken(signal),
+  apply: (token) => setToken(token, { refresh: true })
+})
+
 // request拦截器
 service.interceptors.request.use(
-  (config: InternalAxiosRequestConfig) => {
+  (config: SessionRequestConfig) => {
+    if (config.authSessionContext === undefined) config.authSessionContext = sessionContext()
+    assertSession(config)
     // 是否需要设置 token
-    let isToken = (config!.headers || {}).isToken === false
-    whiteList.some((v) => {
-      if (config.url && config.url.indexOf(v) > -1) {
-        return (isToken = false)
-      }
-    })
-    if (getAccessToken() && !isToken) {
+    if (getAccessToken() && !skipsToken(config)) {
       config.headers.Authorization = 'Bearer ' + getAccessToken() // 让每个请求携带自定义token
-    }
+    } else delete config.headers.Authorization
     // 设置租户
     if (tenantEnable && tenantEnable === 'true') {
       const tenantId = getTenantId()
       if (tenantId) config.headers['tenant-id'] = tenantId
+      else delete config.headers['tenant-id']
       // 只有登录时，才设置 visit-tenant-id 访问租户
       const visitTenantId = getVisitTenantId()
       if (config.headers.Authorization && visitTenantId) {
         config.headers['visit-tenant-id'] = visitTenantId
-      }
+      } else delete config.headers['visit-tenant-id']
     }
     // The owner portal hides tenant selection from the user, but the backend
     // still requires the system-owner tenant context on every admin request.
@@ -114,6 +130,7 @@ service.interceptors.request.use(
     return config
   },
   (error: AxiosError) => {
+    if (error instanceof AuthRefreshError) return Promise.reject(error)
     return Promise.reject(safeRequestError(error))
   }
 )
@@ -122,7 +139,8 @@ service.interceptors.request.use(
 service.interceptors.response.use(
   async (response: AxiosResponse<any>) => {
     let { data } = response
-    const config = response.config
+    const config = response.config as SessionRequestConfig
+    assertSession(config)
     if (!data) {
       // 返回“[HTTP]请求没有返回值”;
       throw new Error()
@@ -154,59 +172,45 @@ service.interceptors.response.use(
         return response.data
       }
       data = await new Response(response.data).json()
+      assertSession(config)
     }
     const code = data.code || result_code
     // 获取错误信息
     const msg = data.msg || errorCode[code] || errorCode['default']
     if (ignoreMsgs.indexOf(msg) !== -1) {
-      // 如果是忽略的错误码，直接返回 msg 异常
-      return Promise.reject(msg)
+      return handleAuthorized(config.authSessionContext)
     } else if (isDisabledModuleMsg(msg)) {
       // 可选模块未启用时，不再频繁弹窗打断主业务流程
       console.warn('[disabled-module] 可选模块未启用')
       return Promise.reject(new Error('可选模块未启用'))
     } else if (code === 401) {
-      // 如果未认证，并且未进行刷新令牌，说明可能是访问令牌过期了
-      if (!isRefreshToken) {
-        isRefreshToken = true
-        // 1. 如果获取不到刷新令牌，则只能执行登出操作
-        if (!getRefreshToken()) {
-          return handleAuthorized()
+      if (config.authReplayAttempt) {
+        refreshCoordinator.block(config.authSessionContext!)
+        return handleAuthorized(config.authSessionContext)
+      }
+      if (skipsToken(config)) return handleAuthorized(config.authSessionContext)
+      try {
+        if (config.signal?.aborted) throw new AuthRefreshError('CANCELED')
+        // A late 401 for an already-rotated token needs one replay, not another refresh.
+        if (!getAccessToken() || config.headers.Authorization === 'Bearer ' + getAccessToken()) {
+          await waitForAuthRefresh(
+            refreshCoordinator.run(config.authSessionContext!),
+            config.signal
+          )
         }
-        // 2. 进行刷新访问令牌
-        try {
-          const refreshTokenRes = await refreshToken()
-          // 2.1 刷新成功，则回放队列的请求 + 当前请求
-          setToken((await refreshTokenRes).data.data, { refresh: true })
-          config.headers!.Authorization = 'Bearer ' + getAccessToken()
-          requestList.forEach((cb: any) => {
-            cb()
-          })
-          requestList = []
-          if ((config!.headers || {}).isEncrypt) {
-            ;(config!.headers || {}).isEncrypted = true
-          }
-          return service(config)
-        } catch (e) {
-          // 为什么需要 catch 异常呢？刷新失败时，请求因为 Promise.reject 触发异常。
-          // 2.2 刷新失败，只回放队列的请求
-          requestList.forEach((cb: any) => {
-            cb()
-          })
-          // 提示是否要登出。即不回放当前请求！不然会形成递归
-          return handleAuthorized()
-        } finally {
-          requestList = []
-          isRefreshToken = false
-        }
-      } else {
-        // 添加到队列，等待刷新获取到新的令牌
-        return new Promise((resolve) => {
-          requestList.push(() => {
-            config.headers!.Authorization = 'Bearer ' + getAccessToken() // 让每个请求携带自定义token 请根据实际情况自行修改
-            resolve(service(config))
-          })
-        })
+        assertSession(config)
+        if (config.signal?.aborted) throw new AuthRefreshError('CANCELED')
+        config.authReplayAttempt = true
+        if (config.headers.isEncrypt) config.headers.isEncrypted = true
+        return service(config)
+      } catch (error) {
+        if (
+          error instanceof AuthRefreshError &&
+          (error.code === 'CONTEXT' || error.code === 'CANCELED')
+        )
+          throw error
+        assertSession(config)
+        return handleAuthorized(config.authSessionContext)
       }
     } else if (code === 500) {
       ElMessage.error(t('sys.api.errMsg500'))
@@ -238,6 +242,14 @@ service.interceptors.response.use(
     }
   },
   (error: AxiosError) => {
+    if (error instanceof AuthRefreshError) return Promise.reject(error)
+    const failedConfig = error.config as SessionRequestConfig | undefined
+    if (
+      failedConfig?.authSessionContext !== undefined &&
+      failedConfig.authSessionContext !== sessionContext()
+    ) {
+      return Promise.reject(new AuthRefreshError('CONTEXT'))
+    }
     const safeError = safeRequestError(error)
     const { t } = useI18n()
     let message = safeError.message
@@ -253,22 +265,41 @@ service.interceptors.response.use(
   }
 )
 
-const refreshToken = async () => {
+const refreshToken = async (signal: AbortSignal) => {
+  const credential = getRefreshToken()
+  if (typeof credential !== 'string' || !credential) throw new AuthRefreshError('FAILED')
   // Capture tenant per request; do not mutate global Axios defaults or put a
   // credential in the URL (browser/proxy/access logs may retain that URL).
   const refresh = refreshRequest(
     base_url,
-    getRefreshToken(),
+    credential,
     ownerPortal && ownerTenantId > 0 ? ownerTenantId : getTenantId()
   )
-  return await axios.post(refresh.url, refresh.data, refresh.config)
+  const response = await axios.post(refresh.url, refresh.data, {
+    ...refresh.config,
+    timeout: 30000,
+    signal
+  })
+  const token = response.data?.data
+  if (
+    response.data?.code !== result_code ||
+    !token ||
+    typeof token.accessToken !== 'string' ||
+    !token.accessToken ||
+    typeof token.refreshToken !== 'string' ||
+    !token.refreshToken
+  ) {
+    throw new AuthRefreshError('FAILED')
+  }
+  return { accessToken: token.accessToken as string, refreshToken: token.refreshToken as string }
 }
-const handleAuthorized = () => {
+const handleAuthorized = (expected = sessionContext()) => {
+  if (expected !== sessionContext()) return Promise.reject(new AuthRefreshError('CONTEXT'))
   const { t } = useI18n()
   if (!isRelogin.show) {
     // 如果已经到登录页面则不进行弹窗提示
     if (window.location.href.includes('login')) {
-      return
+      return Promise.reject(new AuthRefreshError('FAILED'))
     }
     isRelogin.show = true
     ElMessageBox.confirm(t('sys.api.timeoutMessage'), t('common.confirmTitle'), {
@@ -278,15 +309,22 @@ const handleAuthorized = () => {
       closeOnPressEscape: false,
       confirmButtonText: t('login.relogin'),
       type: 'warning'
-    }).then(() => {
-      resetRouter() // 重置静态路由表
-      deleteUserCache() // 删除用户缓存
-      removeToken()
-      isRelogin.show = false
-      // 干掉token后再走一次路由让它过router.beforeEach的校验
-      window.location.href = window.location.href
     })
+      .then(() => {
+        if (expected !== sessionContext()) return
+        resetRouter() // 重置静态路由表
+        deleteUserCache() // 删除用户缓存
+        removeToken()
+        // 干掉token后再走一次路由让它过router.beforeEach的校验
+        window.location.href = window.location.href
+      })
+      .catch(() => {
+        /* no raw dialog failures in diagnostics */
+      })
+      .finally(() => {
+        isRelogin.show = false
+      })
   }
-  return Promise.reject(t('sys.api.timeoutMessage'))
+  return Promise.reject(new AuthRefreshError('FAILED'))
 }
 export { service }

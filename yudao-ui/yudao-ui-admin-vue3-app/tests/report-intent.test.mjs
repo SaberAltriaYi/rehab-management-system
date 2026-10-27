@@ -415,9 +415,13 @@ test('three real Vue entries share intent flow, busy state and permission-guarde
 test('auth boundaries clear intents but normal token refresh retains them; no new persistence/logging', () => {
   const read = (path) => readFileSync(new URL(`../src/${path}`, import.meta.url), 'utf8')
   const auth = read('utils/auth.ts')
-  assert.match(auth, /if \(!options\?\.refresh\) invalidateReportIntents\(\)/)
-  assert.match(auth, /removeToken = \(\) => \{\s*invalidateReportIntents\(\)/)
-  assert.match(read('store/modules/user.ts'), /resetState\(\) \{\s*invalidateReportIntents\(\)/)
+  assert.match(
+    auth,
+    /invalidateSession = \(\) => \{\s*authSessionScope.reset\(\)\s*invalidateReportIntents\(\)/
+  )
+  assert.match(auth, /if \(!options\?\.refresh\) invalidateSession\(\)/)
+  assert.match(auth, /removeToken = \(\) => \{\s*invalidateSession\(\)/)
+  assert.match(read('store/modules/user.ts'), /resetState\(\) \{\s*invalidateSession\(\)/)
   assert.match(read('config/axios/service.ts'), /setToken\([^\n]+refresh: true/)
   const intent = read('utils/reportIntent.ts')
   assert.doesNotMatch(intent, /localStorage|sessionStorage|indexedDB|console\.|Math\.random/)
