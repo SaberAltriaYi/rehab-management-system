@@ -24,3 +24,11 @@
 报告UI请求意图单飞、失败保留UUID、成功后新意图新UUID、账户/机构切换清理及评估修订一致性尚待继续。当前前端开发服务可能热加载源码，但没有重建或切换现用后端/JAR、迁移业务库，不能把开发源码加载算作版本发布。真实治疗师/患者登录、短信、临床复核和正式发布门槛不由这些模拟测试替代。
 
 原始测试日志仅保留本机 `/tmp/rehab-s1-ui-*.log`。本批不产出签名安装包或正式Release。
+
+## 提交后的CI证据
+
+主功能提交 `585577c5fb8fa56b463b9a1797c5271fc772c4e6` 已推送原分支。[Internal CI40423847805](https://github.com/SaberAltriaYi/rehab-management-system/actions/runs/40423847805) 六项全部成功：backend、business-integration、frontend、deployment、mobile、powershell。前端包含新38项测试、完整内部构建/类型/生产依赖审计；后端日志确认 `AuthRefreshTransportTest` 3项全部通过，System汇总581项、9项原有跳过、无失败，不把依赖模块总数计入康复模块。
+
+重复push运行40423843674由原互斥取消，等待旧mobile任务结束后替代运行正常启动，没有额外强制取消或减少测试。[正式桌面40423847815](https://github.com/SaberAltriaYi/rehab-management-system/actions/runs/40423847815) 实际阻断于L3商业许可发布要求，Windows/macOS安装器和Release跳过；不是本批代码编译失败，也不是正式发布成功。
+
+只读现用Core/HEP健康及Core/患者首页均HTTP200，仅为存活检查。未部署新业务镜像/JAR、未迁移数据库、未读取真实令牌、未新增账号或加权。本机约5.5GiB，重型本地构建仍NOT_RUN，旧本机JAR/资源没有被当作本批新制品。下一项的具体边界见 [报告UI意图方案](s1-report-ui-intent-plan.md)，该文件是待实施方案，不计功能完成。

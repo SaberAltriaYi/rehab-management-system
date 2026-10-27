@@ -118,6 +118,10 @@
 - 本管理端刷新凭据改URL编码POST正文，租户头按单次请求捕获，不改全局Axios默认头，不改变后端RequestParam/认证校验和响应结构；其他旧客户端query兼容暂保留，不能说所有凭据链路已完成整改。
 - 本机轻量 `pnpm test:unit` 38全通过；含真实Axios回环HTTP、特殊字符正文编码、租户隔离、503和构造异常去敏、上传重试/取消兼容。格式检查通过。新增后端Standalone MockMvc严格mock三项，本机NOT_RUN由CI执行；完整前端构建/类型、Maven和Docker本轮本机均NOT_RUN，不冒用旧产物。详见 `s1-ui-transport-privacy-verification.md`。
 - 前端测试命令同时纳入常规CI和正式桌面准备，不删除或放宽现有测试/许可/签名门槛。提交/CI结果待追加；没有新建现用身份、读取真实令牌、部署JAR或迁移业务库。下一步完成本批CI再继续报告UI请求意图、UUID重试/账户切换清理及评估修订一致性。
+- 主功能 `585577c5fb8fa56b463b9a1797c5271fc772c4e6` 已推送；[CI40423847805](https://github.com/SaberAltriaYi/rehab-management-system/actions/runs/40423847805) 六项全部成功，含前端38项新入口测试/完整构建/类型/生产审计，以及后端 `AuthRefreshTransportTest` 3项（日志已核对零失败/跳过）。System581项（9原有跳过）单列，不算康复数量。Node67和新文件格式本机均通过；本机Maven/完整前端/新Docker制品仍NOT_RUN，不能借CI通过说本机新生产包已运行。
+- 原重复40423843674由并发互斥取消，曾等待其mobile子任务终止，后续正常完成替代运行，未重复触发或强制取消。[桌面40423847815](https://github.com/SaberAltriaYi/rehab-management-system/actions/runs/40423847815) 实际失败于L3许可要求，平台安装器/Release跳过，未改变正式发布门槛。
+- 事后Core/HEP健康、Core/患者首页均200，仅存活。数据库/业务后端未升级、无账号/权限/患者变更、AI关闭；开发前端可能热加载源码。当前约5.5GiB，继续禁止重型本地构建、保留轻量测试/代码和已授权CI，不清理其他资产。
+- 具体接续见 `s1-report-ui-intent-plan.md`（尚未实施）：三个入口统一忙态/单飞，未知结果保留UUID、成功后新意图新UUID、身份epoch切换清理并拒绝迟到响应；启用前协商后端036契约，旧404/无权限/网络错不能都误判为支持去重。先做纯模块测试，再联接Vue与后端只读契约。原刷新超时/失败等待队列的恢复问题要独立测试后修补，当前隐私补丁没有声称解决。S1–S4整体仍未完成，发布/临床/真实身份门槛保持。
 
 ## 恢复与发布闸门
 
