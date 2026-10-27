@@ -19,6 +19,7 @@ Frontend:
 cd yudao-ui/yudao-ui-admin-vue3-app
 corepack enable
 pnpm install --frozen-lockfile
+pnpm test:unit
 pnpm build:internal
 ```
 

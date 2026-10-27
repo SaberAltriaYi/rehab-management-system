@@ -38,9 +38,8 @@ export class AES {
         padding: CryptoJS.pad.Pkcs7
       })
       return encrypted.toString()
-    } catch (error) {
-      console.error('AES 加密失败:', error)
-      throw error
+    } catch {
+      throw new Error('AES 加密失败，请检查本地密钥配置')
     }
   }
 
@@ -72,9 +71,8 @@ export class AES {
         throw new Error('AES 解密结果为空，可能是密钥错误或数据损坏')
       }
       return result
-    } catch (error) {
-      console.error('AES 解密失败:', error)
-      throw error
+    } catch {
+      throw new Error('AES 解密失败，请检查本地密钥配置或数据格式')
     }
   }
 }
@@ -102,9 +100,8 @@ export class RSA {
         throw new Error('RSA 加密失败，可能是公钥格式错误或数据过长')
       }
       return result
-    } catch (error) {
-      console.error('RSA 加密失败:', error)
-      throw error
+    } catch {
+      throw new Error('RSA 加密失败，请检查本地密钥配置')
     }
   }
 
@@ -130,9 +127,8 @@ export class RSA {
         throw new Error('RSA 解密失败，可能是私钥错误或数据损坏')
       }
       return result
-    } catch (error) {
-      console.error('RSA 解密失败:', error)
-      throw error
+    } catch {
+      throw new Error('RSA 解密失败，请检查本地密钥配置或数据格式')
     }
   }
 }
@@ -178,9 +174,8 @@ export class ApiEncrypt {
       } else {
         throw new Error(`不支持的加密算法: ${API_ENCRYPT_ALGORITHM}`)
       }
-    } catch (error) {
-      console.error('请求数据加密失败:', error)
-      throw error
+    } catch {
+      throw new Error('请求数据加密失败，请检查本地配置')
     }
   }
 
@@ -223,9 +218,8 @@ export class ApiEncrypt {
       } catch {
         return decryptedData
       }
-    } catch (error) {
-      console.error('响应数据解密失败:', error)
-      throw error
+    } catch {
+      throw new Error('响应数据解密失败，请检查本地配置或数据格式')
     }
   }
 }

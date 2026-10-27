@@ -16,6 +16,7 @@ import errorCode from './errorCode'
 import { resetRouter } from '@/router'
 import { deleteUserCache } from '@/hooks/web/useCache'
 import { ApiEncrypt } from '@/utils/encrypt'
+import { refreshRequest, safeRequestError } from './privacy'
 
 const tenantEnable = import.meta.env.VITE_APP_TENANT_ENABLE
 const ownerPortal = import.meta.env.VITE_PORTAL_MODE === 'owner'
@@ -106,17 +107,14 @@ service.interceptors.request.use(
           // 设置加密标识头
           config.headers[ApiEncrypt.getEncryptHeader()] = 'true'
         }
-      } catch (error) {
-        console.error('请求数据加密失败:', error)
-        throw error
+      } catch {
+        throw new Error('请求数据加密失败，请检查本地配置')
       }
     }
     return config
   },
   (error: AxiosError) => {
-    // Do something with request error
-    console.log(error) // for debug
-    return Promise.reject(error)
+    return Promise.reject(safeRequestError(error))
   }
 )
 
@@ -139,9 +137,8 @@ service.interceptors.response.use(
       try {
         // 解密响应数据
         data = ApiEncrypt.decryptResponse(data)
-      } catch (error) {
-        console.error('响应数据解密失败:', error)
-        throw new Error('响应数据解密失败: ' + (error as Error).message)
+      } catch {
+        throw new Error('响应数据解密失败，请检查本地配置')
       }
     }
 
@@ -166,8 +163,8 @@ service.interceptors.response.use(
       return Promise.reject(msg)
     } else if (isDisabledModuleMsg(msg)) {
       // 可选模块未启用时，不再频繁弹窗打断主业务流程
-      console.warn('[disabled-module]', msg)
-      return Promise.reject(msg)
+      console.warn('[disabled-module] 可选模块未启用')
+      return Promise.reject(new Error('可选模块未启用'))
     } else if (code === 401) {
       // 如果未认证，并且未进行刷新令牌，说明可能是访问令牌过期了
       if (!isRefreshToken) {
@@ -213,7 +210,7 @@ service.interceptors.response.use(
       }
     } else if (code === 500) {
       ElMessage.error(t('sys.api.errMsg500'))
-      return Promise.reject(new Error(msg))
+      return Promise.reject(new Error(t('sys.api.errMsg500')))
     } else if (code === 901) {
       ElMessage.error({
         offset: 300,
@@ -227,11 +224,10 @@ service.interceptors.response.use(
           '<div> &nbsp; </div>' +
           '<div>5 分钟搭建本地环境</div>'
       })
-      return Promise.reject(new Error(msg))
+      return Promise.reject(new Error(t('sys.api.errMsg901')))
     } else if (code !== 200) {
       if (msg === '无效的刷新令牌') {
         // hard coding：忽略这个提示，直接登出
-        console.log(msg)
         return handleAuthorized()
       } else {
         ElNotification.error({ title: msg })
@@ -242,27 +238,30 @@ service.interceptors.response.use(
     }
   },
   (error: AxiosError) => {
-    console.log('err' + error) // for debug
-    let { message } = error
+    const safeError = safeRequestError(error)
     const { t } = useI18n()
-    if (message === 'Network Error') {
+    let message = safeError.message
+    if (safeError.code === 'ERR_NETWORK') {
       message = t('sys.api.errorMessage')
-    } else if (message.includes('timeout')) {
+    } else if (safeError.code === 'ECONNABORTED' || safeError.code === 'ETIMEDOUT') {
       message = t('sys.api.apiTimeoutMessage')
-    } else if (message.includes('Request failed with status code')) {
-      message = t('sys.api.apiRequestFailed') + message.substr(message.length - 3)
+    } else if (safeError.response?.status) {
+      message = t('sys.api.apiRequestFailed') + safeError.response.status
     }
     ElMessage.error(message)
-    return Promise.reject(error)
+    return Promise.reject(safeError)
   }
 )
 
 const refreshToken = async () => {
-  // Refresh requests use the global axios instance, so apply the same hidden
-  // owner-tenant context that the service interceptor applies to admin calls.
-  axios.defaults.headers.common['tenant-id'] =
+  // Capture tenant per request; do not mutate global Axios defaults or put a
+  // credential in the URL (browser/proxy/access logs may retain that URL).
+  const refresh = refreshRequest(
+    base_url,
+    getRefreshToken(),
     ownerPortal && ownerTenantId > 0 ? ownerTenantId : getTenantId()
-  return await axios.post(base_url + '/system/auth/refresh-token?refreshToken=' + getRefreshToken())
+  )
+  return await axios.post(refresh.url, refresh.data, refresh.config)
 }
 const handleAuthorized = () => {
   const { t } = useI18n()

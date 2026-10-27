@@ -95,6 +95,10 @@ jobs:
         working-directory: ${{ env.FRONTEND_DIR }}
         run: pnpm build:internal
 
+      - name: Test administration frontend contracts and transport privacy
+        working-directory: ${{ env.FRONTEND_DIR }}
+        run: pnpm test:unit
+
       # The build creates ignored auto-import declarations required by vue-tsc.
       - name: Check frontend types before desktop packaging
         working-directory: ${{ env.FRONTEND_DIR }}
