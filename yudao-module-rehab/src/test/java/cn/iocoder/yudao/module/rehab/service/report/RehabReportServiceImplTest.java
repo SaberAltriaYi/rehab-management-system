@@ -87,6 +87,8 @@ class RehabReportServiceImplTest {
     @BeforeEach
     void setUp() throws IOException {
         reportService = new RehabReportServiceImpl();
+        ReflectionTestUtils.setField(reportService, "clinicalSources",
+                cn.iocoder.yudao.module.rehab.service.ClinicalSourcesTestAdapter.bridge(patientMapper, episodeMapper, assessmentRecordMapper, moduleDataMapper, reportMapper));
         ReflectionTestUtils.setField(reportService, "reportVersionSequence", reportVersionSequence);
         ReflectionTestUtils.setField(reportService, "generationRequests", generationRequests);
 
@@ -181,6 +183,7 @@ class RehabReportServiceImplTest {
         original.setId(30001L); original.setReportVersion(7); original.setReportNo("SYNTHETIC-REPLAY");
         when(generationRequests.fingerprint(eq(20001L), anyString(), eq("auto"), isNull())).thenReturn("SYNTHETIC_FINGERPRINT");
         when(generationRequests.findCompleted(20001L, 1L, request.getRequestKey(), "SYNTHETIC_FINGERPRINT")).thenReturn(original);
+        when(patientMapper.selectById(10001L)).thenReturn(RehabPatientDO.builder().id(10001L).build());
         assertSame(original, reportService.generateReport(request, 1L));
         verifyNoInteractions(moduleDataMapper, episodeMapper, reportMapper, reportVersionSequence,
                 reportVersionMapper, auditLogService, assessmentOperationLogMapper);

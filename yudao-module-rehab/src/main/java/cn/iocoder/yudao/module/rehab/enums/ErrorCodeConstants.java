@@ -31,12 +31,13 @@ public interface ErrorCodeConstants {
     ErrorCode EPISODE_NOT_EXISTS = new ErrorCode(1_011_003_000, "episode 不存在");
     ErrorCode EPISODE_ACTIVE_ALREADY_EXISTS = new ErrorCode(1_011_003_001, "该患者已存在进行中的 episode");
     ErrorCode EPISODE_STAGE_INVALID = new ErrorCode(1_011_003_002, "episode 阶段不合法");
+    ErrorCode EPISODE_OWNER_CHANGE_FORBIDDEN = new ErrorCode(1_011_003_003, "已有疗程不允许更换患者，请为目标患者创建新疗程");
 
     ErrorCode ASSESSMENT_NOT_EXISTS = new ErrorCode(1_011_004_000, "评估记录不存在");
     ErrorCode ASSESSMENT_PATIENT_EPISODE_MISMATCH = new ErrorCode(1_011_004_001, "评估记录关联的患者与 episode 不匹配");
     ErrorCode ASSESSMENT_ALREADY_ARCHIVED = new ErrorCode(1_011_004_002, "评估已归档，不允许编辑");
     ErrorCode ASSESSMENT_MODULE_TYPE_INVALID = new ErrorCode(1_011_004_003, "评估模块类型不合法");
-    ErrorCode ASSESSMENT_CAN_NOT_DELETE = new ErrorCode(1_011_004_004, "评估已关联报告，不允许删除");
+    ErrorCode ASSESSMENT_CAN_NOT_DELETE = new ErrorCode(1_011_004_004, "评估已关联报告或训练计划，不允许删除");
     ErrorCode ASSESSMENT_ATTACHMENT_NOT_FOUND = new ErrorCode(1_011_004_005, "评估附件不存在");
     ErrorCode ASSESSMENT_TYPE_INVALID = new ErrorCode(1_011_004_006, "评估类型不合法");
     ErrorCode ASSESSMENT_SFMA_PROTOCOL_INVALID = new ErrorCode(1_011_004_007, "SFMA 原书流程数据不合法：{}");
@@ -68,6 +69,7 @@ public interface ErrorCodeConstants {
     ErrorCode PLAN_ACTIVE_ALREADY_EXISTS = new ErrorCode(1_011_006_002, "该患者当前 episode 已存在执行中的计划");
     ErrorCode PLAN_CAN_NOT_DELETE = new ErrorCode(1_011_006_003, "计划已有执行记录，不允许删除");
     ErrorCode PLAN_STATUS_INVALID = new ErrorCode(1_011_006_004, "计划状态不合法");
+    ErrorCode PLAN_OWNER_CHANGE_FORBIDDEN = new ErrorCode(1_011_006_005, "已有训练计划不允许更换患者或疗程，请创建新计划");
 
     ErrorCode TASK_NOT_EXISTS = new ErrorCode(1_011_007_000, "训练任务不存在");
     ErrorCode TASK_PLAN_MISMATCH = new ErrorCode(1_011_007_001, "任务与计划归属不一致");

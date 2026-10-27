@@ -17,6 +17,7 @@ import cn.iocoder.yudao.module.rehab.enums.RehabOperationTypeConstants;
 import cn.iocoder.yudao.module.rehab.enums.RehabPatientStatusConstants;
 import cn.iocoder.yudao.module.rehab.enums.RehabStageConstants;
 import cn.iocoder.yudao.module.rehab.service.RehabDataPermissionService;
+import cn.iocoder.yudao.module.rehab.service.RehabClinicalSources;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import cn.iocoder.yudao.module.system.api.user.dto.AdminUserRespDTO;
 import org.springframework.stereotype.Service;
@@ -39,6 +40,8 @@ import static cn.iocoder.yudao.module.rehab.enums.ErrorCodeConstants.*;
 @Service
 @Validated
 public class RehabEpisodeServiceImpl implements RehabEpisodeService {
+    @Resource
+    private RehabClinicalSources clinicalSources;
 
     private static final DateTimeFormatter EPISODE_NO_DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyyMMdd");
 
@@ -58,6 +61,7 @@ public class RehabEpisodeServiceImpl implements RehabEpisodeService {
     public Long createEpisode(RehabEpisodeCreateReqVO createReqVO, Long operatorUserId) {
         RehabPatientDO patient = validatePatientExists(createReqVO.getPatientId());
         validatePatientReadable(createReqVO.getPatientId(), operatorUserId);
+        patient = clinicalSources.patient(patient.getId());
         return createEpisodeInternal(patient, createReqVO, operatorUserId);
     }
 
@@ -66,10 +70,13 @@ public class RehabEpisodeServiceImpl implements RehabEpisodeService {
     public void updateEpisode(RehabEpisodeUpdateReqVO updateReqVO, Long operatorUserId) {
         RehabEpisodeDO episode = validateEpisodeExists(updateReqVO.getId());
         validatePatientReadable(episode.getPatientId(), operatorUserId);
+        episode = lockEpisode(episode);
+        if (!ObjUtil.equal(episode.getPatientId(), updateReqVO.getPatientId())) throw exception(EPISODE_OWNER_CHANGE_FORBIDDEN);
 
         RehabEpisodeDO oldEpisode = BeanUtils.toBean(episode, RehabEpisodeDO.class);
 
         RehabEpisodeDO updateObj = BeanUtils.toBean(updateReqVO, RehabEpisodeDO.class);
+        validateActiveTransition(episode, StrUtil.blankToDefault(updateObj.getStatus(), episode.getStatus()));
         updateObj.clean();
         episodeMapper.updateById(updateObj);
 
@@ -103,10 +110,12 @@ public class RehabEpisodeServiceImpl implements RehabEpisodeService {
     public void changeStage(RehabEpisodeChangeStageReqVO reqVO, Long operatorUserId) {
         RehabEpisodeDO episode = validateEpisodeExists(reqVO.getId());
         validatePatientReadable(episode.getPatientId(), operatorUserId);
+        episode = lockEpisode(episode);
 
         if (!RehabStageConstants.ALL.contains(reqVO.getCurrentStage())) {
             throw exception(EPISODE_STAGE_INVALID);
         }
+        validateActiveTransition(episode, StrUtil.blankToDefault(reqVO.getStatus(), episode.getStatus()));
 
         RehabEpisodeDO oldEpisode = BeanUtils.toBean(episode, RehabEpisodeDO.class);
 
@@ -138,7 +147,7 @@ public class RehabEpisodeServiceImpl implements RehabEpisodeService {
         if (!Boolean.TRUE.equals(initEpisode)) {
             return null;
         }
-        RehabPatientDO patient = validatePatientExists(patientId);
+        RehabPatientDO patient = clinicalSources.patient(patientId);
 
         RehabEpisodeCreateReqVO createReqVO = new RehabEpisodeCreateReqVO();
         createReqVO.setPatientId(patientId);
@@ -160,7 +169,7 @@ public class RehabEpisodeServiceImpl implements RehabEpisodeService {
     }
 
     private Long createEpisodeInternal(RehabPatientDO patient, RehabEpisodeCreateReqVO createReqVO, Long operatorUserId) {
-        RehabEpisodeDO activeEpisode = episodeMapper.selectActiveByPatientId(patient.getId());
+        RehabEpisodeDO activeEpisode = clinicalSources.activeEpisode(patient.getId());
         if (activeEpisode != null) {
             throw exception(EPISODE_ACTIVE_ALREADY_EXISTS);
         }
@@ -197,6 +206,19 @@ public class RehabEpisodeServiceImpl implements RehabEpisodeService {
                 null, episode, "创建 episode " + episodeNo);
 
         return episode.getId();
+    }
+
+    private RehabEpisodeDO lockEpisode(RehabEpisodeDO before) {
+        clinicalSources.patient(before.getPatientId());
+        RehabEpisodeDO current = clinicalSources.episode(before.getId());
+        if (!ObjUtil.equal(before.getPatientId(), current.getPatientId())) throw exception(EPISODE_OWNER_CHANGE_FORBIDDEN);
+        return current;
+    }
+
+    private void validateActiveTransition(RehabEpisodeDO episode, String status) {
+        if (!RehabEpisodeConstants.STATUS_ACTIVE.equals(status)) return;
+        RehabEpisodeDO active = clinicalSources.activeEpisode(episode.getPatientId());
+        if (active != null && !ObjUtil.equal(active.getId(), episode.getId())) throw exception(EPISODE_ACTIVE_ALREADY_EXISTS);
     }
 
     private RehabEpisodeDO validateEpisodeExists(Long id) {

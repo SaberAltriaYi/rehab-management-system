@@ -30,6 +30,7 @@ import cn.iocoder.yudao.module.rehab.dal.dataobject.trigger.RehabReassessmentTri
 import cn.iocoder.yudao.module.rehab.enums.RehabOperationTypeConstants;
 import cn.iocoder.yudao.module.rehab.enums.RehabPlanConstants;
 import cn.iocoder.yudao.module.rehab.service.RehabDataPermissionService;
+import cn.iocoder.yudao.module.rehab.service.RehabClinicalSources;
 import cn.iocoder.yudao.module.rehab.service.log.RehabAuditLogService;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import cn.iocoder.yudao.module.system.api.user.dto.AdminUserRespDTO;
@@ -50,6 +51,8 @@ import static cn.iocoder.yudao.module.rehab.enums.ErrorCodeConstants.*;
 @Service
 @Validated
 public class RehabCarePlanServiceImpl implements RehabCarePlanService {
+    @Resource
+    private RehabClinicalSources clinicalSources;
 
     private static final DateTimeFormatter PLAN_NO_DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyyMMdd");
 
@@ -86,7 +89,8 @@ public class RehabCarePlanServiceImpl implements RehabCarePlanService {
         validateClerkWriteForbidden(operatorUserId);
         RehabPatientDO patient = validatePatientExists(reqVO.getPatientId());
         validatePatientReadable(patient.getId(), operatorUserId);
-        RehabEpisodeDO episode = validateEpisodeExists(reqVO.getEpisodeId());
+        clinicalSources.patient(patient.getId());
+        RehabEpisodeDO episode = clinicalSources.episode(reqVO.getEpisodeId());
         validateEpisodeBelongsToPatient(episode, patient.getId());
         if (reqVO.getSourceAssessmentId() != null) {
             validateAssessmentBelongs(reqVO.getSourceAssessmentId(), patient.getId(), episode.getId());
@@ -114,9 +118,11 @@ public class RehabCarePlanServiceImpl implements RehabCarePlanService {
     @Transactional(rollbackFor = Exception.class)
     public void updatePlan(RehabCarePlanUpdateReqVO reqVO, Long operatorUserId) {
         validateClerkWriteForbidden(operatorUserId);
-        RehabCarePlanDO oldPlan = validatePlanReadable(reqVO.getId(), operatorUserId);
-        RehabEpisodeDO episode = validateEpisodeExists(reqVO.getEpisodeId());
+        RehabCarePlanDO oldPlan = lockPlan(reqVO.getId(), operatorUserId);
+        if (!ObjUtil.equals(oldPlan.getPatientId(), reqVO.getPatientId()) || !ObjUtil.equals(oldPlan.getEpisodeId(), reqVO.getEpisodeId())) throw exception(PLAN_OWNER_CHANGE_FORBIDDEN);
+        RehabEpisodeDO episode = clinicalSources.episode(reqVO.getEpisodeId());
         validateEpisodeBelongsToPatient(episode, reqVO.getPatientId());
+        if (reqVO.getSourceAssessmentId() != null) validateAssessmentBelongs(reqVO.getSourceAssessmentId(), oldPlan.getPatientId(), oldPlan.getEpisodeId());
 
         String targetStatus = StrUtil.blankToDefault(reqVO.getStatus(), oldPlan.getStatus());
         validateActiveUniqueness(reqVO.getPatientId(), reqVO.getEpisodeId(), targetStatus, reqVO.getId());
@@ -153,7 +159,7 @@ public class RehabCarePlanServiceImpl implements RehabCarePlanService {
     @Transactional(rollbackFor = Exception.class)
     public RehabCarePlanCreateRespVO copyPlan(RehabCarePlanCopyReqVO reqVO, Long operatorUserId) {
         validateClerkWriteForbidden(operatorUserId);
-        RehabCarePlanDO sourcePlan = validatePlanReadable(reqVO.getId(), operatorUserId);
+        RehabCarePlanDO sourcePlan = lockPlan(reqVO.getId(), operatorUserId);
 
         RehabCarePlanDO copied = BeanUtils.toBean(sourcePlan, RehabCarePlanDO.class);
         copied.setId(null);
@@ -276,7 +282,7 @@ public class RehabCarePlanServiceImpl implements RehabCarePlanService {
 
     private void changeStatus(RehabCarePlanChangeStatusReqVO reqVO, String targetStatus, String opType, Long operatorUserId) {
         validateClerkWriteForbidden(operatorUserId);
-        RehabCarePlanDO oldPlan = validatePlanReadable(reqVO.getId(), operatorUserId);
+        RehabCarePlanDO oldPlan = lockPlan(reqVO.getId(), operatorUserId);
         if (!RehabPlanConstants.PLAN_STATUS_LIST.contains(targetStatus)) {
             throw exception(PLAN_STATUS_INVALID);
         }
@@ -349,10 +355,18 @@ public class RehabCarePlanServiceImpl implements RehabCarePlanService {
         if (!ObjUtil.equals(status, RehabPlanConstants.PLAN_STATUS_ACTIVE)) {
             return;
         }
-        RehabCarePlanDO active = planMapper.selectActiveByPatientEpisode(patientId, episodeId);
+        RehabCarePlanDO active = clinicalSources.activePlan(patientId, episodeId);
         if (active != null && !ObjUtil.equals(active.getId(), selfId)) {
             throw exception(PLAN_ACTIVE_ALREADY_EXISTS);
         }
+    }
+
+    private RehabCarePlanDO lockPlan(Long planId, Long operatorUserId) {
+        RehabCarePlanDO before = validatePlanReadable(planId, operatorUserId);
+        clinicalSources.patient(before.getPatientId());
+        RehabCarePlanDO current = clinicalSources.plan(planId);
+        if (!ObjUtil.equals(before.getPatientId(), current.getPatientId()) || !ObjUtil.equals(before.getEpisodeId(), current.getEpisodeId())) throw exception(PLAN_OWNER_CHANGE_FORBIDDEN);
+        return current;
     }
 
     private RehabPatientDO validatePatientExists(Long patientId) {
@@ -385,6 +399,8 @@ public class RehabCarePlanServiceImpl implements RehabCarePlanService {
         if (!ObjUtil.equals(assessment.getPatientId(), patientId) || !ObjUtil.equals(assessment.getEpisodeId(), episodeId)) {
             throw exception(ASSESSMENT_PATIENT_EPISODE_MISMATCH);
         }
+        assessment = clinicalSources.assessment(assessmentId);
+        if (!ObjUtil.equals(assessment.getPatientId(), patientId) || !ObjUtil.equals(assessment.getEpisodeId(), episodeId)) throw exception(ASSESSMENT_PATIENT_EPISODE_MISMATCH);
     }
 
     private void validatePatientReadable(Long patientId, Long operatorUserId) {

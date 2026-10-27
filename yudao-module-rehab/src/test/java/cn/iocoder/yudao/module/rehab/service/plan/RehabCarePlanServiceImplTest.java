@@ -69,6 +69,8 @@ class RehabCarePlanServiceImplTest {
     @BeforeEach
     void setUp() {
         carePlanService = new RehabCarePlanServiceImpl();
+        ReflectionTestUtils.setField(carePlanService, "clinicalSources",
+                cn.iocoder.yudao.module.rehab.service.ClinicalSourcesTestAdapter.bridge(patientMapper, episodeMapper, assessmentRecordMapper, null, null, planMapper));
 
         RehabDataPermissionService dataPermissionService = new RehabDataPermissionService();
         ReflectionTestUtils.setField(dataPermissionService, "permissionApi", permissionApi);

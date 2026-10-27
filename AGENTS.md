@@ -69,6 +69,8 @@ REHAB_TEST_MYSQL=1 python3 -B -m unittest discover -s deploy/internal \
 python3 -B -m unittest discover -s deploy/internal -p 'test_synthetic_mysql.py' -v
 REHAB_TEST_MYSQL=1 python3 -B -m unittest discover -s deploy/internal \
   -p 'test_report_requests_mysql.py' -v
+REHAB_TEST_MYSQL=1 python3 -B -m unittest discover -s deploy/internal \
+  -p 'test_clinical_sources_mysql.py' -v
 ```
 
 Migrations through 036 are required before deploying this candidate backend. Never grant 035's

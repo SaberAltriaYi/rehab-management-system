@@ -26,6 +26,7 @@ import cn.iocoder.yudao.module.rehab.dal.mysql.patient.RehabPatientMapper;
 import cn.iocoder.yudao.module.rehab.dal.mysql.report.RehabReportMapper;
 import cn.iocoder.yudao.module.rehab.enums.*;
 import cn.iocoder.yudao.module.rehab.service.RehabDataPermissionService;
+import cn.iocoder.yudao.module.rehab.service.RehabClinicalSources;
 import cn.iocoder.yudao.module.rehab.service.episode.RehabEpisodeService;
 import cn.iocoder.yudao.module.rehab.service.log.RehabAuditLogService;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
@@ -56,6 +57,8 @@ import static cn.iocoder.yudao.module.rehab.enums.ErrorCodeConstants.*;
 @Validated
 @Slf4j
 public class RehabPatientServiceImpl implements RehabPatientService {
+    @Resource
+    private RehabClinicalSources clinicalSources;
 
     private static final DateTimeFormatter PATIENT_NO_DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyyMMdd");
     private static final int MAX_IMPORT_ROWS = 2000;
@@ -134,6 +137,7 @@ public class RehabPatientServiceImpl implements RehabPatientService {
     public void updatePatient(RehabPatientUpdateReqVO updateReqVO, Long operatorUserId) {
         RehabPatientDO oldPatient = validatePatientExists(updateReqVO.getId());
         validatePatientReadable(updateReqVO.getId(), operatorUserId);
+        oldPatient = clinicalSources.patient(updateReqVO.getId());
 
         RehabPatientDO updateObj = BeanUtils.toBean(updateReqVO, RehabPatientDO.class);
         updateObj.clean();
@@ -149,9 +153,8 @@ public class RehabPatientServiceImpl implements RehabPatientService {
     public void deletePatient(Long id, Long operatorUserId) {
         RehabPatientDO oldPatient = validatePatientExists(id);
         validatePatientReadable(id, operatorUserId);
-        if (episodeMapper.selectCount("patient_id", id) > 0
-                || assessmentRecordMapper.selectCountByPatientId(id) > 0
-                || reportMapper.selectCountByPatientId(id) > 0) {
+        oldPatient = clinicalSources.patient(id);
+        if (clinicalSources.hasReferences(id)) {
             throw exception(PATIENT_CAN_NOT_DELETE);
         }
         patientMapper.deleteById(id);

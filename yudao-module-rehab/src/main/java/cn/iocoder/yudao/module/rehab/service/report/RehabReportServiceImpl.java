@@ -26,6 +26,7 @@ import cn.iocoder.yudao.module.rehab.dal.mysql.report.RehabReportMapper;
 import cn.iocoder.yudao.module.rehab.dal.mysql.report.RehabReportVersionMapper;
 import cn.iocoder.yudao.module.rehab.enums.*;
 import cn.iocoder.yudao.module.rehab.service.RehabDataPermissionService;
+import cn.iocoder.yudao.module.rehab.service.RehabClinicalSources;
 import cn.iocoder.yudao.module.rehab.service.log.RehabAuditLogService;
 import cn.iocoder.yudao.module.rehab.service.notification.RehabNotificationService;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
@@ -76,6 +77,8 @@ import static cn.iocoder.yudao.module.rehab.enums.ErrorCodeConstants.*;
 @Service
 @Validated
 public class RehabReportServiceImpl implements RehabReportService {
+    @Resource
+    private RehabClinicalSources clinicalSources;
 
     @Resource
     private RehabReportVersionSequence reportVersionSequence;
@@ -188,6 +191,10 @@ public class RehabReportServiceImpl implements RehabReportService {
         RehabAssessmentRecordDO assessment = validateAssessmentExists(reqVO.getAssessmentId());
         validatePatientReadable(assessment.getPatientId(), operatorUserId);
 
+        RehabPatientDO patient = clinicalSources.patient(assessment.getPatientId());
+        assessment = clinicalSources.assessment(reqVO.getAssessmentId());
+        if (!ObjUtil.equals(patient.getId(), assessment.getPatientId())) throw exception(ASSESSMENT_OWNER_CHANGE_FORBIDDEN);
+
         String reportType = StrUtil.blankToDefault(reqVO.getReportType(), resolveDefaultReportType(assessment.getAssessmentType()));
         String generationMode = StrUtil.blankToDefault(reqVO.getGenerationMode(), RehabReportConstants.GENERATION_AUTO);
         String requestFingerprint = null;
@@ -197,9 +204,9 @@ public class RehabReportServiceImpl implements RehabReportService {
                     assessment.getId(), operatorUserId, reqVO.getRequestKey(), requestFingerprint);
             if (completed != null) return completed;
         }
-        RehabPatientDO patient = patientMapper.selectById(assessment.getPatientId());
-        RehabEpisodeDO episode = episodeMapper.selectById(assessment.getEpisodeId());
-        List<RehabAssessmentModuleDataDO> modules = moduleDataMapper.selectListByAssessmentId(assessment.getId());
+        RehabEpisodeDO episode = assessment.getEpisodeId() == null ? null : clinicalSources.episode(assessment.getEpisodeId());
+        if (episode != null && !ObjUtil.equals(patient.getId(), episode.getPatientId())) throw exception(ASSESSMENT_PATIENT_EPISODE_MISMATCH);
+        List<RehabAssessmentModuleDataDO> modules = clinicalSources.modules(assessment.getId());
 
         int reportVersion = reportVersionSequence.nextVersion(assessment.getId());
         RehabReportDO report = RehabReportDO.builder()
@@ -835,6 +842,7 @@ public class RehabReportServiceImpl implements RehabReportService {
         payload.put("episode", episodePayload);
         payload.put("assessment", assessmentPayload);
         payload.put("rawModules", rawModules);
+        payload.put("sourceSnapshot", RehabReportSourceStamp.of(payload, assessment.getId()));
         payload.put("missingModules", missingModules);
         payload.put("sections", sections);
         payload.put("evidenceRefs", new ArrayList<>(rawModules.keySet()));
