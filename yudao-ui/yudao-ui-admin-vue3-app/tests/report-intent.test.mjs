@@ -49,6 +49,34 @@ function fixture(options = {}) {
 const code = (expected) => (error) =>
   error.code === expected && !inspect(error).includes('SYNTHETIC_SECRET')
 
+test('missing platform random source fails closed without an insecure fallback', () => {
+  const descriptor = Object.getOwnPropertyDescriptor(globalThis, 'crypto')
+  try {
+    Object.defineProperty(globalThis, 'crypto', { configurable: true, value: undefined })
+    assert.throws(() => secureReportRequestKey(), code('RANDOM'))
+  } finally {
+    if (descriptor) Object.defineProperty(globalThis, 'crypto', descriptor)
+    else delete globalThis.crypto
+  }
+})
+
+test('one failing scope subscriber cannot stop other identity cleanup subscribers', () => {
+  const scope = createReportIntentScope()
+  let cleaned = 0
+  scope.subscribe(() => {
+    throw new Error('SYNTHETIC_SECRET')
+  })
+  const unsubscribe = scope.subscribe(() => {
+    cleaned++
+  })
+  scope.reset()
+  assert.equal(scope.version, 1)
+  assert.equal(cleaned, 1)
+  unsubscribe()
+  scope.reset()
+  assert.equal(cleaned, 1)
+})
+
 test('single flight starts before probe/confirmation and only success starts a new intent', async () => {
   const gate = deferred()
   let confirmations = 0,
