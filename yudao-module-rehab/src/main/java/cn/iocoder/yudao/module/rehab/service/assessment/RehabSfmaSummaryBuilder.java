@@ -6690,10 +6690,10 @@ public class RehabSfmaSummaryBuilder {
             if (StrUtil.isBlank(text)) {
                 return new LinkedHashMap<>();
             }
-            Map<String, Object> parsed = JsonUtils.parseObject(text, new TypeReference<Map<String, Object>>() {});
+            Map<String, Object> parsed = RehabAssessmentJson.read(text, new TypeReference<Map<String, Object>>() {});
             return parsed == null ? new LinkedHashMap<>() : new LinkedHashMap<>(parsed);
         }
-        Map<String, Object> parsed = JsonUtils.parseObject(JsonUtils.toJsonString(rawDataJson),
+        Map<String, Object> parsed = RehabAssessmentJson.read(JsonUtils.toJsonString(rawDataJson),
                 new TypeReference<Map<String, Object>>() {});
         return parsed == null ? new LinkedHashMap<>() : new LinkedHashMap<>(parsed);
     }

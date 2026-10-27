@@ -528,12 +528,11 @@ public class RehabAssessmentServiceImpl implements RehabAssessmentService {
             try {
                 return serializeJson(staticAssessmentSummaryBuilder.enrichWithSummary(dataJson));
             } catch (Exception ex) {
-                log.warn("[assessment][static_summary] failed, fallback with conservative summary. reason={}", ex.getMessage(), ex);
+                log.warn("[assessment][static_summary] SUMMARY_BUILD_FAILED; conservative fallback");
                 try {
-                    return serializeJson(staticAssessmentSummaryBuilder.enrichWithFallback(dataJson, ex.getMessage()));
+                    return serializeJson(staticAssessmentSummaryBuilder.enrichWithFallback(dataJson, "自动摘要未完成，请人工复核"));
                 } catch (Exception fallbackEx) {
-                    log.error("[assessment][static_summary] fallback failed, save raw payload instead. reason={}",
-                            fallbackEx.getMessage(), fallbackEx);
+                    log.error("[assessment][static_summary] SUMMARY_FALLBACK_FAILED; preserving raw payload");
                     return serializeJson(dataJson);
                 }
             }
@@ -542,12 +541,11 @@ public class RehabAssessmentServiceImpl implements RehabAssessmentService {
             try {
                 return serializeJson(nasmCesSummaryBuilder.enrichWithSummary(dataJson));
             } catch (Exception ex) {
-                log.warn("[assessment][nasm_ces_summary] failed, fallback with conservative summary. reason={}", ex.getMessage(), ex);
+                log.warn("[assessment][nasm_ces_summary] SUMMARY_BUILD_FAILED; conservative fallback");
                 try {
-                    return serializeJson(nasmCesSummaryBuilder.enrichWithFallback(dataJson, ex.getMessage()));
+                    return serializeJson(nasmCesSummaryBuilder.enrichWithFallback(dataJson, "自动摘要未完成，请人工复核"));
                 } catch (Exception fallbackEx) {
-                    log.error("[assessment][nasm_ces_summary] fallback failed, save raw payload instead. reason={}",
-                            fallbackEx.getMessage(), fallbackEx);
+                    log.error("[assessment][nasm_ces_summary] SUMMARY_FALLBACK_FAILED; preserving raw payload");
                     return serializeJson(dataJson);
                 }
             }
@@ -563,12 +561,11 @@ public class RehabAssessmentServiceImpl implements RehabAssessmentService {
             try {
                 return serializeJson(sfmaSummaryBuilder.enrichWithSummary(dataJson));
             } catch (Exception ex) {
-                log.warn("[assessment][sfma_summary] failed, fallback with conservative summary. reason={}", ex.getMessage(), ex);
+                log.warn("[assessment][sfma_summary] SUMMARY_BUILD_FAILED; conservative fallback");
                 try {
-                    return serializeJson(sfmaSummaryBuilder.enrichWithFallback(dataJson, ex.getMessage()));
+                    return serializeJson(sfmaSummaryBuilder.enrichWithFallback(dataJson, "自动摘要未完成，请人工复核"));
                 } catch (Exception fallbackEx) {
-                    log.error("[assessment][sfma_summary] fallback failed, save raw payload instead. reason={}",
-                            fallbackEx.getMessage(), fallbackEx);
+                    log.error("[assessment][sfma_summary] SUMMARY_FALLBACK_FAILED; preserving raw payload");
                     return serializeJson(dataJson);
                 }
             }

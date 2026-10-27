@@ -24,7 +24,11 @@
 4. JDK17，显式 `REHAB_WORKSPACE_TEST_REPO` 指向现有Reporter仓库，`mvn -B -pl yudao-module-rehab -am test`通过；康复284项（283通过/1原L7真实引擎证据跳过），Web10通过。没有在运行Maven时更改Java文件，没有并行重型构建。
 5. Node运行资源工具67/67通过；格式、diff检查通过。跟踪内容敏感扫描通过，新增文件暂存后还需再次扫描。所有测试资料均为明确SYNTHETIC夹具，不包含患者或真实凭据。
 
-主提交和CI结果在检查点及后续记录追加。代码实现、本机测试、CI、现用环境和发布验收分层，不冒用前批的通过结果。
+## 主提交与CI
+
+- `b3488cccbfe775ebb48a0339b219dc2fbbacffdb` 已推送原分支；[CI40440668710](https://github.com/SaberAltriaYi/rehab-management-system/actions/runs/40440668710) 六项全部成功，含前端97项、完整构建/类型/审计、后端构建与全量、可选业务、移动、部署和PowerShell。重复push40440665190按既有互斥取消。
+- 正式桌面40440668736实际失败于L3商业许可发布要求，平台安装器与Release跳过；未放宽门槛。
+- 后续摘要隐私修补独立测试/提交，不冒用此SHA的CI结果。源码实现、本机运行、正常身份/临床和发布验收仍分层。
 
 ## 未完成及下一步
 
