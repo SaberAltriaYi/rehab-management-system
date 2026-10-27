@@ -6,6 +6,7 @@ import cn.iocoder.yudao.framework.common.util.servlet.ServletUtils;
 import cn.iocoder.yudao.module.rehab.controller.admin.audit.vo.RehabAuditLogRespVO;
 import cn.iocoder.yudao.module.rehab.controller.admin.report.vo.*;
 import cn.iocoder.yudao.module.rehab.service.report.RehabReportService;
+import cn.iocoder.yudao.module.rehab.service.report.RehabReportGenerationContract;
 import cn.iocoder.yudao.module.rehab.service.reporter.RehabReporterClient;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -35,6 +36,19 @@ public class RehabReportController {
 
     @Resource
     private RehabReporterClient reporterClient;
+
+    @Resource
+    private RehabReportGenerationContract generationContract;
+
+    @GetMapping("/generation-contract")
+    @Operation(summary = "查询报告重试契约是否就绪（不返回业务数据）")
+    @PreAuthorize("@ss.hasPermission('rehab:assessment:generate-report')")
+    public CommonResult<Map<String, Object>> getGenerationContract() {
+        Map<String, Object> result = new java.util.LinkedHashMap<>();
+        result.put("contract", RehabReportGenerationContract.CONTRACT);
+        result.put("ready", generationContract.isReady());
+        return success(result);
+    }
 
     @GetMapping("/page")
     @Operation(summary = "获得报告分页")

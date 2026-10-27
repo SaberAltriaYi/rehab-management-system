@@ -1,5 +1,6 @@
 import { useCache, CACHE_KEY } from '@/hooks/web/useCache'
 import { TokenType } from '@/api/login/types'
+import { invalidateReportIntents } from '@/utils/reportIntent'
 
 const { wsCache } = useCache()
 
@@ -19,13 +20,15 @@ export const getRefreshToken = () => {
 }
 
 // 设置token
-export const setToken = (token: TokenType) => {
+export const setToken = (token: TokenType, options?: { refresh?: boolean }) => {
+  if (!options?.refresh) invalidateReportIntents()
   wsCache.set(RefreshTokenKey, token.refreshToken)
   wsCache.set(AccessTokenKey, token.accessToken)
 }
 
 // 删除token
 export const removeToken = () => {
+  invalidateReportIntents()
   wsCache.delete(AccessTokenKey)
   wsCache.delete(RefreshTokenKey)
 }
@@ -70,10 +73,12 @@ export const getTenantId = () => {
 }
 
 export const setTenantId = (tenantId: number) => {
+  if (getTenantId() !== tenantId) invalidateReportIntents()
   wsCache.set(CACHE_KEY.TenantId, tenantId)
 }
 
 export const removeTenantId = () => {
+  invalidateReportIntents()
   wsCache.delete(CACHE_KEY.TenantId)
 }
 
@@ -82,5 +87,6 @@ export const getVisitTenantId = () => {
 }
 
 export const setVisitTenantId = (visitTenantId: number) => {
+  if (getVisitTenantId() !== visitTenantId) invalidateReportIntents()
   wsCache.set(CACHE_KEY.VisitTenantId, visitTenantId)
 }

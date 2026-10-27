@@ -43,11 +43,17 @@ class ReportRequestsMySQLTest(unittest.TestCase):
         cls.queries = {}
         for name, file in (("FIND_SQL", "RehabReportGenerationRequests.java"),
                            ("RESULT_SQL", "RehabReportGenerationRequests.java"),
-                           ("LOCK_ASSESSMENT_SQL", "RehabReportVersionSequence.java")):
+                           ("LOCK_ASSESSMENT_SQL", "RehabReportVersionSequence.java"),
+                           ("VERSION_SQL", "RehabReportGenerationContract.java"),
+                           ("ENGINE_SQL", "RehabReportGenerationContract.java"),
+                           ("PK_SQL", "RehabReportGenerationContract.java"),
+                           ("SHAPE_SQL", "RehabReportGenerationContract.java")):
             match = re.search(r'static final String ' + name + r' = "([^"]+)";', (report_source / file).read_text())
             if not match:
                 raise RuntimeError("production SQL contract changed; review synthetic MySQL proof")
             cls.queries[name] = match[1]
+        contract_source = (report_source / "RehabReportGenerationContract.java").read_text()
+        cls.contract_checksum = re.search(r'static final String CHECKSUM = "([a-f0-9]{64})";', contract_source)[1]
 
     def setUp(self):
         self.database = "synthetic_requests_" + secrets.token_hex(4)
@@ -72,6 +78,26 @@ INSERT INTO rehab_report VALUES(100,71,801,51,FALSE,'SYNTHETIC_ORIGINAL_UNCHANGE
         return ("INSERT INTO rehab_report_generation_request(tenant_id,assessment_id,operator_user_id,request_key_hash,"
                 "request_fingerprint,report_id,report_no,report_version,fallback_used) VALUES "
                 f"({tenant},801,{operator},'{KEY_HASH}','{FINGERPRINT}',100,'SYNTHETIC-100',1,b'1')")
+
+    def test_read_only_contract_queries_require_fixed_ledger_and_transactional_request_shape(self):
+        self.assertEqual(hashlib.sha256(self.migration.encode()).hexdigest(), self.contract_checksum)
+        # These are the exact metadata queries consumed by the Java readiness guard.
+        version = self.queries["VERSION_SQL"].replace("?", "'036'")
+        self.assertNotEqual(0, self.sql(version, False).returncode)
+        self.sql("CREATE TABLE internal_schema_history(version VARCHAR(8) PRIMARY KEY,checksum CHAR(64)) ENGINE=InnoDB")
+        self.assertEqual("", self.sql(version).stdout)
+        self.sql(f"INSERT INTO internal_schema_history VALUES('036','{self.contract_checksum}')")
+        self.assertEqual(self.contract_checksum, self.sql(version).stdout.strip())
+        self.assertNotEqual(0, self.sql(self.queries["SHAPE_SQL"], False).returncode)
+        self.sql(self.migration)
+        self.assertEqual("InnoDB", self.sql(self.queries["ENGINE_SQL"]).stdout.strip())
+        self.assertEqual(["tenant_id", "assessment_id", "operator_user_id", "request_key_hash"],
+                         self.sql(self.queries["PK_SQL"]).stdout.splitlines())
+        self.assertEqual("", self.sql(self.queries["SHAPE_SQL"]).stdout)
+        self.sql("ALTER TABLE rehab_report_generation_request DROP COLUMN fallback_message")
+        self.assertNotEqual(0, self.sql(self.queries["SHAPE_SQL"], False).returncode)
+        # Original synthetic report content has not been queried or modified by readiness.
+        self.assertEqual("SYNTHETIC_ORIGINAL_UNCHANGED", self.sql("SELECT original_payload FROM rehab_report").stdout.strip())
 
     def test_migration_preserves_original_reports_and_contains_no_raw_request_or_clinical_columns(self):
         before = self.sql("SELECT * FROM rehab_report").stdout

@@ -18,6 +18,24 @@ export type SafeRequestError = Error & {
   response?: { status: number }
 }
 
+/** Only the known read-only optional contract probe may silence a missing route. */
+export function isOptionalReportContract404(value: unknown): boolean {
+  const error = value as {
+    response?: { status?: unknown }
+    config?: {
+      optionalReportContractProbe?: boolean
+      url?: string
+      method?: string
+    }
+  } | null
+  return (
+    error?.response?.status === 404 &&
+    error.config?.optionalReportContractProbe === true &&
+    error.config.url === '/rehab/report/generation-contract' &&
+    error.config.method?.toLowerCase() === 'get'
+  )
+}
+
 export function safeRequestError(value: unknown): SafeRequestError {
   const source = value && typeof value === 'object' ? (value as Record<string, any>) : {}
   const status = source.response?.status

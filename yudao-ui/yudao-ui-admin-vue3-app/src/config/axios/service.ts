@@ -16,7 +16,7 @@ import errorCode from './errorCode'
 import { resetRouter } from '@/router'
 import { deleteUserCache } from '@/hooks/web/useCache'
 import { ApiEncrypt } from '@/utils/encrypt'
-import { refreshRequest, safeRequestError } from './privacy'
+import { isOptionalReportContract404, refreshRequest, safeRequestError } from './privacy'
 
 const tenantEnable = import.meta.env.VITE_APP_TENANT_ENABLE
 const ownerPortal = import.meta.env.VITE_PORTAL_MODE === 'owner'
@@ -177,7 +177,7 @@ service.interceptors.response.use(
         try {
           const refreshTokenRes = await refreshToken()
           // 2.1 刷新成功，则回放队列的请求 + 当前请求
-          setToken((await refreshTokenRes).data.data)
+          setToken((await refreshTokenRes).data.data, { refresh: true })
           config.headers!.Authorization = 'Bearer ' + getAccessToken()
           requestList.forEach((cb: any) => {
             cb()
@@ -248,7 +248,7 @@ service.interceptors.response.use(
     } else if (safeError.response?.status) {
       message = t('sys.api.apiRequestFailed') + safeError.response.status
     }
-    ElMessage.error(message)
+    if (!isOptionalReportContract404(error)) ElMessage.error(message)
     return Promise.reject(safeError)
   }
 )

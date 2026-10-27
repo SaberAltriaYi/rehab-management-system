@@ -1,4 +1,12 @@
 import request from '@/config/axios'
+import { getTenantId, getVisitTenantId } from '@/utils/auth'
+import { useUserStoreWithOut } from '@/store/modules/user'
+import {
+  createReportIntentCoordinator,
+  negotiateReportContract,
+  reportAssessmentId,
+  type ReportGenerationPayload
+} from '@/utils/reportIntent'
 
 export interface RehabReportPageReqVO {
   pageNo: number
@@ -36,16 +44,31 @@ export const getRehabReport = async (id: number) => {
   return await request.get({ url: '/rehab/report/get', params: { id } })
 }
 
-export const generateRehabReport = async (data: {
-  assessmentId: number
-  // Same UUID for retries of one intent; a new UUID for an explicit new revision.
-  requestKey?: string
-  reportType?: string
-  generationMode?: string
-  note?: string
-}) => {
+export const generateRehabReport = async (data: ReportGenerationPayload) => {
   return await request.post({ url: '/rehab/report/generate', data, timeout: 60000 })
 }
+
+export const getReportIntentContext = () => {
+  let userId: string
+  try {
+    userId = reportAssessmentId(useUserStoreWithOut().getUser.id)
+  } catch {
+    return ''
+  }
+  return JSON.stringify([getTenantId() ?? null, getVisitTenantId() ?? null, userId])
+}
+
+export const reportGenerationIntents = createReportIntentCoordinator({
+  context: getReportIntentContext,
+  probe: () =>
+    negotiateReportContract(() =>
+      request.get({
+        url: '/rehab/report/generation-contract',
+        optionalReportContractProbe: true
+      })
+    ),
+  send: generateRehabReport
+})
 
 export const getRehabEngineRehearsalReport = async () => {
   return await request.get({ url: '/rehab/report/engine-rehearsal', timeout: 60000 })

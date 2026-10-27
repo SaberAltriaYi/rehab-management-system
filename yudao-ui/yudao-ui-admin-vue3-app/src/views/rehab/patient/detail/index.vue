@@ -150,10 +150,14 @@
                     type="primary"
                     link
                     v-hasPermi="['rehab:assessment:generate-report']"
+                    :loading="isGeneratingReport(scope.row.id)"
                     @click="handleGenerateReport(scope.row)"
                   >
                     生成报告
                   </el-button>
+                  <el-button v-if="hasUncertainReport(scope.row.id)" type="warning" link
+                    v-hasPermi="['rehab:assessment:generate-report']" :disabled="isGeneratingReport(scope.row.id)"
+                    @click="resetPendingReport(scope.row.id)">核对后重置</el-button>
                   <el-button type="primary" link v-hasPermi="['rehab:plan:create']" @click="createPlanFromAssessment(scope.row)">
                     创建计划
                   </el-button>
@@ -640,6 +644,7 @@
 
 <script lang="ts" setup>
 import dayjs from 'dayjs'
+import { useReportGeneration } from '@/hooks/web/useReportGeneration'
 import { DICT_TYPE } from '@/utils/dict'
 import download from '@/utils/download'
 import { getRehabEpisodePage } from '@/api/rehab/episode'
@@ -647,7 +652,6 @@ import { getRehabAssessmentPage } from '@/api/rehab/assessment'
 import {
   exportRehabReportDocx,
   exportRehabReportPdf,
-  generateRehabReport,
   getRehabReportPage,
   previewRehabReport
 } from '@/api/rehab/report'
@@ -699,6 +703,7 @@ const AI_ENABLED = import.meta.env.VITE_REHAB_AI_ENABLED === 'true'
 const route = useRoute()
 const { push } = useRouter()
 const message = useMessage()
+const { generateReport: runGenerateReport, isGeneratingReport, hasUncertainReport, resetPendingReport } = useReportGeneration()
 
 const id = computed(() => Number(route.params.id))
 const loading = ref(false)
@@ -928,10 +933,7 @@ const openAssessmentDetail = (assessmentId: number) => {
 }
 
 const handleGenerateReport = async (row: any) => {
-  await message.confirm(`确认基于评估 ${row.assessmentNo} 生成报告吗？`)
-  await generateRehabReport({ assessmentId: row.id })
-  message.success('报告生成成功')
-  await loadReportList()
+  if (await runGenerateReport(row.id)) await loadReportList()
 }
 
 const createPlanFromAssessment = (row: any) => {

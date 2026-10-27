@@ -3,6 +3,7 @@ import { defineStore } from 'pinia'
 import { getAccessToken, removeToken } from '@/utils/auth'
 import { CACHE_KEY, useCache, deleteUserCache } from '@/hooks/web/useCache'
 import { getInfo, loginOut } from '@/api/login'
+import { invalidateReportIntents } from '@/utils/reportIntent'
 
 const { wsCache } = useCache()
 
@@ -90,6 +91,7 @@ export const useUserStore = defineStore('admin-user', {
       this.resetState()
     },
     resetState() {
+      invalidateReportIntents()
       this.permissions = new Set<string>()
       this.roles = []
       this.isSetUser = false
