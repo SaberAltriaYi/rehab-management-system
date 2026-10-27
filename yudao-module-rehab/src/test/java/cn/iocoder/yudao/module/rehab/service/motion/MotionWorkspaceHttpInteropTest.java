@@ -24,6 +24,12 @@ class MotionWorkspaceHttpInteropTest {
     @SuppressWarnings("unchecked")
     private Map<String, Object> call(
             String method, String path, Map<String, Object> data, String token) throws Exception {
+        return call(method, path, data, token, 200);
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> call(
+            String method, String path, Map<String, Object> data, String token, int expected) throws Exception {
         HttpURLConnection c = (HttpURLConnection) new URL(base + path).openConnection();
         c.setRequestMethod(method);
         c.setConnectTimeout(1000);
@@ -36,9 +42,12 @@ class MotionWorkspaceHttpInteropTest {
             c.getOutputStream()
                     .write(JsonUtils.toJsonString(data).getBytes(StandardCharsets.UTF_8));
         }
-        assertEquals(200, c.getResponseCode(), "local synthetic HTTP contract failed");
-        try (InputStream in = c.getInputStream()) {
-            return JsonUtils.parseObject(in.readAllBytes(), Map.class);
+        try {
+            assertEquals(expected, c.getResponseCode(), "local synthetic HTTP contract failed");
+            if (expected != 200) return Collections.emptyMap();
+            try (InputStream in = c.getInputStream()) {
+                return JsonUtils.parseObject(in.readAllBytes(), Map.class);
+            }
         } finally {
             c.disconnect();
         }
@@ -71,6 +80,7 @@ class MotionWorkspaceHttpInteropTest {
                         String.valueOf(port));
         builder.directory(repo.toFile());
         builder.environment().put("REHAB_CORE_BRIDGE_TOKEN", secret);
+        builder.environment().put("OPENAI_ENABLE_AI_ANALYSIS", "false");
         builder.redirectOutput(ProcessBuilder.Redirect.DISCARD);
         builder.redirectError(ProcessBuilder.Redirect.DISCARD);
         Process process = builder.start();
@@ -110,6 +120,32 @@ class MotionWorkspaceHttpInteropTest {
             String token = (String) exchanged.get("token"),
                     aid = (String) exchanged.get("assessment_id"),
                     path = "/api/assessments/" + aid;
+            // These are dedicated synthetic service claims, not a real Core login.
+            call("POST", "/api/core/exchange", Collections.singletonMap("ticket", launch.get("ticket")), null, 401);
+            call("GET", path, null, null, 401);
+            call("GET", path, null, "SYNTHETIC_INVALID_SESSION", 401);
+            call("POST", "/internal/core/launch", payload, "SYNTHETIC_INVALID_MACHINE", 401);
+            call("POST", path + "/core-sync", Collections.singletonMap("expected_version", 1), token, 409);
+            Map<String,Object> readonly = new LinkedHashMap<>(payload);
+            readonly.put("rights", Collections.singletonList("view"));
+            Map<String,Object> readEntry = client.exchange("/internal/core/launch", HttpMethod.POST, readonly);
+            Map<String,Object> readSession = call("POST", "/api/core/exchange", Collections.singletonMap("ticket", readEntry.get("ticket")), null);
+            String readToken = (String) readSession.get("token");
+            call("GET", path, null, readToken);
+            Map<String,Object> forbiddenSource = new HashMap<>();
+            forbiddenSource.put("expected_version", 1); forbiddenSource.put("title", "SYNTHETIC_DENIED"); forbiddenSource.put("kind", "onsite");
+            call("POST", path + "/sources", forbiddenSource, readToken, 403);
+            Map<String,Object> other = new LinkedHashMap<>(payload); other.put("tenant", "9");
+            Map<String,Object> otherEntry = client.exchange("/internal/core/launch", HttpMethod.POST, other);
+            Map<String,Object> otherSession = call("POST", "/api/core/exchange", Collections.singletonMap("ticket", otherEntry.get("ticket")), null);
+            call("GET", "/api/assessments/" + otherSession.get("assessment_id"), null, token, 404);
+            call("GET", path, null, (String) otherSession.get("token"), 404);
+            for (Map<String,Object> changed : Arrays.asList(
+                    Collections.<String,Object>singletonMap("patient", "44"), Collections.<String,Object>singletonMap("episode", "9"),
+                    Collections.<String,Object>singletonMap("core_revision", 2))) {
+                Map<String,Object> wrong = new LinkedHashMap<>(payload); wrong.putAll(changed);
+                call("POST", "/internal/core/launch", wrong, secret, 409);
+            }
             Map<String, Object> source = new HashMap<>();
             source.put("expected_version", 1);
             source.put("title", "synthetic onsite evidence");
@@ -135,11 +171,12 @@ class MotionWorkspaceHttpInteropTest {
                             path + "/confirm",
                             Collections.singletonMap("expected_version", doc.get("version")),
                             token);
-            call(
+            Map<String,Object> receipt = call(
                     "POST",
                     path + "/core-sync",
                     Collections.singletonMap("expected_version", doc.get("version")),
                     token);
+            assertEquals(receipt,call("POST", path + "/core-sync", Collections.singletonMap("expected_version", doc.get("version")), token));
             Map<String, Object> result =
                     client.exchange(
                             "/internal/core/result?tenant=1&assessment=2", HttpMethod.GET, null);
@@ -154,6 +191,13 @@ class MotionWorkspaceHttpInteropTest {
                                             .get("value"))
                             .intValue());
             assertEquals(aid, snapshot.get("assessment_id"));
+            a.setInputRevision(2);
+            assertThrows(IllegalStateException.class, () -> MotionWorkspaceService.validateSnapshot(result, a));
+            a.setInputRevision(1);
+            Map<String,Object> changedSource = new HashMap<>();
+            changedSource.put("expected_version", doc.get("version")); changedSource.put("title", "SYNTHETIC_NEW_SOURCE"); changedSource.put("kind", "onsite");
+            call("POST", path + "/sources", changedSource, token);
+            call("GET", "/internal/core/result?tenant=1&assessment=2", null, secret, 409);
         } finally {
             process.destroy();
             process.waitFor(5, java.util.concurrent.TimeUnit.SECONDS);

@@ -103,7 +103,7 @@ public class MotionWorkspaceClient {
                                 }
                                 return out.toByteArray();
                             });
-            return JsonUtils.parseObject(result, Map.class);
+            return MotionWorkspaceJson.read(result);
         } catch (RuntimeException ex) {
             throw new IllegalStateException("运动评估服务请求失败：请检查服务、迁移、连接配置、证书和是否已提交结果");
         }

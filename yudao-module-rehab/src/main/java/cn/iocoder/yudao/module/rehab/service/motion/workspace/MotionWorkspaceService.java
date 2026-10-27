@@ -1,7 +1,6 @@
 package cn.iocoder.yudao.module.rehab.service.motion.workspace;
 
 import cn.hutool.crypto.digest.DigestUtil;
-import cn.iocoder.yudao.framework.common.util.json.JsonUtils;
 import cn.iocoder.yudao.module.rehab.dal.dataobject.motion.RehabMotionAssessmentDO;
 import cn.iocoder.yudao.module.rehab.dal.dataobject.patient.RehabPatientDO;
 import cn.iocoder.yudao.module.rehab.dal.mysql.motion.RehabMotionAssessmentMapper;
@@ -84,14 +83,19 @@ public class MotionWorkspaceService {
     @SuppressWarnings("unchecked")
     public static Map<String, Object> validateSnapshot(
             Map<String, Object> result, RehabMotionAssessmentDO a) {
+        if (result == null || !(result.get("snapshot_json") instanceof String)
+                || !(result.get("sha256") instanceof String)) {
+            throw new IllegalStateException("同步结果结构无效");
+        }
         String raw = (String) result.get("snapshot_json");
         String hash = (String) result.get("sha256");
         if (raw == null
                 || raw.getBytes(StandardCharsets.UTF_8).length > 1024 * 1024
                 || !DigestUtil.sha256Hex(raw).equals(hash))
             throw new IllegalStateException("同步结果哈希或体积无效");
-        Map<String, Object> snapshot = JsonUtils.parseObject(raw, Map.class);
-        Map<String, Object> binding = (Map<String, Object>) snapshot.get("binding");
+        Map<String, Object> snapshot = MotionWorkspaceJson.read(raw);
+        Map<String, Object> binding = snapshot.get("binding") instanceof Map
+                ? (Map<String, Object>) snapshot.get("binding") : null;
         if (!"rehab-workspace-sync/1".equals(snapshot.get("schema"))
                 || binding == null
                 || !Objects.equals(String.valueOf(a.getTenantId()), binding.get("tenant"))
