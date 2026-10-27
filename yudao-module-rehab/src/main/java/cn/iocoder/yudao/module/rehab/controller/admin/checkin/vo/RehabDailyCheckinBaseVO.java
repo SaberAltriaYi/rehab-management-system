@@ -43,6 +43,6 @@ public class RehabDailyCheckinBaseVO {
     @Schema(description = "任务执行明细", requiredMode = Schema.RequiredMode.REQUIRED)
     @NotEmpty(message = "任务执行明细不能为空")
     @Valid
-    private List<RehabTaskExecutionItemVO> taskExecutions;
+    private List<@NotNull(message = "任务执行明细项不能为空") RehabTaskExecutionItemVO> taskExecutions;
 
 }

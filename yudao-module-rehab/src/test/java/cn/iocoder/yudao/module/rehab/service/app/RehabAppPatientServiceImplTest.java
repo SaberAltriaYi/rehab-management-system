@@ -25,6 +25,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Collections;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -33,6 +34,8 @@ import static org.mockito.Mockito.*;
 import static cn.iocoder.yudao.module.rehab.enums.ErrorCodeConstants.APP_PATIENT_DAILY_CHECKIN_EXISTS;
 import static cn.iocoder.yudao.module.rehab.enums.ErrorCodeConstants.APP_PATIENT_AUTH_DISABLED;
 import static cn.iocoder.yudao.module.rehab.enums.ErrorCodeConstants.APP_PATIENT_INVITATION_INVALID;
+import static cn.iocoder.yudao.module.rehab.enums.ErrorCodeConstants.CHECKIN_TASK_EXECUTION_EMPTY;
+import static cn.iocoder.yudao.module.rehab.enums.ErrorCodeConstants.CHECKIN_TASK_EXECUTION_INVALID;
 import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionUtil.exception;
 
 @ExtendWith(MockitoExtension.class)
@@ -144,6 +147,25 @@ class RehabAppPatientServiceImplTest {
 
         assertEquals(43001L, id);
         verify(checkinService).createCheckin(any(), eq(90001L), eq(false));
+    }
+
+    @Test
+    void createCheckin_shouldRejectNullOrEmptyExecutionsBeforeTranslationOrDelegation() {
+        AppPatientCheckinCreateReqVO req = new AppPatientCheckinCreateReqVO();
+        req.setPlanId(40001L);
+        when(patientUserBindingMapper.selectActiveByAppUserId(90001L)).thenReturn(RehabPatientUserBindingDO.builder()
+                .id(1L).patientId(10001L).appUserId(90001L).bindStatus("active").build());
+        when(planMapper.selectById(40001L)).thenReturn(RehabCarePlanDO.builder()
+                .id(40001L).patientId(10001L).episodeId(13001L).build());
+        ServiceException missing = assertThrows(ServiceException.class, () -> appPatientService.createCheckin(req, 90001L));
+        assertEquals(CHECKIN_TASK_EXECUTION_EMPTY.getCode(), missing.getCode());
+        req.setTaskExecutions(Collections.emptyList());
+        ServiceException empty = assertThrows(ServiceException.class, () -> appPatientService.createCheckin(req, 90001L));
+        assertEquals(CHECKIN_TASK_EXECUTION_EMPTY.getCode(), empty.getCode());
+        req.setTaskExecutions(Collections.singletonList(null));
+        ServiceException invalid = assertThrows(ServiceException.class, () -> appPatientService.createCheckin(req, 90001L));
+        assertEquals(CHECKIN_TASK_EXECUTION_INVALID.getCode(), invalid.getCode());
+        verifyNoInteractions(checkinService);
     }
 
     private AppPatientTaskExecutionItemVO buildTaskExecution(Long taskId) {

@@ -1,6 +1,7 @@
 package cn.iocoder.yudao.module.rehab.enums;
 
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 
 /**
@@ -52,6 +53,8 @@ public interface RehabPlanConstants {
     String COMPLETION_PARTIAL = "partial";
     String COMPLETION_SKIPPED = "skipped";
     String COMPLETION_PAIN_STOP = "pain_stop";
+    List<String> COMPLETION_STATUS_LIST = Collections.unmodifiableList(Arrays.asList(
+            COMPLETION_COMPLETED, COMPLETION_PARTIAL, COMPLETION_SKIPPED, COMPLETION_PAIN_STOP));
 
     String PAIN_TREND_IMPROVED = "improved";
     String PAIN_TREND_STABLE = "stable";

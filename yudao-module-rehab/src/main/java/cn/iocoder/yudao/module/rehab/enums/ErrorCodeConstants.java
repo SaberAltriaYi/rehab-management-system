@@ -79,6 +79,8 @@ public interface ErrorCodeConstants {
     ErrorCode CHECKIN_NOT_EXISTS = new ErrorCode(1_011_008_000, "打卡记录不存在");
     ErrorCode CHECKIN_TASK_EXECUTION_EMPTY = new ErrorCode(1_011_008_001, "打卡任务执行记录不能为空");
     ErrorCode CHECKIN_TASK_NOT_BELONG_TO_PLAN = new ErrorCode(1_011_008_002, "存在任务不属于当前计划");
+    ErrorCode CHECKIN_TASK_EXECUTION_DUPLICATE = new ErrorCode(1_011_008_003, "同次训练提交中任务不能重复，请核对执行明细");
+    ErrorCode CHECKIN_TASK_EXECUTION_INVALID = new ErrorCode(1_011_008_004, "训练执行明细或完成状态不合法，请核对后重新提交");
 
     ErrorCode PROGRESS_NOT_EXISTS = new ErrorCode(1_011_009_000, "进度记录不存在");
 

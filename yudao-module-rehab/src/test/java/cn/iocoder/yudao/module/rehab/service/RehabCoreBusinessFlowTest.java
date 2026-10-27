@@ -33,6 +33,7 @@ import java.util.*;
 import java.math.BigDecimal;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
+import static cn.iocoder.yudao.module.rehab.enums.ErrorCodeConstants.*;
 
 /** Copyright (c) 2026 杨玺龙. SPDX-License-Identifier: MIT. Synthetic service/ORM flow, no actual user login. */
 class RehabCoreBusinessFlowTest {
@@ -42,12 +43,14 @@ class RehabCoreBusinessFlowTest {
     RehabCarePlanService plans; RehabExerciseTaskService tasks; RehabDailyCheckinService checkins;
     RehabReassessmentTriggerService triggers;
     RehabEpisodeService episodes;
+    RehabDailyCheckinServiceImpl checkinTarget;
     @BeforeEach void open() throws Exception {
         db = new ClinicalFlowDatabase();
         RehabPatientServiceImpl p = new RehabPatientServiceImpl(); RehabEpisodeServiceImpl e = new RehabEpisodeServiceImpl();
         RehabAssessmentServiceImpl a = new RehabAssessmentServiceImpl(); RehabReportServiceImpl r = new RehabReportServiceImpl();
         RehabCarePlanServiceImpl plan = new RehabCarePlanServiceImpl(); RehabExerciseTaskServiceImpl task = new RehabExerciseTaskServiceImpl();
         RehabDailyCheckinServiceImpl check = new RehabDailyCheckinServiceImpl(); RehabProgressRecordServiceImpl progress = new RehabProgressRecordServiceImpl();
+        checkinTarget = check;
         RehabReassessmentTriggerServiceImpl trigger = new RehabReassessmentTriggerServiceImpl(); RehabDataPermissionService permissions = new RehabDataPermissionService();
         RehabClinicalSources sources = new RehabClinicalSources(); RehabReportVersionSequence sequence = new RehabReportVersionSequence();
         RehabReportGenerationRequests requests = new RehabReportGenerationRequests();
@@ -157,5 +160,98 @@ class RehabCoreBusinessFlowTest {
         update.setPatientId(a); update.setEpisodeId(ea); update.setSourceAssessmentId(other);
         assertThrows(ServiceException.class,()->plans.updatePlan(update,501L));
         assertThrows(ServiceException.class,()->assessment.deleteAssessment(source,501L),"plan source must not become orphaned");
+    }
+
+    RehabDailyCheckinCreateReqVO trainingRequest() {
+        Long person=createPatient(), episode=db.mapper(RehabEpisodeMapper.class).selectActiveByPatientId(person).getId();
+        RehabCarePlanCreateReqVO plan=new RehabCarePlanCreateReqVO(); plan.setPatientId(person); plan.setEpisodeId(episode);
+        plan.setPlanName("SYNTHETIC_TRANSACTION"); plan.setStartDate(LocalDate.now().minusDays(1));
+        Long planId=plans.createPlan(plan,501L).getId();
+        RehabExerciseTaskCreateReqVO task=new RehabExerciseTaskCreateReqVO(); task.setPatientId(person); task.setEpisodeId(episode);
+        task.setPlanId(planId); task.setTaskName("SYNTHETIC_SINGLE_EXECUTION");
+        Long taskId=tasks.createTask(task,501L);
+        RehabTaskExecutionItemVO item=new RehabTaskExecutionItemVO(); item.setTaskId(taskId); item.setCompletionStatus("completed");
+        RehabDailyCheckinCreateReqVO req=new RehabDailyCheckinCreateReqVO(); req.setPatientId(person); req.setEpisodeId(episode);
+        req.setPlanId(planId); req.setCheckinDate(LocalDate.now()); req.setTaskExecutions(Collections.singletonList(item));
+        return req;
+    }
+
+    void assertNoTrainingWrites(int logsBefore) {
+        for (String table : Arrays.asList("rehab_daily_checkin", "rehab_task_execution", "rehab_progress_record", "rehab_reassessment_trigger")) {
+            assertEquals(0,db.jdbc.queryForObject("SELECT COUNT(*) FROM " + table,Integer.class),table);
+        }
+        assertEquals(logsBefore,db.jdbc.queryForObject("SELECT COUNT(*) FROM rehab_plan_operation_log",Integer.class));
+    }
+
+    @Test void duplicateTaskInOneSubmissionIsRejectedWithoutInflatingProgress() {
+        RehabDailyCheckinCreateReqVO req=trainingRequest();
+        RehabTaskExecutionItemVO item=req.getTaskExecutions().get(0);
+        req.setTaskExecutions(Arrays.asList(item,item));
+        int logsBefore=db.jdbc.queryForObject("SELECT COUNT(*) FROM rehab_plan_operation_log",Integer.class);
+        ServiceException rejected=assertThrows(ServiceException.class,()->checkins.createCheckin(req,501L,true));
+        assertEquals(CHECKIN_TASK_EXECUTION_DUPLICATE.getCode(),rejected.getCode());
+        assertNoTrainingWrites(logsBefore);
+    }
+
+    @Test void malformedExecutionIsRejectedBeforeAnyTrainingWrites() {
+        RehabDailyCheckinCreateReqVO req=trainingRequest();
+        RehabTaskExecutionItemVO item=req.getTaskExecutions().get(0); Long taskId=item.getTaskId();
+        int logsBefore=db.jdbc.queryForObject("SELECT COUNT(*) FROM rehab_plan_operation_log",Integer.class);
+        req.setTaskExecutions(Collections.singletonList(null));
+        assertInvalidTraining(req);
+        req.setTaskExecutions(Collections.singletonList(item)); item.setTaskId(null);
+        assertInvalidTraining(req);
+        item.setTaskId(0L);
+        assertInvalidTraining(req);
+        item.setTaskId(taskId); item.setCompletionStatus("SYNTHETIC_UNKNOWN_STATUS");
+        assertInvalidTraining(req);
+        item.setCompletionStatus(null);
+        assertInvalidTraining(req);
+        assertNoTrainingWrites(logsBefore);
+    }
+
+    void assertInvalidTraining(RehabDailyCheckinCreateReqVO req) {
+        ServiceException rejected=assertThrows(ServiceException.class,()->checkins.createCheckin(req,501L,true));
+        assertEquals(CHECKIN_TASK_EXECUTION_INVALID.getCode(),rejected.getCode());
+    }
+
+    @Test void distinctTasksKeepAllExistingCompletionStatesAndZeroPain() {
+        RehabDailyCheckinCreateReqVO req=trainingRequest();
+        List<RehabTaskExecutionItemVO> items=new ArrayList<>(req.getTaskExecutions());
+        for (String status : Arrays.asList("partial", "skipped", "pain_stop")) {
+            RehabExerciseTaskCreateReqVO task=new RehabExerciseTaskCreateReqVO(); task.setPatientId(req.getPatientId());
+            task.setEpisodeId(req.getEpisodeId()); task.setPlanId(req.getPlanId()); task.setTaskName("SYNTHETIC_" + status);
+            RehabTaskExecutionItemVO item=new RehabTaskExecutionItemVO(); item.setTaskId(tasks.createTask(task,501L));
+            item.setCompletionStatus(status); item.setPainScore(BigDecimal.ZERO); items.add(item);
+        }
+        req.setTaskExecutions(items); req.setPainScoreAfter(BigDecimal.ZERO);
+        Long id=checkins.createCheckin(req,501L,true);
+        assertEquals(4,db.jdbc.queryForObject("SELECT COUNT(*) FROM rehab_task_execution",Integer.class));
+        assertEquals(0,new BigDecimal("37.50").compareTo(db.jdbc.queryForObject(
+                "SELECT overall_completion_rate FROM rehab_daily_checkin WHERE id=?",BigDecimal.class,id)));
+        assertEquals(0,BigDecimal.ZERO.compareTo(db.jdbc.queryForObject(
+                "SELECT pain_score_after FROM rehab_daily_checkin WHERE id=?",BigDecimal.class,id)));
+    }
+
+    @Test void downstreamFailureRollsBackTrainingProgressAndLogsThenRetryCanSucceed() {
+        RehabDailyCheckinCreateReqVO req=trainingRequest();
+        int logsBefore=db.jdbc.queryForObject("SELECT COUNT(*) FROM rehab_plan_operation_log",Integer.class);
+        RehabReassessmentTriggerService failed=mock(RehabReassessmentTriggerService.class);
+        doAnswer(call -> {
+            for (String table : Arrays.asList("rehab_daily_checkin", "rehab_task_execution", "rehab_progress_record")) {
+                assertEquals(1,db.jdbc.queryForObject("SELECT COUNT(*) FROM " + table,Integer.class),table);
+            }
+            throw new IllegalStateException("SYNTHETIC_DOWNSTREAM_FAILURE");
+        }).when(failed)
+                .evaluateByPlan(eq(req.getPlanId()),any(),eq(501L));
+        ReflectionTestUtils.setField(checkinTarget,"triggerService",failed);
+        assertThrows(IllegalStateException.class,()->checkins.createCheckin(req,501L,true));
+        verify(failed).evaluateByPlan(eq(req.getPlanId()),any(),eq(501L));
+        assertNoTrainingWrites(logsBefore);
+        ReflectionTestUtils.setField(checkinTarget,"triggerService",triggers);
+        Long id=checkins.createCheckin(req,501L,true); assertNotNull(id);
+        assertEquals(1,db.jdbc.queryForObject("SELECT COUNT(*) FROM rehab_daily_checkin",Integer.class));
+        assertEquals(1,db.jdbc.queryForObject("SELECT COUNT(*) FROM rehab_task_execution",Integer.class));
+        assertEquals(1,db.jdbc.queryForObject("SELECT COUNT(*) FROM rehab_progress_record",Integer.class));
     }
 }

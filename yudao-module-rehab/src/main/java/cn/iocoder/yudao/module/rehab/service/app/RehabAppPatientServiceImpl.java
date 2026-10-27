@@ -253,6 +253,13 @@ public class RehabAppPatientServiceImpl implements RehabAppPatientService {
             throw exception(APP_PATIENT_DAILY_CHECKIN_EXISTS);
         }
 
+        if (CollUtil.isEmpty(reqVO.getTaskExecutions())) {
+            throw exception(CHECKIN_TASK_EXECUTION_EMPTY);
+        }
+        if (reqVO.getTaskExecutions().stream().anyMatch(Objects::isNull)) {
+            throw exception(CHECKIN_TASK_EXECUTION_INVALID);
+        }
+
         RehabDailyCheckinCreateReqVO createReqVO = new RehabDailyCheckinCreateReqVO();
         createReqVO.setPatientId(binding.getPatientId());
         createReqVO.setEpisodeId(plan.getEpisodeId());
