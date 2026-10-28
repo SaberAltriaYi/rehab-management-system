@@ -127,29 +127,23 @@ tenant_response="$(
 printf '%s' "${tenant_response}" |
   jq -e '.code == 0 and .data == 1' >/dev/null
 
-# The patient UI flag is insufficient: a fresh installer must reject both
-# publicly reachable legacy authentication routes on the server itself. Send
-# the synthetic tenant header so tenant validation does not mask the route's
-# explicit HTTP 403 with an unrelated HTTP 200 / business-code 400 response.
+# The patient UI flag is insufficient. The legacy login must explicitly reject
+# phone/number authentication (HTTP 403); binding requires MEMBER authentication
+# and is rejected anonymously by the existing HTTP 200 / code 401 security entry
+# point. Validation/404/server failures must not masquerade as either gate.
 for action in login bind; do
   auth_status="$(
     curl --silent --show-error \
       --cacert "${TLS_CERT_PATH}" \
       --header 'Content-Type: application/json' \
       --header 'tenant-id: 1' \
-      --data '{"phone":"13800138000","bindCode":"INVALID_TEST_CODE","patientNo":"INVALID_TEST_CODE"}' \
+      --data '{"phone":"13800138000","bindCode":"INVALID_TEST_CODE","patientNo":"INVALID_TEST_CODE","invitationCode":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","bindType":"self"}' \
       --output "${TEST_DIR}/patient-auth.json" \
       --write-out '%{http_code}' \
       "https://127.0.0.1:${TLS_PORT}/app-api/app-patient/auth/${action}"
   )"
-  if [[ "${auth_status}" != 403 ]]; then
-    echo "ERROR: patient auth ${action} returned HTTP ${auth_status}, expected 403" >&2
-    # Only synthetic test input reaches this endpoint. Log the structured
-    # error code/message (not data or tokens) to diagnose proxy/filter failures.
-    jq -c '{code, msg}' "${TEST_DIR}/patient-auth.json" >&2 || true
-    exit 1
-  fi
-  jq -e '.code == 403' "${TEST_DIR}/patient-auth.json" >/dev/null
+  node "${SCRIPT_DIR}/patient-auth-contract.mjs" "${action}" \
+    "${auth_status}" "${TEST_DIR}/patient-auth.json"
 done
 
 counts="$(

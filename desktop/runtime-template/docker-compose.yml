@@ -54,7 +54,7 @@ services:
     build:
       context: ./server
       dockerfile: Dockerfile
-    image: rehab-desktop-server:1.0.0
+    image: ${REHAB_SERVER_IMAGE:-rehab-desktop-server:1.0.0}
     restart: unless-stopped
     environment:
       TZ: ${TZ:-Asia/Shanghai}
@@ -99,7 +99,7 @@ services:
     build:
       context: ./admin
       dockerfile: Dockerfile
-    image: rehab-desktop-admin:1.0.0
+    image: ${REHAB_ADMIN_IMAGE:-rehab-desktop-admin:1.0.0}
     restart: unless-stopped
     environment:
       TLS_PORT: ${TLS_PORT:-8443}
@@ -125,10 +125,10 @@ services:
 
 volumes:
   mysql-data:
-    name: rehab-desktop-mysql-data
+    name: ${REHAB_VOLUME_PREFIX:-rehab-desktop}-mysql-data
   redis-data:
-    name: rehab-desktop-redis-data
+    name: ${REHAB_VOLUME_PREFIX:-rehab-desktop}-redis-data
   rehab-data:
-    name: rehab-desktop-rehab-data
+    name: ${REHAB_VOLUME_PREFIX:-rehab-desktop}-rehab-data
   server-logs:
-    name: rehab-desktop-server-logs
+    name: ${REHAB_VOLUME_PREFIX:-rehab-desktop}-server-logs

@@ -28,3 +28,10 @@
 027|c7a519052782f152175fa5dc316f3086ed951d815b6d9f558cdf2397852da56b|sql/mysql/rehab-saas-platform-v2.sql|SaaS 多租户平台套餐、平台管理员与用量
 028|95f0cd0e550ee274e49b574ce2f196e024a35d5557d138591bbcc2ef84bb8755|sql/mysql/rehab-saas-onboarding-v2.sql|SaaS 机构注册申请及平台操作审计
 029|3be02fe62ec4f06a590de9fa64efda16dc473bdc01fc32e48adb102c91b9b5ea|sql/mysql/rehab-saas-staff-invitations-v2.sql|SaaS 治疗师一次性邀请
+030|659db17ae877f55fa834192bd8db1facd3a36d4ecfc90bea119f583a1e22e891|sql/mysql/rehab-system-owner-tenant-v1.sql|系统拥有者租户总览权限
+031|27283e424befaf9122d5a2d35f237a0bbf5f44a66b195d180081545c59e06872|sql/mysql/rehab-crm-department-workspaces-v1.sql|CRM共享客户目录与部门私有工作台
+032|dff3739e966d9a09c0af346fd893778aba34ba0b42de55d9e3951069ffac567d|sql/mysql/rehab-motion-workspace-v1.sql|原生运动学工作区权限及版本化接收复核
+033|18169aa1e9a2009d3d53f99c2a7dd8ef338c74b6e8ec2eff86127681e3028343|sql/mysql/rehab-ai-plan-default-off-v1.sql|历史迁移恢复固定校验和后保持AI训练草稿关闭
+034|d2cf5c719ba6b4a5f50d6a040f0bfa57e7e922ce852460dc57c8bf02de6f336c|sql/mysql/rehab-native-legacy-constraints-v1.sql|原生旧库副本无损补齐康复关系约束
+035|16ba99cbf5ff51116b18edc52dcf4c0f9d532dec6f1fc42d0de7985d42361dfa|sql/mysql/rehab-patient-data-origin-v1.sql|患者模拟来源、可恢复归档与专属治理权限（不自动授予）
+036|a9bc632fa0ac91be76da659e93b8c7bd3053bbcda98cd69a470ddbe70f32246f|sql/mysql/rehab-report-generation-request-v1.sql|报告成功请求幂等账本（无临床正文、无原始请求编号）

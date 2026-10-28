@@ -82,6 +82,24 @@ if [ -n "$motion_engine_url" ]; then
   [ "$motion_engine_token" != "$db_password" ] && [ "$motion_engine_token" != "$redis_password" ] \
     && [ "$motion_engine_token" != "$mysql_root_password" ] || fail "MOTION_ENGINE_TOKEN 不得复用其他密码"
 fi
+workspace_service_url=$(env_value REHAB_ASSESSMENT_SERVICE_URL)
+workspace_public_url=$(env_value REHAB_ASSESSMENT_PUBLIC_URL)
+workspace_bridge_token=$(env_value REHAB_CORE_BRIDGE_TOKEN)
+if [ -n "$workspace_service_url$workspace_public_url$workspace_bridge_token" ]; then
+  [ -n "$workspace_service_url" ] && [ -n "$workspace_public_url" ] \
+    || fail "运动学工作区需同时配置服务地址和浏览器访问地址"
+  [ "${#workspace_bridge_token}" -ge 32 ] || fail "运动学工作区服务令牌必须至少为 32 字符"
+  [ "$workspace_bridge_token" != "$db_password" ] && [ "$workspace_bridge_token" != "$redis_password" ] \
+    && [ "$workspace_bridge_token" != "$mysql_root_password" ] \
+    && [ "$workspace_bridge_token" != "$motion_engine_token" ] || fail "工作区服务令牌不得复用已有密码或令牌"
+  for workspace_url in "$workspace_service_url" "$workspace_public_url"; do
+    case "$workspace_url" in *'@'*|*'?'*|*'#'*) fail "工作区地址不得包含凭据、查询或 fragment" ;; esac
+    case "$workspace_url" in
+      https://*|http://127.0.0.1:*|http://localhost:*) ;;
+      *) fail "非本机运动学工作区必须使用 HTTPS" ;;
+    esac
+  done
+fi
 pass "部署环境文件已配置"
 
 [ -f "$CA_CERT" ] || fail "缺少内部 CA，请执行 deploy/internal/generate-tls.sh"

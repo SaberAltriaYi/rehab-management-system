@@ -1,6 +1,28 @@
 <template>
   <doc-alert title="SaaS 多租户" url="https://doc.iocoder.cn/saas-tenant/" />
 
+  <ContentWrap v-hasPermi="['system:tenant:owner']" class="mb-16px">
+    <div class="flex items-center justify-between gap-12px flex-wrap">
+      <div>
+        <div class="text-18px font-bold">系统拥有者租户总览</div>
+        <div class="text-13px text-[var(--el-text-color-secondary)] mt-4px">
+          仅系统拥有者可查看跨租户运营指标；租户业务数据仍按租户隔离。
+        </div>
+      </div>
+      <el-button type="primary" plain :loading="ownerOverviewLoading" @click="loadOwnerOverview">
+        <Icon icon="ep:odometer" class="mr-5px" />刷新总览
+      </el-button>
+    </div>
+    <div v-if="ownerOverviewVisible && ownerOverview" class="grid grid-cols-2 md:grid-cols-3 gap-12px mt-16px">
+      <el-statistic title="租户总数" :value="ownerOverview.totalTenants" />
+      <el-statistic title="启用租户" :value="ownerOverview.activeTenants" />
+      <el-statistic title="停用租户" :value="ownerOverview.disabledTenants" />
+      <el-statistic title="已过期" :value="ownerOverview.expiredTenants" />
+      <el-statistic title="30 天内到期" :value="ownerOverview.expiringWithin30Days" />
+      <el-statistic title="账号额度合计" :value="ownerOverview.totalAccountQuota" />
+    </div>
+  </ContentWrap>
+
   <!-- 搜索 -->
   <ContentWrap>
     <el-form
@@ -217,6 +239,19 @@ const queryParams = reactive({
 const queryFormRef = ref() // 搜索的表单
 const exportLoading = ref(false) // 导出的加载中
 const packageList = ref([] as TenantPackageApi.TenantPackageVO[]) //租户套餐列表
+const ownerOverviewVisible = ref(false)
+const ownerOverviewLoading = ref(false)
+const ownerOverview = ref<TenantApi.TenantOwnerOverviewVO>()
+
+const loadOwnerOverview = async () => {
+  ownerOverviewLoading.value = true
+  try {
+    ownerOverview.value = await TenantApi.getTenantOwnerOverview()
+    ownerOverviewVisible.value = true
+  } finally {
+    ownerOverviewLoading.value = false
+  }
+}
 
 /** 查询列表 */
 const getList = async () => {

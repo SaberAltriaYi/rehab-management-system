@@ -88,10 +88,14 @@
             type="primary"
             link
             v-hasPermi="['rehab:assessment:generate-report']"
+            :loading="isGeneratingReport(scope.row.id)"
             @click="handleGenerateReport(scope.row)"
           >
             生成报告
           </el-button>
+          <el-button v-if="hasUncertainReport(scope.row.id)" type="warning" link
+            v-hasPermi="['rehab:assessment:generate-report']" :disabled="isGeneratingReport(scope.row.id)"
+            @click="resetPendingReport(scope.row.id)">核对后重置</el-button>
           <el-button
             type="primary"
             link
@@ -125,7 +129,7 @@ import {
   getRehabAssessmentPage,
   RehabAssessmentPageReqVO
 } from '@/api/rehab/assessment'
-import { generateRehabReport } from '@/api/rehab/report'
+import { useReportGeneration } from '@/hooks/web/useReportGeneration'
 import {
   ASSESSMENT_TYPE_OPTIONS,
   getAssessmentTypeLabel
@@ -134,6 +138,7 @@ import {
 defineOptions({ name: 'RehabAssessment' })
 
 const message = useMessage()
+const { generateReport: runGenerateReport, isGeneratingReport, hasUncertainReport, resetPendingReport } = useReportGeneration()
 const { push } = useRouter()
 const route = useRoute()
 
@@ -196,9 +201,7 @@ const openEdit = (id: number) => {
 }
 
 const handleGenerateReport = async (row: any) => {
-  await message.confirm(`确认为评估 ${row.assessmentNo} 生成报告吗？`)
-  await generateRehabReport({ assessmentId: row.id })
-  message.success('已生成报告')
+  await runGenerateReport(row.id)
 }
 
 const handleArchive = async (row: any) => {

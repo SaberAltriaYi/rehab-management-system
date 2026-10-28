@@ -50,7 +50,7 @@ Compose 内部网络通信。AI 在前端、后端和数据库菜单三处关闭
 # 后端测试和隔离构建
 mvn -pl yudao-module-rehab -am test
 mvn -pl yudao-framework/yudao-spring-boot-starter-web \
-  -am -Dtest=ApiAccessLogInterceptorTest,GlobalExceptionHandlerTest \
+  -am -Dtest=ApiAccessLogPrivacyTest,ApiAccessLogInterceptorTest,GlobalExceptionHandlerTest \
   -Dsurefire.failIfNoSpecifiedTests=false test
 deploy/internal/build-server-isolated.sh
 
@@ -101,20 +101,20 @@ deploy/internal/generate-backup-key.sh
 
 三个基础设施密码必须彼此不同、至少 24 字符。不要提交或发送 `.env`、`*.key` 或备份密钥。
 
-| 变量 | 必需 | 说明 |
-| --- | --- | --- |
-| `BIND_ADDRESS` | 是 | 部署机明确的局域网 IPv4 或 `127.0.0.1` |
-| `LAN_HOSTNAME` | 否 | 证书备用名称，默认 `rehab.local`，需局域网 DNS/hosts 解析 |
-| `APP_PORT` | 否 | HTTP 跳转端口，默认 `8080` |
-| `TLS_PORT` | 是 | 当前固定为 `8443`（nginx 的 HTTP→HTTPS 跳转与 `smoke-test.sh` 的跳转检查都按 8443 写死；在其他端口做隔离联调时，preflight 的 TLS_PORT 检查和 smoke 的跳转检查会失败，属预期） |
-| `DB_PASSWORD` | 是 | MySQL 业务账号密码，至少 24 字符 |
-| `MYSQL_ROOT_PASSWORD` | 是 | MySQL 管理密码，至少 24 字符 |
-| `REDIS_PASSWORD` | 是 | Redis 密码，至少 24 字符 |
-| `DB_NAME` | 否 | 默认 `ruoyi-vue-pro` |
-| `DB_USERNAME` | 否 | 默认 `yudao` |
-| `BACKUP_KEY_FILE` | 是 | 加密备份密钥路径 |
-| `JAVA_OPTS` | 否 | 默认 `-Xms256m -Xmx768m` |
-| `TZ` | 否 | 默认 `Asia/Shanghai` |
+| 变量                  | 必需 | 说明                                                                                                                                                                          |
+| --------------------- | ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `BIND_ADDRESS`        | 是   | 部署机明确的局域网 IPv4 或 `127.0.0.1`                                                                                                                                        |
+| `LAN_HOSTNAME`        | 否   | 证书备用名称，默认 `rehab.local`，需局域网 DNS/hosts 解析                                                                                                                     |
+| `APP_PORT`            | 否   | HTTP 跳转端口，默认 `8080`                                                                                                                                                    |
+| `TLS_PORT`            | 是   | 当前固定为 `8443`（nginx 的 HTTP→HTTPS 跳转与 `smoke-test.sh` 的跳转检查都按 8443 写死；在其他端口做隔离联调时，preflight 的 TLS_PORT 检查和 smoke 的跳转检查会失败，属预期） |
+| `DB_PASSWORD`         | 是   | MySQL 业务账号密码，至少 24 字符                                                                                                                                              |
+| `MYSQL_ROOT_PASSWORD` | 是   | MySQL 管理密码，至少 24 字符                                                                                                                                                  |
+| `REDIS_PASSWORD`      | 是   | Redis 密码，至少 24 字符                                                                                                                                                      |
+| `DB_NAME`             | 否   | 默认 `ruoyi-vue-pro`                                                                                                                                                          |
+| `DB_USERNAME`         | 否   | 默认 `yudao`                                                                                                                                                                  |
+| `BACKUP_KEY_FILE`     | 是   | 加密备份密钥路径                                                                                                                                                              |
+| `JAVA_OPTS`           | 否   | 默认 `-Xms256m -Xmx768m`                                                                                                                                                      |
+| `TZ`                  | 否   | 默认 `Asia/Shanghai`                                                                                                                                                          |
 
 TLS 证书包含部署时的 IP 和 `rehab.local`。部署机 IP 变化后需要轮换证书，并在成员设备
 重新安装新的 CA；`rehab.local` 不会由安装脚本修改路由器或成员设备的 DNS。
@@ -185,8 +185,11 @@ deploy/internal/migrate.sh status
 版本为 020+；更早版本均已登记；脚本只包含 `CREATE TABLE`；数据库中每张表的列名与顺序与脚本完全一致。
 任一条件不满足即失败且不写账本。包含 INSERT/ALTER 的迁移（如 024）不能 adopt，只能 `apply`。
 
-当前清单为 001–029（以 `migrations.manifest` 为准：024 运动评估、025 审计列、026 签名工作室许可证绑定、027 SaaS 平台套餐与用量、028 机构注册与审计）。已有业务库执行任何增量迁移前，先在隔离副本核验数据库与附件备份、迁移和权限，再用 `migrate.sh apply`
-（或上文 `adopt`）；`migrate.sh status` 仍有 PENDING 或校验和不一致时，不得记为发布通过。
+当前清单为 001–036（以 `migrations.manifest` 为准：024 运动评估、025 审计列、026 签名工作室许可证绑定、027 SaaS 平台套餐与用量、028 机构注册与审计、030 系统拥有者租户总览、031 CRM 部门客户工作台与公海事件账本、032 原生运动学工作区权限与版本化接收、033 保持 AI 训练草稿关闭、034 原生旧库副本关系约束补齐、035 模拟资料来源标识与独立治理权限、036 报告成功请求幂等账本）。已有业务库执行任何增量迁移前，先在隔离副本核验数据库与附件备份、迁移和权限，再用 `migrate.sh apply`（或按上文的严格要求 `adopt`）；`migrate.sh status` 仍有 PENDING 或校验和不一致时，不得记为发布通过。
+
+035 必须先于新后端启用。它只新增来源列、索引、约束和 `rehab:patient:data-governance` 权限登记，不给现有角色自动加权。已有资料仍归入业务统计，不能按姓名推断为模拟；标记完全虚构资料须由获授权管理员逐项确认。归档不删除业务行或附件，不更改治疗阶段。来源变化后的旧报告原件保留，但必须生成带模拟标识的新修订才能再次预览/导出。普通名单导入拒绝明确携带模拟来源的记录，不能作为来源降级通道。
+
+036 启用可选报告 `requestKey`（UUID）契约前必须执行。成功结果与报告、审计同事务；同机构/评估/实际操作人/请求编号重试返回原结果，参数改变或原结果不可用时拒绝，不创建替代报告。新修订应明确使用新编号。账本只存编号/参数摘要和生成结果元数据，不存临床正文或原始请求编号，备份恢复须包含此表；不定时删除它来“释放”编号。旧客户端不传编号时保持每次生成新修订，不能声称旧客户端已具备安全重试。全部迁移需先在副本验证，再部署候选后端；不自动升级现用库。
 
 不要对已有业务库手工执行 `clean-demo-rehab-data.sql` 或 `internal-hardening.sql`；这两个脚本只用于
 全新内部部署初始化。
@@ -313,3 +316,9 @@ docker compose --env-file deploy/internal/.env \
    将 JDK 17 / Spring Boot 3 迁移列入下一技术周期。
 
 可直接使用 `deploy/internal/manual/` 中的表单，不得用自动测试结果代替人员姓名、日期和签字。
+
+### 系统拥有者租户总览（迁移 030）
+
+迁移 030 为系统租户的 `system_owner` / `super_admin` 提供跨租户运营指标接口
+`GET /system/tenant/owner/overview`。该接口固定校验登录用户的系统租户身份和拥有者角色，
+不会接受请求头伪造租户范围；启用前须先执行 030 并通过 `migrate.sh status` 校验清单与校验和。

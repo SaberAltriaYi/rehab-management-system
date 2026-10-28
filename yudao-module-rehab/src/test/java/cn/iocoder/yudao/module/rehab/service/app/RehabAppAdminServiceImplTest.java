@@ -39,6 +39,30 @@ class RehabAppAdminServiceImplTest {
     }
 
     @Test
+    void emptyPatientScopeNeverQueriesGlobalStatisticsButKeepsUnreadNotifications() {
+        cn.iocoder.yudao.module.rehab.service.RehabDataPermissionService scope =
+                mock(cn.iocoder.yudao.module.rehab.service.RehabDataPermissionService.class);
+        cn.iocoder.yudao.module.rehab.dal.mysql.patient.RehabPatientMapper patients =
+                mock(cn.iocoder.yudao.module.rehab.dal.mysql.patient.RehabPatientMapper.class);
+        cn.iocoder.yudao.module.rehab.service.notification.RehabNotificationService notifications =
+                mock(cn.iocoder.yudao.module.rehab.service.notification.RehabNotificationService.class);
+        ReflectionTestUtils.setField(appAdminService, "dataPermissionService", scope);
+        ReflectionTestUtils.setField(appAdminService, "patientMapper", patients);
+        ReflectionTestUtils.setField(appAdminService, "notificationService", notifications);
+        when(permissionApi.hasAnyRoles(100L, RehabRoleCodeConstants.SUPER_ADMIN,
+                RehabRoleCodeConstants.REHAB_THERAPIST, RehabRoleCodeConstants.REHAB_CLERK)).thenReturn(true);
+        when(scope.getVisiblePatientIds(100L)).thenReturn(java.util.Collections.emptySet());
+        when(notifications.countUnreadForAdminUser(100L)).thenReturn(5L);
+        cn.iocoder.yudao.module.rehab.controller.admin.app.vo.AppAdminDashboardSummaryRespVO summary =
+                appAdminService.getDashboardSummary(100L);
+        assertEquals(0L, summary.getMyPatientCount());
+        assertEquals(0L, summary.getPendingAlertCount());
+        assertEquals(0L, summary.getPendingReassessmentCount());
+        assertEquals(5L, summary.getUnreadNotificationCount());
+        verifyNoInteractions(patients);
+    }
+
+    @Test
     void login_shouldRejectUserWithoutAppAdminRole() {
         AuthLoginReqVO reqVO = AuthLoginReqVO.builder().username("clerk001").password("123456").build();
         AuthLoginRespVO loginResp = AuthLoginRespVO.builder()

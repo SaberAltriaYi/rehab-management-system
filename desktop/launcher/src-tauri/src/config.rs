@@ -1,5 +1,5 @@
 use crate::error::{LauncherError, LauncherResult};
-use crate::model::{LauncherSettings, VersionState, APP_VERSION};
+use crate::model::{LauncherSettings, VersionState, APP_VERSION, APP_IDENTIFIER, COMPOSE_PROJECT};
 use bcrypt::{hash, DEFAULT_COST};
 use directories::BaseDirs;
 use rand::distr::{Alphanumeric, SampleString};
@@ -41,7 +41,7 @@ impl AppPaths {
         let base = BaseDirs::new()
             .ok_or_else(|| LauncherError::Internal("无法解析操作系统用户数据目录".to_owned()))?;
         Ok(Self::from_data_dir(
-            base.data_dir().join("com.saberaltriayi.rehab"),
+            base.data_dir().join(APP_IDENTIFIER),
         ))
     }
 
@@ -230,6 +230,9 @@ pub fn write_environment(
         ("BIND_ADDRESS", settings.bind_address.clone()),
         ("APP_PORT", settings.http_port.to_string()),
         ("TLS_PORT", settings.https_port.to_string()),
+        ("REHAB_VOLUME_PREFIX", COMPOSE_PROJECT.to_owned()),
+        ("REHAB_SERVER_IMAGE", format!("{COMPOSE_PROJECT}-server:{APP_VERSION}")),
+        ("REHAB_ADMIN_IMAGE", format!("{COMPOSE_PROJECT}-admin:{APP_VERSION}")),
         (
             "TLS_CERT_PATH",
             docker_path(&paths.config_dir.join("tls/server.crt")),
@@ -461,8 +464,30 @@ mod tests {
         let paths = AppPaths::platform_default().unwrap();
         assert_eq!(
             paths.data_dir.file_name(),
-            Some(std::ffi::OsStr::new("com.saberaltriayi.rehab"))
+            Some(std::ffi::OsStr::new(APP_IDENTIFIER))
         );
+    }
+
+    #[test]
+    fn generated_runtime_uses_the_compiled_profile_without_sharing_volumes_or_images() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = AppPaths::from_data_dir(dir.path().to_path_buf());
+        paths.create().unwrap();
+        write_environment(&paths, &LauncherSettings::default(), &generate_distinct_secrets()).unwrap();
+        let env = std::fs::read_to_string(paths.env_path()).unwrap();
+        assert!(env.lines().any(|v| v == format!("REHAB_VOLUME_PREFIX={COMPOSE_PROJECT}")));
+        assert!(env.lines().any(|v| v == format!("REHAB_SERVER_IMAGE={COMPOSE_PROJECT}-server:{APP_VERSION}")));
+        assert!(env.lines().any(|v| v == format!("REHAB_ADMIN_IMAGE={COMPOSE_PROJECT}-admin:{APP_VERSION}")));
+        if cfg!(feature = "studio-internal") {
+            assert_eq!(APP_IDENTIFIER, "com.saberaltriayi.rehab.internal");
+            assert_eq!(COMPOSE_PROJECT, "rehab-studio-internal");
+            assert!(crate::model::VOLUME_NAMES.iter().all(|v| v.starts_with("rehab-studio-internal-")));
+            assert_eq!(LauncherSettings::default().https_port, 18443);
+        } else {
+            assert_eq!(APP_IDENTIFIER, "com.saberaltriayi.rehab");
+            assert_eq!(COMPOSE_PROJECT, "rehab-desktop");
+            assert_eq!(LauncherSettings::default().https_port, 8443);
+        }
     }
 
     #[test]

@@ -1,6 +1,12 @@
 <template>
   <ContentWrap>
-    <el-form ref="queryFormRef" :model="queryParams" :inline="true" class="-mb-15px" label-width="80px">
+    <el-form
+      ref="queryFormRef"
+      :model="queryParams"
+      :inline="true"
+      class="-mb-15px"
+      label-width="80px"
+    >
       <el-form-item label="关键词" prop="keyword">
         <el-input
           v-model="queryParams.keyword"
@@ -11,13 +17,30 @@
         />
       </el-form-item>
       <el-form-item label="治疗师" prop="currentTherapistUserId">
-        <el-select v-model="queryParams.currentTherapistUserId" clearable class="!w-180px" filterable>
+        <el-select
+          v-model="queryParams.currentTherapistUserId"
+          clearable
+          class="!w-180px"
+          filterable
+        >
           <el-option
             v-for="u in therapistOptions"
             :key="u.id"
             :label="`${u.nickname}(${u.id})`"
             :value="u.id"
           />
+        </el-select>
+      </el-form-item>
+      <el-form-item label="数据来源" prop="dataOrigin">
+        <el-select
+          v-model="queryParams.dataOrigin"
+          clearable
+          class="!w-180px"
+          placeholder="业务及未归档模拟"
+        >
+          <el-option label="业务数据" value="REAL" />
+          <el-option label="模拟数据（不计统计）" value="SYNTHETIC" />
+          <el-option label="已归档模拟（可恢复）" value="SYNTHETIC_ARCHIVED" />
         </el-select>
       </el-form-item>
       <el-form-item label="当前阶段" prop="currentStage">
@@ -66,7 +89,12 @@
       <el-form-item>
         <el-button @click="handleQuery"><Icon icon="ep:search" />搜索</el-button>
         <el-button @click="resetQuery"><Icon icon="ep:refresh" />重置</el-button>
-        <el-button type="primary" plain v-hasPermi="['rehab:patient:create']" @click="openForm('create')">
+        <el-button
+          type="primary"
+          plain
+          v-hasPermi="['rehab:patient:create']"
+          @click="openForm('create')"
+        >
           <Icon icon="ep:plus" /> 新建患者
         </el-button>
         <el-button type="warning" plain v-hasPermi="['rehab:patient:create']" @click="openImport">
@@ -89,6 +117,21 @@
     <el-table v-loading="loading" :data="list" stripe>
       <el-table-column label="患者编号" prop="patientNo" min-width="150" />
       <el-table-column label="姓名" prop="name" min-width="110" />
+      <el-table-column label="数据来源" min-width="150">
+        <template #default="scope">
+          <el-tag :type="scope.row.dataOrigin === 'REAL' ? 'info' : 'warning'">
+            {{
+              scope.row.dataOrigin === 'REAL'
+                ? '业务数据'
+                : scope.row.dataOrigin === 'SYNTHETIC'
+                  ? '模拟·不计统计'
+                  : scope.row.dataOrigin === 'SYNTHETIC_ARCHIVED'
+                    ? '模拟·已归档'
+                    : '旧版未提供'
+            }}
+          </el-tag>
+        </template>
+      </el-table-column>
       <el-table-column label="性别" prop="gender" min-width="80">
         <template #default="scope">
           <dict-tag :type="DICT_TYPE.SYSTEM_USER_SEX" :value="scope.row.gender" />
@@ -111,26 +154,76 @@
       />
       <el-table-column label="操作" fixed="right" min-width="380">
         <template #default="scope">
-          <el-button type="primary" link v-hasPermi="['rehab:patient:detail']" @click="openDetail(scope.row.id)">
+          <el-button
+            type="primary"
+            link
+            v-hasPermi="['rehab:patient:detail']"
+            @click="openDetail(scope.row.id)"
+          >
             详情
           </el-button>
-          <el-button type="primary" link v-hasPermi="['rehab:episode:view']" @click="openDetail(scope.row.id)">
+          <el-button
+            type="primary"
+            link
+            v-hasPermi="['rehab:episode:view']"
+            @click="openDetail(scope.row.id)"
+          >
             查看 Episode
           </el-button>
-          <el-button type="primary" link v-hasPermi="['rehab:patient:update']" @click="openForm('update', scope.row.id)">
+          <el-button
+            type="primary"
+            link
+            v-hasPermi="['rehab:patient:update']"
+            @click="openForm('update', scope.row.id)"
+          >
             编辑
           </el-button>
-          <el-button type="primary" link v-hasPermi="['rehab:patient:assign']" @click="openAssign(scope.row)">
+          <el-button
+            type="primary"
+            link
+            v-hasPermi="['rehab:patient:assign']"
+            @click="openAssign(scope.row)"
+          >
             分配
           </el-button>
-          <el-button type="primary" link v-hasPermi="['rehab:patient:transfer']" @click="openTransfer(scope.row)">
+          <el-button
+            type="primary"
+            link
+            v-hasPermi="['rehab:patient:transfer']"
+            @click="openTransfer(scope.row)"
+          >
             转交
           </el-button>
-          <el-button type="primary" link v-hasPermi="['rehab:patient:bind-crm']" @click="openBindCrm(scope.row)">
+          <el-button
+            type="primary"
+            link
+            v-hasPermi="['rehab:patient:bind-crm']"
+            @click="openBindCrm(scope.row)"
+          >
             CRM 绑定
           </el-button>
-          <el-button type="danger" link v-hasPermi="['rehab:patient:delete']" @click="handleDelete(scope.row.id)">
+          <el-button
+            type="danger"
+            link
+            v-hasPermi="['rehab:patient:delete']"
+            @click="handleDelete(scope.row.id)"
+          >
             删除
+          </el-button>
+          <el-button
+            v-if="scope.row.dataOrigin"
+            type="warning"
+            link
+            v-hasPermi="['rehab:patient:data-governance']"
+            @click="dataGovernanceRef?.open(scope.row)"
+          >
+            {{
+              scope.row.dataOrigin === 'SYNTHETIC_ARCHIVED'
+                ? '恢复模拟资料'
+                : scope.row.dataOrigin === 'SYNTHETIC'
+                  ? '归档模拟资料'
+                  : '确认模拟来源'
+            }}
           </el-button>
         </template>
       </el-table-column>
@@ -145,6 +238,7 @@
   </ContentWrap>
 
   <PatientForm ref="patientFormRef" @success="getList" />
+  <PatientDataGovernanceDialog ref="dataGovernanceRef" @success="getList" />
   <PatientImportDialog ref="patientImportDialogRef" @success="getList" />
   <AssignTherapistDialog ref="assignDialogRef" @success="getList" />
   <BindCrmDialog ref="bindCrmDialogRef" @success="getList" />
@@ -163,6 +257,7 @@ import {
 } from '@/api/rehab/patient'
 import * as UserApi from '@/api/system/user'
 import PatientForm from './PatientForm.vue'
+import PatientDataGovernanceDialog from './PatientDataGovernanceDialog.vue'
 import PatientImportDialog from './PatientImportDialog.vue'
 import AssignTherapistDialog from './AssignTherapistDialog.vue'
 import BindCrmDialog from './BindCrmDialog.vue'
@@ -173,6 +268,7 @@ const message = useMessage()
 const { push } = useRouter()
 
 const loading = ref(false)
+const dataGovernanceRef = ref<InstanceType<typeof PatientDataGovernanceDialog>>()
 const exportLoading = ref(false)
 const total = ref(0)
 const list = ref<RehabPatientVO[]>([])
@@ -200,6 +296,7 @@ const queryParams = reactive<RehabPatientPageReqVO>({
   pageNo: 1,
   pageSize: 10,
   keyword: undefined,
+  dataOrigin: undefined,
   currentTherapistUserId: undefined,
   currentStage: undefined,
   crmBindStatus: undefined,

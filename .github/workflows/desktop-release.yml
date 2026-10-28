@@ -80,7 +80,7 @@ jobs:
           mvn -B -ntp
           -pl yudao-framework/yudao-spring-boot-starter-web
           -am
-          -Dtest=ApiAccessLogInterceptorTest,GlobalExceptionHandlerTest
+          -Dtest=ApiAccessLogPrivacyTest,ApiAccessLogInterceptorTest,GlobalExceptionHandlerTest
           -Dsurefire.failIfNoSpecifiedTests=false
           test
 
@@ -94,6 +94,10 @@ jobs:
       - name: Build internal frontend
         working-directory: ${{ env.FRONTEND_DIR }}
         run: pnpm build:internal
+
+      - name: Test administration frontend contracts and transport privacy
+        working-directory: ${{ env.FRONTEND_DIR }}
+        run: pnpm test:unit
 
       # The build creates ignored auto-import declarations required by vue-tsc.
       - name: Check frontend types before desktop packaging

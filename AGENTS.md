@@ -19,6 +19,7 @@ Frontend:
 cd yudao-ui/yudao-ui-admin-vue3-app
 corepack enable
 pnpm install --frozen-lockfile
+pnpm test:unit
 pnpm build:internal
 ```
 
@@ -29,9 +30,11 @@ Use JDK 17 for Maven; the current tests fail with Byte Buddy/Mockito on JDK 23.
 ```bash
 mvn -B -pl yudao-module-rehab -am test
 mvn -B -pl yudao-framework/yudao-spring-boot-starter-web \
-  -am -Dtest=ApiAccessLogInterceptorTest,GlobalExceptionHandlerTest \
+  -am -Dtest=ApiAccessLogPrivacyTest,ApiAccessLogInterceptorTest,GlobalExceptionHandlerTest \
   -Dsurefire.failIfNoSpecifiedTests=false test
 deploy/internal/build-server-isolated.sh
+# CRM 候选验收包（正式内部版本仍默认关闭 CRM）
+deploy/internal/build-server-isolated.sh --crm
 ```
 
 Desktop:
@@ -54,6 +57,38 @@ node desktop/scripts/check-runtime.mjs desktop/runtime/1.0.0
 node --test desktop/scripts/*.test.mjs
 desktop/scripts/test-runtime-e2e.sh # controlled test Docker environment; uses unique test volumes/images, never business volumes
 ```
+
+Synthetic patient provenance migration (local Docker only, random disposable
+MySQL container, no ports or business volumes):
+
+```bash
+REHAB_TEST_MYSQL=1 python3 -B -m unittest discover -s deploy/internal \
+  -p 'test_patient_data_origin_mysql.py' -v
+REHAB_TEST_MYSQL=1 python3 -B -m unittest discover -s deploy/internal \
+  -p 'test_report_version_mysql.py' -v
+python3 -B -m unittest discover -s deploy/internal -p 'test_synthetic_mysql.py' -v
+REHAB_TEST_MYSQL=1 python3 -B -m unittest discover -s deploy/internal \
+  -p 'test_report_requests_mysql.py' -v
+REHAB_TEST_MYSQL=1 python3 -B -m unittest discover -s deploy/internal \
+  -p 'test_clinical_sources_mysql.py' -v
+```
+
+Migrations through 036 are required before deploying this candidate backend. Never grant 035's
+`rehab:patient:data-governance` permission to existing clinic accounts automatically.
+
+## S0 inventory
+
+Python 3.11+, read-only; not a production release gate:
+
+```bash
+python3 -B script/rehab/s0_inventory.py
+python3 -B script/rehab/s0_inventory.py --probe
+python3 -B -m unittest discover -s script/rehab -p 'test_s0_inventory.py' -v
+```
+
+Keep runtime directories in place. S0 registry classifications are preservation/review decisions,
+not authorization to delete, move, merge or deploy assets. Do not collect `.env`, databases,
+patient media or private archive contents into snapshots. See `docs/s0/README.md`.
 
 ## Files that must never be committed
 
@@ -84,3 +119,14 @@ Before a desktop release:
 
 Do not weaken authentication, tenant isolation, upload restrictions, migration checks or TLS verification
 to make desktop packaging pass.
+
+## Local capacity safeguard
+
+Before a new heavyweight local Maven/Vite/Rust/Docker build, check free disk.
+Below 8 GiB, do not start another heavyweight local build; record that local
+check as NOT_RUN and use the already-authorized CI without removing its tests.
+Run heavyweight local builds serially to avoid excessive system swap. This is
+an engineering minimum, not approval for a production backup or upgrade.
+Never alter swap, reboot/stop business services, prune shared Docker assets or
+delete backups to meet it. Only exact, verified, task-owned rebuildable caches
+may be retired; preserve source, evidence and candidate artifacts.

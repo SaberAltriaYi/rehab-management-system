@@ -9,13 +9,19 @@ const { t } = useI18n()
  * 康复业务与当前启用的 CRM/Infra 详情页。这样 AI、BPM、商城、支付和 IoT
  * 等已停用模块不会因为上游固定路由而被编译进发布产物。
  */
+const ownerPortalRoutes: AppRouteRecordRaw[] = import.meta.env.VITE_PORTAL_MODE === 'owner' ? [
+  { path: '/owner/login', name: 'OwnerLogin', component: () => import('@/views/owner/Login.vue'), meta: { hidden: true, noTagsView: true, title: '拥有者登录' } },
+  { path: '/owner', name: 'OwnerConsole', component: () => import('@/views/owner/Console.vue'), meta: { hidden: true, noTagsView: true, title: '拥有者控制台' } }
+] : []
+
 const remainingRouter: AppRouteRecordRaw[] = [
+  ...ownerPortalRoutes,
+  { path: '/saas/register', name: 'SaasRegister', redirect: '/login?mode=register', meta: { hidden: true, noTagsView: true, title: '机构入驻' } },
   ...(import.meta.env.VITE_SAAS_ENABLE === 'true' ? [
     { path: '/saas/join', name: 'SaasJoin', component: () => import('@/views/saas/Join.vue'), meta: { hidden: true, noTagsView: true, title: '接受团队邀请' } },
     { path: '/saas/staff', name: 'SaasStaff', component: Layout, meta: { hidden: true }, children: [
       { path: '', name: 'SaasStaffInvitations', component: () => import('@/views/saas/Staff.vue'), meta: { title: '治疗师邀请', noCache: true } }
     ] },
-    { path: '/saas/register', name: 'SaasRegister', component: () => import('@/views/saas/Register.vue'), meta: { hidden: true, noTagsView: true, title: '机构入驻' } },
     { path: '/saas/platform', name: 'SaasPlatform', component: Layout, meta: { hidden: true }, children: [
       { path: '', name: 'SaasPlatformConsole', component: () => import('@/views/saas/Platform.vue'), meta: { title: '平台管理', noCache: true } }
     ] }
@@ -133,6 +139,18 @@ const remainingRouter: AppRouteRecordRaw[] = [
     name: 'rehab',
     meta: { hidden: true },
     children: [
+      {
+        path: 'hep/console',
+        component: () => import('@/views/rehab/hep-console/index.vue'),
+        name: 'RehabHepIntegrationConsole',
+        meta: {
+          title: '家庭康复 HEP 联动',
+          hidden: true,
+          canTo: true,
+          noCache: true,
+          activeMenu: '/rehab/hep'
+        }
+      },
       {
         path: 'patient/detail/:id',
         component: () => import('@/views/rehab/patient/detail/index.vue'),

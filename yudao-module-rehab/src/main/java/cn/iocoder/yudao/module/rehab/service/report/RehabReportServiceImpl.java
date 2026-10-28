@@ -26,6 +26,7 @@ import cn.iocoder.yudao.module.rehab.dal.mysql.report.RehabReportMapper;
 import cn.iocoder.yudao.module.rehab.dal.mysql.report.RehabReportVersionMapper;
 import cn.iocoder.yudao.module.rehab.enums.*;
 import cn.iocoder.yudao.module.rehab.service.RehabDataPermissionService;
+import cn.iocoder.yudao.module.rehab.service.RehabClinicalSources;
 import cn.iocoder.yudao.module.rehab.service.log.RehabAuditLogService;
 import cn.iocoder.yudao.module.rehab.service.notification.RehabNotificationService;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
@@ -76,6 +77,13 @@ import static cn.iocoder.yudao.module.rehab.enums.ErrorCodeConstants.*;
 @Service
 @Validated
 public class RehabReportServiceImpl implements RehabReportService {
+    @Resource
+    private RehabClinicalSources clinicalSources;
+
+    @Resource
+    private RehabReportVersionSequence reportVersionSequence;
+    @Resource
+    private RehabReportGenerationRequests generationRequests;
 
     private static final DateTimeFormatter REPORT_NO_DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyyMMdd");
     private static final String SOFTWARE_NAME = "运动康复评估与业务管理系统";
@@ -183,20 +191,33 @@ public class RehabReportServiceImpl implements RehabReportService {
         RehabAssessmentRecordDO assessment = validateAssessmentExists(reqVO.getAssessmentId());
         validatePatientReadable(assessment.getPatientId(), operatorUserId);
 
-        RehabPatientDO patient = patientMapper.selectById(assessment.getPatientId());
-        RehabEpisodeDO episode = episodeMapper.selectById(assessment.getEpisodeId());
-        List<RehabAssessmentModuleDataDO> modules = moduleDataMapper.selectListByAssessmentId(assessment.getId());
+        RehabPatientDO patient = clinicalSources.patient(assessment.getPatientId());
+        assessment = clinicalSources.assessment(reqVO.getAssessmentId());
+        if (!ObjUtil.equals(patient.getId(), assessment.getPatientId())) throw exception(ASSESSMENT_OWNER_CHANGE_FORBIDDEN);
 
-        int reportVersion = reportMapper.selectListByAssessmentId(assessment.getId()).size() + 1;
+        String reportType = StrUtil.blankToDefault(reqVO.getReportType(), resolveDefaultReportType(assessment.getAssessmentType()));
+        String generationMode = StrUtil.blankToDefault(reqVO.getGenerationMode(), RehabReportConstants.GENERATION_AUTO);
+        String requestFingerprint = null;
+        if (reqVO.getRequestKey() != null) {
+            requestFingerprint = generationRequests.fingerprint(assessment.getId(), reportType, generationMode, reqVO.getNote());
+            RehabReportGenerateRespVO completed = generationRequests.findCompleted(
+                    assessment.getId(), operatorUserId, reqVO.getRequestKey(), requestFingerprint);
+            if (completed != null) return completed;
+        }
+        RehabEpisodeDO episode = assessment.getEpisodeId() == null ? null : clinicalSources.episode(assessment.getEpisodeId());
+        if (episode != null && !ObjUtil.equals(patient.getId(), episode.getPatientId())) throw exception(ASSESSMENT_PATIENT_EPISODE_MISMATCH);
+        List<RehabAssessmentModuleDataDO> modules = clinicalSources.modules(assessment.getId());
+
+        int reportVersion = reportVersionSequence.nextVersion(assessment.getId());
         RehabReportDO report = RehabReportDO.builder()
                 .patientId(assessment.getPatientId())
                 .episodeId(assessment.getEpisodeId())
                 .assessmentId(assessment.getId())
-                .reportType(StrUtil.blankToDefault(reqVO.getReportType(), resolveDefaultReportType(assessment.getAssessmentType())))
+                .reportType(reportType)
                 .reportStatus(RehabReportConstants.STATUS_DRAFT)
                 .reportVersion(reportVersion)
                 .generatedBy(operatorUserId)
-                .generationMode(StrUtil.blankToDefault(reqVO.getGenerationMode(), RehabReportConstants.GENERATION_AUTO))
+                .generationMode(generationMode)
                 .lastGeneratedAt(LocalDateTime.now())
                 .note(reqVO.getNote())
                 .build();
@@ -248,6 +269,9 @@ public class RehabReportServiceImpl implements RehabReportService {
         respVO.setReportVersion(reportVersion);
         respVO.setFallbackUsed(fallbackUsed);
         respVO.setFallbackMessage(fallbackMessage);
+        if (reqVO.getRequestKey() != null) {
+            generationRequests.recordCompleted(assessment.getId(), operatorUserId, reqVO.getRequestKey(), requestFingerprint, respVO);
+        }
         return respVO;
     }
 
@@ -255,6 +279,7 @@ public class RehabReportServiceImpl implements RehabReportService {
     public RehabReportPreviewRespVO previewReport(Long id, Long operatorUserId) {
         RehabReportDO report = validateReportExists(id);
         validatePatientReadable(report.getPatientId(), operatorUserId);
+        requireReportOriginMatchesPatient(report);
 
         RehabReportPreviewRespVO respVO = new RehabReportPreviewRespVO();
         respVO.setId(report.getId());
@@ -383,6 +408,7 @@ public class RehabReportServiceImpl implements RehabReportService {
                 && !ObjUtil.equals(report.getReportStatus(), RehabReportConstants.STATUS_LOCKED)) {
             throw exception(REPORT_CAN_NOT_EXPORT);
         }
+        requireReportOriginMatchesPatient(report);
         if ((StrUtil.isBlank(report.getDocxPath()) || !FileUtil.exist(report.getDocxPath()))
                 && StrUtil.isNotBlank(report.getReportJson())) {
             Map<String, Object> payload = JsonUtils.parseObject(report.getReportJson(), Map.class);
@@ -428,6 +454,7 @@ public class RehabReportServiceImpl implements RehabReportService {
                 && !ObjUtil.equals(report.getReportStatus(), RehabReportConstants.STATUS_LOCKED)) {
             throw exception(REPORT_CAN_NOT_EXPORT);
         }
+        requireReportOriginMatchesPatient(report);
         if ((StrUtil.isBlank(report.getPdfPath()) || !FileUtil.exist(report.getPdfPath()))
                 && StrUtil.isNotBlank(report.getReportJson())) {
             Map<String, Object> payload = JsonUtils.parseObject(report.getReportJson(), Map.class);
@@ -694,6 +721,34 @@ public class RehabReportServiceImpl implements RehabReportService {
         }).collect(Collectors.toList());
     }
 
+    private void requireReportOriginMatchesPatient(RehabReportDO report) {
+        RehabPatientDO patient = patientMapper.selectById(report.getPatientId());
+        if (patient == null) {
+            throw exception(PATIENT_NOT_EXISTS);
+        }
+        String payloadOrigin = RehabPatientDataOrigin.REAL; // historical reports predate this field
+        if (StrUtil.isNotBlank(report.getReportJson())) {
+            try {
+                com.fasterxml.jackson.databind.JsonNode root = JsonUtils.getObjectMapper().readTree(report.getReportJson());
+                if (root == null || !root.isObject()) {
+                    throw exception(REPORT_DATA_ORIGIN_CHANGED);
+                }
+                payloadOrigin = root.path("dataOrigin").asText(RehabPatientDataOrigin.REAL);
+            } catch (Exception ignored) {
+                throw exception(REPORT_DATA_ORIGIN_CHANGED);
+            }
+        }
+        if (!RehabPatientDataOrigin.REAL.equals(payloadOrigin) && !RehabPatientDataOrigin.isSynthetic(payloadOrigin)) {
+            throw exception(REPORT_DATA_ORIGIN_CHANGED);
+        }
+        if (RehabPatientDataOrigin.isSynthetic(patient.getDataOrigin())
+                != RehabPatientDataOrigin.isSynthetic(payloadOrigin)) {
+            // Preserve the original approved file/snapshot. Require a new,
+            // explicitly reviewed report revision rather than silently relabeling it.
+            throw exception(REPORT_DATA_ORIGIN_CHANGED);
+        }
+    }
+
     private Map<String, Object> buildReportPayload(String reportNo, RehabPatientDO patient, RehabEpisodeDO episode,
                                                    RehabAssessmentRecordDO assessment,
                                                    List<RehabAssessmentModuleDataDO> modules) {
@@ -781,11 +836,13 @@ public class RehabReportServiceImpl implements RehabReportService {
 
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("reportNo", reportNo);
+        payload.put("dataOrigin", StrUtil.blankToDefault(patient.getDataOrigin(), RehabPatientDataOrigin.REAL));
         payload.put("generatedAt", LocalDateTime.now().toString());
         payload.put("patient", patientPayload);
         payload.put("episode", episodePayload);
         payload.put("assessment", assessmentPayload);
         payload.put("rawModules", rawModules);
+        payload.put("sourceSnapshot", RehabReportSourceStamp.of(payload, assessment.getId()));
         payload.put("missingModules", missingModules);
         payload.put("sections", sections);
         payload.put("evidenceRefs", new ArrayList<>(rawModules.keySet()));
@@ -926,6 +983,9 @@ public class RehabReportServiceImpl implements RehabReportService {
                 .append(".meta{color:#555;font-size:13px;margin-bottom:16px;}")
                 .append(".draft-notice{border:1px solid #d4ba83;background:#fff8e9;padding:12px;margin-bottom:16px;color:#654a20;}")
                 .append("</style></head><body>");
+        if (RehabPatientDataOrigin.isSynthetic(String.valueOf(payload.get("dataOrigin")))) {
+            html.append("<p class=\"draft-notice\"><strong>模拟数据／非临床用途：仅供软件验收，不得用于真实患者诊疗。</strong></p>");
+        }
         html.append("<h1>").append(BRANDED_REPORT_TITLE).append("</h1>")
                 .append("<div class=\"meta\">报告编号：")
                 .append(escapeHtml(payload.get("reportNo")))
@@ -981,6 +1041,15 @@ public class RehabReportServiceImpl implements RehabReportService {
                 fillTemplateModuleStatus(document, payload);
                 fillTemplateRawModules(document, payload);
                 fillTemplateEvidenceIndex(document, payload);
+                if (RehabPatientDataOrigin.isSynthetic(String.valueOf(payload.get("dataOrigin")))) {
+                    XWPFParagraph first = document.getParagraphs().isEmpty()
+                            ? document.createParagraph() : document.getParagraphs().get(0);
+                    XWPFRun warning = first.insertNewRun(0);
+                    warning.setBold(true);
+                    warning.setColor("C00000");
+                    warning.setText("【模拟数据／非临床用途】本报告仅供软件验收，不得用于真实患者诊疗。");
+                    warning.addBreak();
+                }
                 applyCompatibleCjkFonts(document);
 
                 try (FileOutputStream fos = new FileOutputStream(target)) {
@@ -1272,6 +1341,9 @@ public class RehabReportServiceImpl implements RehabReportService {
 
             List<PdfTextLine> lines = new ArrayList<>();
             lines.add(PdfTextLine.title(BRANDED_REPORT_TITLE));
+            if (RehabPatientDataOrigin.isSynthetic(String.valueOf(payload.get("dataOrigin")))) {
+                lines.add(PdfTextLine.heading("模拟数据／非临床用途：仅供软件验收"));
+            }
             lines.add(PdfTextLine.body("报告编号："
                     + StrUtil.blankToDefault((String) payload.get("reportNo"), "-")));
             lines.add(PdfTextLine.body("生成时间："

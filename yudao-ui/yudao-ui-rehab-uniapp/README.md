@@ -11,14 +11,15 @@
 
 ## 环境与开发
 
-要求 Node.js `>=20.19.0` 和 pnpm `10.15.1`（当前仓库构建环境为 Node 22）。
+要求 Node.js `>=22.15.0 <23` 和 pnpm `10.15.1`，以 `package.json` 和锁文件为准。
 
 ```bash
 cd yudao-ui/yudao-ui-rehab-uniapp
-pnpm install
+pnpm install --frozen-lockfile
 cp .env.example .env.local
 # 编辑 .env.local，配置可从目标设备访问的 API 地址
 pnpm type-check
+pnpm test:security
 pnpm dev:h5
 ```
 
@@ -52,7 +53,9 @@ pnpm build:app
 
 ## 认证与健康数据安全（发布阻断项）
 
-**患者端所有认证与数据接口均保持关闭。** 旧版“手机号 + `patient_no`”登录/匿名绑定在服务层也已拒绝，客户端不再展示这组输入、不会保存患者令牌，且会清理旧版患者会话。`VITE_REHAB_PATIENT_LOGIN_ENABLED` 不能启用患者登录。目标是机构线下核验后发放短期单次邀请，再核验已登记手机号；短信提供方、限频/防枚举、令牌安全存储与旧令牌处置尚未实现/验收，不得对真实患者开放。详见 `docs/patient-auth-release-gates.md`。
+**患者 UI 默认关闭，尚未获准面向真实患者开放。** 旧版“手机号 + `patient_no`”直接登录仍被服务层拒绝。隔离验收可设置 `VITE_REHAB_PATIENT_LOGIN_ENABLED=true`，使用机构邀请＋既有会员短信登录；首次绑定需邀请码，已绑定者再次短信登录不需要重用邀请。后端会核对登录会员/档案/绑定的手机号与启用状态，会员会话不等于患者授权。真实短信、限频/防枚举、历史令牌与监护人授权等仍须完成；前端开关不代替发布批准。详见根目录 `docs/patient-auth-release-gates.md`。
+
+患者访问令牌仅保存在当前页面/进程内存，不写通用本地存储，不保存刷新令牌；刷新页面或重启后重新登录。旧版已持久化患者会话会清除。退出时先尝试服务端注销，无论网络是否正常都会清除本机凭据；网络故障会显示服务端注销未确认。H5 同源安全会话及原生 Keychain/Keystore 仍需正式评审。这些是 Core UniApp 的实现，不代表独立 HEP 患者壳已完成安全交接。
 
 治疗师端登录使用用户名/密码与现有滑块验证码；滑块仅是自动化滥用防护，不等同多因素认证。当前会话令牌保存在 UniApp 私有存储中，但尚未接入 iOS Keychain / Android Keystore；公开发行前还需完成令牌安全存储、撤销/过期策略、隐私告知与完整威胁建模。`uniStatistics` 已关闭。请在授权的隔离测试环境使用虚构数据完成验证。
 当前 DCloud 插件仍将 Vite peer 固定为 `5.2.8`。截至 2026-09-24，`pnpm audit --prod` 对 Vite 开发服务器报告 2 个高危 advisories；它们不随生成的 H5/App 发布产物打包。其余高危传递依赖已由 `package.json` 的 `pnpm.overrides` 固定到修补版本，勿移除覆盖或在未审计时解锁版本。在 DCloud 提供兼容的 Vite 修复并完成复测前，不得把开发服务器暴露给不可信网络；升级后须重跑 H5、微信小程序与 App 构建及依赖审计。
@@ -60,5 +63,6 @@ pnpm build:app
 ## 接口
 
 - `POST /admin-api/app-admin/auth/login`，`GET /admin-api/app-admin/dashboard/summary`、`/patients/my-page`、`/patients/summary`、`/notifications/page`、`POST /notifications/read`。
-- `POST /app-api/app-patient/auth/login`，`GET /home/summary`、`/plan/current`、`/tasks/today`、`/reports/page`、`/notifications/page`、`POST /checkin/create` 与 `/notifications/read`。
+- 会员短信：`POST /app-api/member/auth/send-sms-code`、`/sms-login`、`/logout`。
+- 患者：`POST /app-api/app-patient/auth/bind`，`GET /app-api/app-patient/profile`、`/home/summary`、`/plan/current`、`/tasks/today`、`/reports/page`、`/notifications/page`，`POST /checkin/create` 与 `/notifications/read`（后述相对路径均加 `/app-api/app-patient`）。旧 `/auth/login` 仅为拒绝弱身份的兼容入口，不用于新客户端。
 - 员工端验证码采用当前后端 `blockPuzzle` 契约；打卡提交当前计划 ID 及任务执行列表。

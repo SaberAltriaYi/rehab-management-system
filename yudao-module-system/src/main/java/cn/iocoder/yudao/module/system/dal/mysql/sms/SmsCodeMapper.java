@@ -4,6 +4,9 @@ import cn.iocoder.yudao.framework.mybatis.core.mapper.BaseMapperX;
 import cn.iocoder.yudao.framework.mybatis.core.query.QueryWrapperX;
 import cn.iocoder.yudao.module.system.dal.dataobject.sms.SmsCodeDO;
 import org.apache.ibatis.annotations.Mapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
+
+import java.time.LocalDateTime;
 
 @Mapper
 public interface SmsCodeMapper extends BaseMapperX<SmsCodeDO> {
@@ -23,6 +26,17 @@ public interface SmsCodeMapper extends BaseMapperX<SmsCodeDO> {
                 .eqIfPresent("code", code)
                 .orderByDesc("id")
                 .limitN(1));
+    }
+
+    /** Atomic one-time consumption; a concurrent login may have consumed it after validation. */
+    default int consumeIfUnused(Long id, LocalDateTime usedTime, String usedIp, LocalDateTime validAfter) {
+        return update(null, new LambdaUpdateWrapper<SmsCodeDO>()
+                .eq(SmsCodeDO::getId, id)
+                .eq(SmsCodeDO::getUsed, false)
+                .gt(SmsCodeDO::getCreateTime, validAfter)
+                .set(SmsCodeDO::getUsed, true)
+                .set(SmsCodeDO::getUsedTime, usedTime)
+                .set(SmsCodeDO::getUsedIp, usedIp));
     }
 
 }

@@ -1,0 +1,83 @@
+# 工作室内部受控安装与升级
+
+2026-10-28：用户明确选择“仅供本工作室使用的内部受控版本”。这不是商业发行，也不是公开患者服务；不要求先购买签名、短信或授权中心服务。正式发布脚本、L3 检查和签名工作流保持原样。
+
+## 发行范围与安全边界
+
+- 内部安装审批与正式发行审批分别记录，内部证据不能送入正式发布流程冒充通过。
+- 内部路径可不要求商业代码签名；不删除认证、租户隔离、临床审批、固定校验和迁移、数据恢复及业务验收要求。`security_license` 仍需对实际内部配置和原有权限/许可边界提供验证，不用商业公钥缺失替代内部安全检查，也不禁用已有强制校验。
+- 本次默认回环访问。局域网/iPhone 需要另行核验证书、具体绑定 IP 和设备正常登录；内部版不能据此监听公网、自动映射路由器或忽略证书错误。
+- HEP 患者功能、短信/微信和 AI 未通过各自验收前保持关闭。不用管理员身份冒充患者，不新增现用测试账号或扩权。
+
+## 现用目标不能混淆
+
+| 系统 | 现用入口/方式 | 升级风险 |
+| --- | --- | --- |
+| Core | 原生固定 JAR，48080；开发前端 5173 | 最新候选还要求迁移到036；必须核验现用库、备份和副本升级，不直接替换JAR |
+| 运动评估 | 独立 Python workspace，8806 | 源码更新不等于常驻进程已加载；要保留独立 workspace 数据和版本绑定 |
+| HEP | 独立 Java 后端8088及独立H5 | 不直写Core库；患者正常身份闭环尚待验收 |
+| 已安装桌面程序 | `/Applications/康复管理系统.app` | 原启动器管理Docker四服务，不等同于以上原生多服务环境；直接点启动可能连另一套空库 |
+
+因此不得仅构建并替换启动器，就宣称整个新系统安装完成；不能把另一套初始化空库当作原数据已迁移。
+
+## 独立内部就绪检查
+
+```bash
+node desktop/scripts/internal-controlled-readiness.mjs /absolute/path/internal-evidence.json
+node --test desktop/scripts/*.test.mjs
+```
+
+证据格式：`schema=internal-controlled-evidence/1`，`revision` 为冻结提交，`scope` 必须包含：
+
+```json
+{
+  "purpose": "single-studio-internal",
+  "publicDistribution": false,
+  "network": "loopback"
+}
+```
+
+`gates` 使用现有预打包检查的所有非签名项目，逐项给出实际通过状态、仓库内去敏证据路径和 SHA-256。未完成的项目保留pending；不要复制单元测试的合成记录当真实安装批准。此脚本只读，不安装、不备份、不迁移、不签发许可证。
+
+它复用原检查的版本/源码清洁、文件真实性、哈希及路径约束，只在显式内部范围移除“缺少代码签名证据”这一要求。其他阻断不能过滤。若主动声明签名通过却提供无效证据，仍拒绝。输出始终含 `formalReleaseApproved=false`。正式 `prepackage-readiness.mjs` 与 `check-l3-release.mjs` 没有修改。
+
+## 实施顺序
+
+1. 固定Core、Reporter、HEP版本，清楚区分源码、测试、候选制品和现用服务。
+2. 完成运动收件箱/签署/输入修订一致性及三系统合成闭环；按正常入口完成授权身份验收。只通过单元测试不能自动填写完整业务门禁。
+3. 核验实际数据库及附件目标，生成新备份，验证备份完整性；只在隔离副本完成旧基线/036迁移与数据保持及恢复演练。
+4. 为现用原生多服务环境准备同一版本清单、启动/停止/回滚，或经验证后显式迁入Docker；不能隐式切库。
+5. 安装切换后复验登录、患者/疗程/报告/训练/复评、运动回传、HEP和数据保持。不自动签署临床报告，不关闭原权限。
+6. 只有新版验收通过，才将旧安装包移入废纸篓；旧数据和必要回滚制品不在清理范围。
+
+## 清理目标（尚未删除）
+
+仅已确认的两份旧DMG：
+
+- `desktop/build/installers/archived-20261014/康复管理系统_1.0.0_aarch64_20261014.dmg`
+- `desktop/build/installers/archived-20261014/康复管理系统_1.0.0_universal_20261010.dmg`
+
+这不是删除现用.app、整个历史目录、Git历史、Docker卷、患者资料、附件、证书或备份的授权。当前仍保留旧程序和两个DMG，不把“内部范围已确认”记为“安装已完成”。
+
+## 2026-10-28 空数据库新装授权与隔离实现
+
+用户进一步明确旧库全部是测试数据，允许直接新装并使用另一套空数据库。因此本次不迁移旧库，不将旧库升级作为新装前置条件；也不据此自动清空旧卷。
+
+新增 `studio-internal` 编译配置，必须与 `tauri.internal.conf.json` 一起使用。程序会核对应用标识，缺少配置时拒绝启动，防止错误复用旧目录。隔离范围：
+
+- 应用名：康复管理系统内部版；标识 `com.saberaltriayi.rehab.internal`。
+- macOS 数据目录：`~/Library/Application Support/com.saberaltriayi.rehab.internal/`。
+- Compose 项目与镜像前缀：`rehab-studio-internal`；四个卷均以此命名，不使用旧 `rehab-desktop-*` 卷。
+- 默认回环端口18080/18443，不占用旧8080/8443。配置、随机密码、TLS、数据、附件、备份、日志和单实例锁均单独保存。
+- 未选择此功能的正式/旧版标识、端口和卷默认值不变；许可强制功能及正式工作流没有修改。
+
+内部本机构建（先完成后端、内部前端、脱敏空库初始化及运行资源校验）：
+
+```bash
+cd desktop/launcher
+cargo test --locked --manifest-path src-tauri/Cargo.toml
+cargo test --locked --manifest-path src-tauri/Cargo.toml --features studio-internal
+pnpm tauri build --bundles app,dmg --features studio-internal --config src-tauri/tauri.internal.conf.json
+```
+
+这是明确授权的本地内部安装，不创建公开Release，不改变商业发行验收。首次空库也需要实际健康、迁移账本和零患者验证，不能将系统初始化账号等配置数据误算患者；运动/HEP跨服务及临床验收仍单列，不能把主系统四个容器启动就说整个产品族完成。

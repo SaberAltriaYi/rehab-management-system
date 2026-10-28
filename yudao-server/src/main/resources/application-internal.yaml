@@ -143,6 +143,9 @@ yudao:
   demo: false
   rehab:
     storage-path: ${REHAB_STORAGE_PATH:/app/data/rehab}
+    patient-auth:
+      # 仅保存 HMAC 密钥，不保存邀请明文；未配置时患者绑定接口保持关闭。
+      invitation-secret: ${REHAB_PATIENT_INVITATION_SECRET:}
     alert-job-enabled: ${REHAB_ALERT_JOB_ENABLED:true}
     alert-job-cron: '${REHAB_ALERT_JOB_CRON:0 0 3 * * ?}'
     alert-job-operator-user-id: ${REHAB_ALERT_JOB_OPERATOR_USER_ID:1}

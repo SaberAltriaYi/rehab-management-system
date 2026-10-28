@@ -97,6 +97,9 @@ services:
       # 与 MOTION_ENGINE_TOKEN（>=32 位随机串），并以 --profile motion 启动 motion-engine
       MOTION_ENGINE_URL: ${MOTION_ENGINE_URL:-}
       MOTION_ENGINE_TOKEN: ${MOTION_ENGINE_TOKEN:-}
+      REHAB_ASSESSMENT_SERVICE_URL: ${REHAB_ASSESSMENT_SERVICE_URL:-}
+      REHAB_ASSESSMENT_PUBLIC_URL: ${REHAB_ASSESSMENT_PUBLIC_URL:-}
+      REHAB_CORE_BRIDGE_TOKEN: ${REHAB_CORE_BRIDGE_TOKEN:-}
       SERVER_SERVLET_SESSION_PERSISTENT: "false"
       JAVA_OPTS: ${JAVA_OPTS:--Xms256m -Xmx768m -Djava.security.egd=file:/dev/./urandom -Dsun.io.useCanonCaches=false}
     volumes:

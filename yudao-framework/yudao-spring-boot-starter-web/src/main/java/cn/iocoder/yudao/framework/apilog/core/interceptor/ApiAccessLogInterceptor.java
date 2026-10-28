@@ -6,6 +6,7 @@ import cn.hutool.core.io.resource.ResourceUtil;
 import cn.hutool.core.util.StrUtil;
 import cn.iocoder.yudao.framework.common.util.servlet.ServletUtils;
 import cn.iocoder.yudao.framework.common.util.spring.SpringUtils;
+import cn.iocoder.yudao.framework.apilog.core.util.ApiLogPrivacy;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.util.StopWatch;
 import org.springframework.web.method.HandlerMethod;
@@ -56,13 +57,17 @@ public class ApiAccessLogInterceptor implements HandlerInterceptor {
 
         // 打印 request 日志
         if (consoleLogEnabled && !SpringUtils.isProd()) {
-            Map<String, String> queryString = ServletUtils.getParamMap(request);
-            String requestBody = ServletUtils.isJsonRequest(request) ? ServletUtils.getBody(request) : null;
-            if (CollUtil.isEmpty(queryString) && StrUtil.isEmpty(requestBody)) {
-                log.info("[preHandle][开始请求 URL({}) 无参数]", request.getRequestURI());
+            if (ApiLogPrivacy.omitPayload(request.getRequestURI(), handlerMethod)) {
+                log.info("[preHandle][开始请求 URL({}) 参数已按隐私策略省略]", request.getRequestURI());
             } else {
-                log.info("[preHandle][开始请求 URL({}) 参数({})]", request.getRequestURI(),
-                        StrUtil.blankToDefault(requestBody, queryString.toString()));
+                Map<String, String> queryString = ServletUtils.getParamMap(request);
+                String requestBody = ServletUtils.isJsonRequest(request) ? ServletUtils.getBody(request) : null;
+                if (CollUtil.isEmpty(queryString) && StrUtil.isEmpty(requestBody)) {
+                    log.info("[preHandle][开始请求 URL({}) 无参数]", request.getRequestURI());
+                } else {
+                    log.info("[preHandle][开始请求 URL({}) 参数({})]", request.getRequestURI(),
+                            StrUtil.blankToDefault(requestBody, queryString.toString()));
+                }
             }
             // 计时
             StopWatch stopWatch = new StopWatch();

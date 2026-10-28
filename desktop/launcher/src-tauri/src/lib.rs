@@ -278,6 +278,10 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
+            if cfg!(feature = "studio-internal")
+                && app.config().identifier != model::APP_IDENTIFIER {
+                return Err("内部版必须使用 tauri.internal.conf.json，禁止复用旧版数据目录".into());
+            }
             let fallback = AppPaths::platform_default()?;
             let data_dir = app
                 .path()

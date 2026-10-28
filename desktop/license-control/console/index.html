@@ -19,17 +19,23 @@
     <form id="login-form">
       <label>所有者用户名 <input name="username" required autocomplete="username" maxlength="40" /></label>
       <label>所有者密码 <input name="password" type="password" required autocomplete="current-password" /></label>
-      <label>TOTP 动态验证码 <input name="totp" required inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" /></label>
+      <label>TOTP 动态验证码
+        <input name="totp" type="text" required inputmode="numeric" autocomplete="one-time-code"
+          pattern="[0-9]{6}" minlength="6" maxlength="6" aria-label="六位 TOTP 动态验证码" />
+      </label>
       <button type="submit">验证身份并登录</button>
     </form>
+    <p class="recovery-link"><a href="/owner/recovery">无法使用 TOTP？打开本机一次性 MFA 恢复页</a></p>
     <p class="hint">会话令牌仅保存在当前页面内存；刷新或关闭页面必须重新登录，不使用浏览器持久存储。</p>
   </section>
   <div id="owner-content" hidden>
     <nav class="toolbar" aria-label="所有者操作">
       <button id="refresh" type="button">刷新申请与审计</button>
       <button id="stepup" type="button" class="outline">重新验证 TOTP</button>
+      <a class="toolbar-link" href="/owner/register" target="_blank" rel="noopener">打开机构注册页</a>
       <button id="logout" type="button" class="outline">注销会话</button>
     </nav>
+    <p id="workflow-status" class="workflow-status" role="status"></p>
     <section class="panel">
       <div class="section-heading"><h2>待审批工作室</h2><span id="application-count" aria-live="polite">—</span></div>
       <div class="table-scroll"><table><thead><tr><th>工作室</th><th>租户 / 设备编号</th><th>申请状态</th><th>操作</th></tr></thead><tbody id="applications"></tbody></table></div>
@@ -38,14 +44,22 @@
     <section class="grid2">
       <section class="panel">
         <h2>审批、续费、扩容策略</h2>
+        <p id="selection-status" class="selection-status" role="status">先在上方申请列表选择“审核”或“维护”。系统会自动带入租户和当前策略。</p>
+        <button id="use-default-policy" type="button" class="outline">填入标准策略（可修改）</button>
         <form id="policy-form">
           <label>到期日期 <input name="expiry" type="datetime-local" required /></label>
           <label>员工席位数 <input name="seats" type="number" min="1" max="2147483647" value="6" required /></label>
           <label class="check"><input name="unlimited" type="checkbox" checked/> 许可证明确签署无限员工席位（默认；定额合同可取消勾选）</label>
           <label>最大部署实例数 <input name="installations" type="number" min="1" max="100000" value="1" required /></label>
-          <label>授权模块（逗号分隔） <input name="modules" value="rehab,report" maxlength="2100" required /></label>
+          <label class="check"><input name="mainSystem" type="checkbox" checked/> <strong>授权主系统（Rehab Core）</strong></label>
+          <p class="hint">勾选后，许可证包含 rehab 主系统权限；只有主系统接口已配置、管理员已开通且状态为 ACTIVE，机构才可以登录。取消勾选不会创建主系统账号。</p>
+          <label>其他授权模块（逗号分隔） <input name="modules" value="motion,report" maxlength="2100" placeholder="motion,report" /></label>
+          <div id="provisioning-fields">
+            <label>首位机构管理员账号（仅本次转发） <input name="adminUsername" pattern="[a-zA-Z0-9]{4,30}" autocomplete="off" placeholder="例如 rehabadmin" /></label>
+            <label>首位机构管理员临时密码（仅本次转发） <input name="adminPassword" type="password" minlength="12" maxlength="16" autocomplete="new-password" placeholder="12-16 位" /></label>
+          </div>
           <label>人工审核理由 <textarea name="reason" maxlength="240" rows="3" placeholder="填写审批或变更理由"></textarea></label>
-          <p class="hint">先在申请列表选中待审批工作室。确认并完成新一次 MFA 后才会签发。</p>
+          <p class="hint">主系统自动开通已配置时，审批会先签发授权再异步开通租户；管理员凭据只通过加密连接转发，不写入授权控制面。未配置时只保存许可，不会伪造主系统开通结果。</p>
           <button id="approve" type="button" disabled>批准当前选中的申请</button>
           <button id="reject" type="button" class="danger" disabled>拒绝当前选中的申请</button>
         </form>
@@ -56,7 +70,17 @@
           <label>租户 UUID <input name="tenantId" required placeholder="从申请列表复制小写 UUID"/></label>
           <button type="submit" class="outline">查询当前许可</button>
           <div id="tenant-status" aria-live="polite"></div>
-          <button type="button" id="update-policy">按左侧策略续期/扩容</button>
+          <button type="button" id="update-policy">按左侧策略续期 / 扩容</button>
+          <section id="approved-provision-panel" class="provision-panel" hidden>
+            <h3>已批准机构 · 主系统开通</h3>
+            <p class="hint">仅对已完成审批的机构执行主系统开通；不需要再次点击批准，也不会由续期按钮自动创建账号。</p>
+            <p id="approved-provision-status" role="status"></p>
+            <div id="approved-provision-credentials" hidden>
+              <label>主系统首位管理员账号 <input name="provisionAdminUsername" pattern="[a-zA-Z0-9]{4,30}" autocomplete="off" placeholder="例如 rehabadmin" /></label>
+              <label>一次性初始密码 <input name="provisionAdminPassword" type="password" minlength="12" maxlength="16" autocomplete="new-password" placeholder="12–16 位，请勿重复使用已公开密码" /></label>
+            </div>
+            <button type="button" id="provision-approved">开通已批准机构的主系统</button>
+          </section>
           <button type="button" id="suspend" class="warning">暂停此租户</button>
           <button type="button" id="resume" class="outline">恢复此租户</button>
           <button type="button" id="revoke" class="danger">永久撤销此租户</button>

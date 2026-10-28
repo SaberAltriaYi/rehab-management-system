@@ -64,7 +64,8 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
-import { clearSession, getSession, type SessionMode } from '@/lib/session'
+import { getSession, type SessionMode } from '@/lib/session'
+import { logoutSession } from '@/lib/auth'
 import { patientApi, staffApi } from '@/lib/rehab-api'
 
 const mode = ref<SessionMode>('staff')
@@ -90,7 +91,11 @@ async function refresh(): Promise<void> {
 }
 
 function go(url: string): void { uni.navigateTo({ url }) }
-function logout(): void { clearSession(); uni.reLaunch({ url: '/pages/login/index' }) }
+async function logout(): Promise<void> {
+  const revoked = await logoutSession()
+  if (!revoked) uni.showToast({ title: '本机已退出，服务端注销失败，请联系机构处理', icon: 'none' })
+  uni.reLaunch({ url: '/pages/login/index' })
+}
 </script>
 
 <style scoped>

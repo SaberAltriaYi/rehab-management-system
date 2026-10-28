@@ -13,6 +13,9 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 
 [features]
 default = []
+# Explicitly selected, isolated single-workshop installation. Does not alter
+# the signed commercial profile or reuse its configuration/data volumes.
+studio-internal = []
 # Set this feature ONLY on signed, migration-ready release artifacts.
 # Legacy unlicensed installations must not be silently locked before L5 GO.
 license-required = []

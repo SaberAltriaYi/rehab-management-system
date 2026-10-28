@@ -55,6 +55,11 @@ class RehabReportServiceImplTest {
     private RehabReportServiceImpl reportService;
 
     @Mock
+    private RehabReportVersionSequence reportVersionSequence;
+    @Mock
+    private RehabReportGenerationRequests generationRequests;
+
+    @Mock
     private RehabReportMapper reportMapper;
     @Mock
     private RehabAssessmentRecordMapper assessmentRecordMapper;
@@ -82,6 +87,10 @@ class RehabReportServiceImplTest {
     @BeforeEach
     void setUp() throws IOException {
         reportService = new RehabReportServiceImpl();
+        ReflectionTestUtils.setField(reportService, "clinicalSources",
+                cn.iocoder.yudao.module.rehab.service.ClinicalSourcesTestAdapter.bridge(patientMapper, episodeMapper, assessmentRecordMapper, moduleDataMapper, reportMapper));
+        ReflectionTestUtils.setField(reportService, "reportVersionSequence", reportVersionSequence);
+        ReflectionTestUtils.setField(reportService, "generationRequests", generationRequests);
 
         RehabDataPermissionService dataPermissionService = new RehabDataPermissionService();
         ReflectionTestUtils.setField(dataPermissionService, "permissionApi", permissionApi);
@@ -104,9 +113,88 @@ class RehabReportServiceImplTest {
     }
 
     @Test
+    void syntheticReportHasSourceInPayloadAndVisibleHtmlAndDocxWarnings() throws Exception {
+        java.util.Map<String, Object> payload = ReflectionTestUtils.invokeMethod(reportService, "buildReportPayload",
+                "SYNTHETIC-REPORT-01", RehabPatientDO.builder().id(81L).name("模拟患者")
+                        .dataOrigin("SYNTHETIC").build(), null,
+                RehabAssessmentRecordDO.builder().id(82L).build(), Collections.emptyList());
+        assertEquals("SYNTHETIC", payload.get("dataOrigin"));
+        String html = ReflectionTestUtils.invokeMethod(reportService, "buildHtml", payload);
+        assertTrue(html.contains("模拟数据／非临床用途"));
+        java.nio.file.Path path = java.nio.file.Path.of((String) ReflectionTestUtils.getField(reportService, "storagePath"), "synthetic.docx");
+        ReflectionTestUtils.invokeMethod(reportService, "generateDocx", payload, path.toString());
+        try (XWPFDocument document = new XWPFDocument(Files.newInputStream(path))) {
+            assertTrue(document.getParagraphs().get(0).getText().startsWith("【模拟数据／非临床用途】"));
+            assertEquals("C00000", document.getParagraphs().get(0).getRuns().get(0).getColor());
+            assertTrue(document.getParagraphs().get(0).getRuns().get(0).isBold());
+        }
+    }
+
+    @Test
+    void historicalBusinessReportStillPreviewsWithoutSyntheticWarning() {
+        when(permissionApi.hasAnyRoles(1L, RehabRoleCodeConstants.SUPER_ADMIN)).thenReturn(true);
+        when(patientMapper.selectById(81L)).thenReturn(RehabPatientDO.builder().id(81L).dataOrigin("REAL").build());
+        when(reportMapper.selectById(82L)).thenReturn(RehabReportDO.builder().id(82L).patientId(81L)
+                .reportJson("{\"reportNo\":\"SYNTHETIC-FIXTURE-LEGACY\",\"sections\":[]}").build());
+        assertFalse(reportService.previewReport(82L, 1L).getHtml().contains("模拟数据／非临床用途"));
+    }
+
+    @Test
+    void relabeledPatientCannotExportOrPreviewCachedUnmarkedReportAndOriginalBytesRemain() throws Exception {
+        when(permissionApi.hasAnyRoles(1L, RehabRoleCodeConstants.SUPER_ADMIN)).thenReturn(true);
+        when(patientMapper.selectById(81L)).thenReturn(RehabPatientDO.builder().id(81L).dataOrigin("SYNTHETIC").build());
+        java.nio.file.Path original = java.nio.file.Path.of((String) ReflectionTestUtils.getField(reportService, "storagePath"), "original.bin");
+        byte[] bytes = "SYNTHETIC_IMMUTABLE_ORIGINAL".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        Files.write(original, bytes);
+        when(reportMapper.selectById(82L)).thenReturn(RehabReportDO.builder().id(82L).patientId(81L)
+                .reportStatus("approved").reportJson("{\"dataOrigin\":\"REAL\"}")
+                .docxPath(original.toString()).pdfPath(original.toString()).htmlSnapshotPath(original.toString()).build());
+        for (org.junit.jupiter.api.function.Executable operation : List.<org.junit.jupiter.api.function.Executable>of(
+                () -> reportService.exportDocx(82L, 1L), () -> reportService.exportPdf(82L, 1L),
+                () -> reportService.previewReport(82L, 1L))) {
+            ServiceException error = assertThrows(ServiceException.class, operation);
+            assertEquals(cn.iocoder.yudao.module.rehab.enums.ErrorCodeConstants.REPORT_DATA_ORIGIN_CHANGED.getCode(), error.getCode());
+        }
+        assertArrayEquals(bytes, Files.readAllBytes(original));
+        verify(reportMapper, never()).updateById(any(RehabReportDO.class));
+    }
+
+    @Test
+    void archivedSyntheticReportRetainsWarningAndUnknownSourceFailsClosed() {
+        when(permissionApi.hasAnyRoles(1L, RehabRoleCodeConstants.SUPER_ADMIN)).thenReturn(true);
+        when(patientMapper.selectById(81L)).thenReturn(RehabPatientDO.builder().id(81L).dataOrigin("SYNTHETIC_ARCHIVED").build());
+        RehabReportDO report = RehabReportDO.builder().id(82L).patientId(81L)
+                .reportJson("{\"dataOrigin\":\"SYNTHETIC\"}").build();
+        when(reportMapper.selectById(82L)).thenReturn(report);
+        assertTrue(reportService.previewReport(82L, 1L).getHtml().contains("模拟数据／非临床用途"));
+        report.setReportJson("{\"dataOrigin\":\"UNKNOWN\"}");
+        assertThrows(ServiceException.class, () -> reportService.previewReport(82L, 1L));
+    }
+
+    @Test
+    void authorizedRequestReplayReturnsBeforeReadingModulesOrWritingAudit() {
+        RehabReportGenerateReqVO request = new RehabReportGenerateReqVO();
+        request.setAssessmentId(20001L);
+        request.setRequestKey("019f1234-abcd-4abc-8abc-0123456789ab");
+        when(assessmentRecordMapper.selectById(20001L)).thenReturn(RehabAssessmentRecordDO.builder()
+                .id(20001L).patientId(10001L).assessmentType("initial").build());
+        when(permissionApi.hasAnyRoles(1L, RehabRoleCodeConstants.SUPER_ADMIN)).thenReturn(true);
+        RehabReportGenerateRespVO original = new RehabReportGenerateRespVO();
+        original.setId(30001L); original.setReportVersion(7); original.setReportNo("SYNTHETIC-REPLAY");
+        when(generationRequests.fingerprint(eq(20001L), anyString(), eq("auto"), isNull())).thenReturn("SYNTHETIC_FINGERPRINT");
+        when(generationRequests.findCompleted(20001L, 1L, request.getRequestKey(), "SYNTHETIC_FINGERPRINT")).thenReturn(original);
+        when(patientMapper.selectById(10001L)).thenReturn(RehabPatientDO.builder().id(10001L).build());
+        assertSame(original, reportService.generateReport(request, 1L));
+        verifyNoInteractions(moduleDataMapper, episodeMapper, reportMapper, reportVersionSequence,
+                reportVersionMapper, auditLogService, assessmentOperationLogMapper);
+    }
+
+    @Test
     void generateReport_shouldWorkWithMissingModulesAndKeepStructuredJson() {
         RehabReportGenerateReqVO reqVO = new RehabReportGenerateReqVO();
         reqVO.setAssessmentId(20001L);
+        reqVO.setRequestKey("019f1234-abcd-4abc-8abc-0123456789ab");
+        when(generationRequests.fingerprint(eq(20001L), anyString(), eq("auto"), isNull())).thenReturn("SYNTHETIC_FINGERPRINT");
 
         when(permissionApi.hasAnyRoles(1L, RehabRoleCodeConstants.SUPER_ADMIN)).thenReturn(true);
         when(assessmentRecordMapper.selectById(20001L)).thenReturn(RehabAssessmentRecordDO.builder()
@@ -127,7 +215,7 @@ class RehabReportServiceImplTest {
                 .status("active")
                 .build());
         when(moduleDataMapper.selectListByAssessmentId(20001L)).thenReturn(Collections.emptyList());
-        when(reportMapper.selectListByAssessmentId(20001L)).thenReturn(Collections.emptyList());
+        when(reportVersionSequence.nextVersion(20001L)).thenReturn(1);
         doAnswer(invocation -> {
             RehabReportDO report = invocation.getArgument(0);
             report.setId(30001L);
@@ -151,6 +239,8 @@ class RehabReportServiceImplTest {
         assertTrue(updates.stream().anyMatch(item ->
                 item.getReportJson() != null && item.getReportJson().contains("missingModules")));
         verify(assessmentOperationLogMapper).insert(any(RehabAssessmentOperationLogDO.class));
+        verify(generationRequests).recordCompleted(eq(20001L), eq(1L), eq(reqVO.getRequestKey()),
+                eq("SYNTHETIC_FINGERPRINT"), same(respVO));
     }
 
     @Test
@@ -184,7 +274,7 @@ class RehabReportServiceImplTest {
                         .sourceType("manual")
                         .dataJson("{\"selectedModules\":[\"fms\"],\"modules\":{\"fms\":{\"summary\":{\"totalScore\":16,\"asymmetryCount\":1,\"painDetected\":false,\"riskLevel\":\"normal\",\"conclusion\":\"髋稳定性需继续训练\"}}},\"summary\":{\"conclusion\":\"优先改善髋部控制\"}}")
                         .build()));
-        when(reportMapper.selectListByAssessmentId(20002L)).thenReturn(Collections.emptyList());
+        when(reportVersionSequence.nextVersion(20002L)).thenReturn(1);
         doAnswer(invocation -> {
             RehabReportDO report = invocation.getArgument(0);
             report.setId(30002L);
@@ -264,6 +354,7 @@ class RehabReportServiceImplTest {
     void generateReport_shouldDenyWhenTherapistHasNoPermission() {
         RehabReportGenerateReqVO reqVO = new RehabReportGenerateReqVO();
         reqVO.setAssessmentId(20001L);
+        reqVO.setRequestKey("019f1234-abcd-4abc-8abc-0123456789ab");
 
         when(assessmentRecordMapper.selectById(20001L)).thenReturn(RehabAssessmentRecordDO.builder()
                 .id(20001L)
@@ -272,12 +363,14 @@ class RehabReportServiceImplTest {
                 .assessmentType("initial")
                 .build());
         when(permissionApi.hasAnyRoles(99L, RehabRoleCodeConstants.SUPER_ADMIN)).thenReturn(false);
+        when(permissionApi.hasAnyRoles(99L, "tenant_admin")).thenReturn(false);
         when(permissionApi.hasAnyRoles(99L, RehabRoleCodeConstants.REHAB_CLERK)).thenReturn(false);
         when(permissionApi.hasAnyRoles(99L, RehabRoleCodeConstants.REHAB_THERAPIST)).thenReturn(false);
 
         ServiceException ex = assertThrows(ServiceException.class, () -> reportService.generateReport(reqVO, 99L));
         assertEquals(1_011_000_001, ex.getCode());
         verify(reportMapper, never()).insert(any(RehabReportDO.class));
+        verifyNoInteractions(generationRequests, reportVersionSequence);
     }
 
     @Test

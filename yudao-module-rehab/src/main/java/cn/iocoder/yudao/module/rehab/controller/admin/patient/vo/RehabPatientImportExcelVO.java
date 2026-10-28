@@ -17,6 +17,9 @@ public class RehabPatientImportExcelVO {
     @ExcelProperty("患者编号（可空，仅用于查重）")
     private String patientNo;
 
+    @ExcelProperty("数据来源（REAL业务/SYNTHETIC模拟/SYNTHETIC_ARCHIVED已归档模拟）")
+    private String dataOrigin;
+
     @ExcelProperty("姓名（必填）")
     private String name;
 

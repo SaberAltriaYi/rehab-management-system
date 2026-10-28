@@ -18,9 +18,12 @@
         <el-button type="primary" v-hasPermi="['rehab:plan:create']" @click="handleCreatePlan">
           创建计划
         </el-button>
-        <el-button type="primary" v-hasPermi="['rehab:assessment:generate-report']" @click="handleGenerateReport">
+        <el-button type="primary" v-hasPermi="['rehab:assessment:generate-report']" :loading="isGeneratingReport(id)" @click="handleGenerateReport">
           生成报告
         </el-button>
+        <el-button v-if="hasUncertainReport(id)" type="warning"
+          v-hasPermi="['rehab:assessment:generate-report']" :disabled="isGeneratingReport(id)"
+          @click="resetPendingReport(id)">核对后重置</el-button>
       </div>
     </div>
 
@@ -244,7 +247,7 @@ import {
   getRehabAssessment,
   uploadRehabAssessmentAttachment
 } from '@/api/rehab/assessment'
-import { generateRehabReport } from '@/api/rehab/report'
+import { useReportGeneration } from '@/hooks/web/useReportGeneration'
 import NasmCesSummaryCard from '@/views/rehab/assessment/components/NasmCesSummaryCard.vue'
 import SfmaSummaryCard from '@/views/rehab/assessment/components/SfmaSummaryCard.vue'
 
@@ -252,6 +255,7 @@ defineOptions({ name: 'RehabAssessmentDetail' })
 
 const AI_ENABLED = import.meta.env.VITE_REHAB_AI_ENABLED === 'true'
 const message = useMessage()
+const { generateReport: runGenerateReport, isGeneratingReport, hasUncertainReport, resetPendingReport } = useReportGeneration()
 const route = useRoute()
 const { push } = useRouter()
 
@@ -408,9 +412,7 @@ const goBack = () => {
 }
 
 const handleGenerateReport = async () => {
-  await message.confirm('确认基于当前评估生成报告吗？')
-  await generateRehabReport({ assessmentId: id.value })
-  message.success('报告生成成功')
+  await runGenerateReport(id.value)
 }
 
 const handleEdit = () => {

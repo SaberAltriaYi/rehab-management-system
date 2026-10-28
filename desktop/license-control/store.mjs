@@ -38,10 +38,16 @@ CREATE TABLE IF NOT EXISTS applications (
   installation_uuid TEXT NOT NULL UNIQUE,
   installation_public_pem TEXT NOT NULL,
   organization TEXT NOT NULL,
-  status TEXT NOT NULL CHECK (status IN ('PENDING','APPROVED','REJECTED')),
+  status TEXT NOT NULL CHECK (status IN ('PENDING','NEEDS_INFO','APPROVED','REJECTED')),
   submitted_at INTEGER NOT NULL,
   decision_at INTEGER,
-  decision_reason TEXT
+  decision_reason TEXT,
+  source TEXT NOT NULL DEFAULT 'installation',
+  contact_name TEXT,
+  contact_phone TEXT,
+  contact_email TEXT,
+  region TEXT,
+  note TEXT
 );
 CREATE TABLE IF NOT EXISTS entitlements (
   tenant_uuid TEXT PRIMARY KEY,
@@ -111,6 +117,28 @@ export class OwnerLicenseStore {
     if (!this.db.prepare('PRAGMA table_info(owner_sessions)').all()
       .some(column => column.name === 'mfa_failure_count')) {
       this.db.exec('ALTER TABLE owner_sessions ADD COLUMN mfa_failure_count INTEGER NOT NULL DEFAULT 0')
+    }
+    const applicationColumns = this.db.prepare('PRAGMA table_info(applications)').all().map(column => column.name)
+    const applicationAdditions = [
+      ['source', "TEXT NOT NULL DEFAULT 'installation'"],
+      ['contact_name', 'TEXT'],
+      ['contact_phone', 'TEXT'],
+      ['contact_email', 'TEXT'],
+      ['region', 'TEXT'],
+      ['note', 'TEXT'],
+      ['provisioning_status', "TEXT NOT NULL DEFAULT 'NOT_CONFIGURED'"],
+      ['provisioning_id', 'TEXT'],
+      ['provisioning_error', 'TEXT'],
+      ['main_tenant_id', 'INTEGER'],
+      ['notification_status', "TEXT NOT NULL DEFAULT 'NOT_CONFIGURED'"],
+      ['notification_error', 'TEXT'],
+      ['notification_provider_id', 'TEXT'],
+      ['notification_attempted_at', 'INTEGER'],
+      ['core_sync_status', "TEXT NOT NULL DEFAULT 'NOT_REQUIRED'"],
+      ['core_sync_error', 'TEXT']
+    ]
+    for (const [name, definition] of applicationAdditions) {
+      if (!applicationColumns.includes(name)) this.db.exec(`ALTER TABLE applications ADD COLUMN ${name} ${definition}`)
     }
     if (process.platform !== 'win32') {
       for (const ext of ['', '-wal', '-shm']) {

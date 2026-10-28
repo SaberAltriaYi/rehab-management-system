@@ -20,6 +20,7 @@ public interface ErrorCodeConstants {
     // ========== 线索管理 1-020-001-000 ==========
     ErrorCode CLUE_NOT_EXISTS = new ErrorCode(1_020_001_000, "线索不存在");
     ErrorCode CLUE_TRANSFORM_FAIL_ALREADY = new ErrorCode(1_020_001_001, "线索已经转化过了，请勿重复转化");
+    ErrorCode CLUE_TRANSFORM_DUPLICATE_MOBILE = new ErrorCode(1_020_001_002, "该手机号已有关联客户，请先核对共享客户目录，避免重复建档");
 
     // ========== 商机管理 1-020-002-000 ==========
     ErrorCode BUSINESS_NOT_EXISTS = new ErrorCode(1_020_002_000, "商机不存在");
@@ -65,6 +66,11 @@ public interface ErrorCodeConstants {
     ErrorCode CUSTOMER_CREATE_NAME_NOT_NULL = new ErrorCode(1_020_006_013, "客户名称不能为空！");
     ErrorCode CUSTOMER_NAME_EXISTS = new ErrorCode(1_020_006_014, "已存在名为【{}】的客户！");
     ErrorCode CUSTOMER_UPDATE_DEAL_STATUS_FAIL = new ErrorCode(1_020_006_015, "更新客户的成交状态失败，原因：已经是该状态，无需更新");
+    ErrorCode DEPARTMENT_WORKSPACE_DISABLED = new ErrorCode(1_020_006_016, "本部门客户工作台未启用");
+    ErrorCode DEPARTMENT_CASE_CLAIMED = new ErrorCode(1_020_006_017, "客户已由其他部门认领，请发起转接");
+    ErrorCode DEPARTMENT_CASE_DENIED = new ErrorCode(1_020_006_018, "无权查看或处理其他部门的客户档案");
+    ErrorCode DEPARTMENT_TRANSFER_INVALID = new ErrorCode(1_020_006_019, "转接不存在、已处理或客户归属已变化");
+    ErrorCode DEPARTMENT_REQUIRED = new ErrorCode(1_020_006_020, "当前账号未分配部门，无法操作部门客户工作台");
 
     // ========== 权限管理 1_020_007_000 ==========
     ErrorCode CRM_PERMISSION_NOT_EXISTS = new ErrorCode(1_020_007_000, "数据权限不存在");

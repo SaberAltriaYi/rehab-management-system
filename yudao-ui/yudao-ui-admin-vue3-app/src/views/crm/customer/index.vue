@@ -1,8 +1,8 @@
 <template>
-  <doc-alert title="【客户】客户管理、公海客户" url="https://doc.iocoder.cn/crm/customer/" />
-  <doc-alert title="【通用】数据权限" url="https://doc.iocoder.cn/crm/permission/" />
-
   <ContentWrap>
+    <el-button class="mb-3" link type="primary" @click="showMoreColumns = !showMoreColumns">
+      {{ showMoreColumns ? '收起次要字段' : '展开全部字段' }}
+    </el-button>
     <!-- 搜索工作栏 -->
     <el-form
       ref="queryFormRef"
@@ -126,14 +126,14 @@
         </template>
       </el-table-column>
       <el-table-column align="center" label="手机" prop="mobile" width="120" />
-      <el-table-column align="center" label="电话" prop="telephone" width="130" />
-      <el-table-column align="center" label="邮箱" prop="email" width="180" />
+      <el-table-column v-if="showMoreColumns" align="center" label="电话" prop="telephone" width="130" />
+      <el-table-column v-if="showMoreColumns" align="center" label="邮箱" prop="email" width="180" />
       <el-table-column align="center" label="客户级别" prop="level" width="135">
         <template #default="scope">
           <dict-tag :type="DICT_TYPE.CRM_CUSTOMER_LEVEL" :value="scope.row.level" />
         </template>
       </el-table-column>
-      <el-table-column align="center" label="客户行业" prop="industryId" width="100">
+      <el-table-column v-if="showMoreColumns" align="center" label="客户行业" prop="industryId" width="100">
         <template #default="scope">
           <dict-tag :type="DICT_TYPE.CRM_CUSTOMER_INDUSTRY" :value="scope.row.industryId" />
         </template>
@@ -145,8 +145,8 @@
         prop="contactNextTime"
         width="180px"
       />
-      <el-table-column align="center" label="备注" prop="remark" width="200" />
-      <el-table-column align="center" label="锁定状态" prop="lockStatus">
+      <el-table-column v-if="showMoreColumns" align="center" label="备注" prop="remark" width="200" />
+      <el-table-column v-if="showMoreColumns" align="center" label="锁定状态" prop="lockStatus">
         <template #default="scope">
           <dict-tag :type="DICT_TYPE.INFRA_BOOLEAN_STRING" :value="scope.row.lockStatus" />
         </template>
@@ -157,20 +157,22 @@
         </template>
       </el-table-column>
       <el-table-column
+        v-if="showMoreColumns"
         :formatter="dateFormatter"
         align="center"
         label="最后跟进时间"
         prop="contactLastTime"
         width="180px"
       />
-      <el-table-column align="center" label="最后跟进记录" prop="contactLastContent" width="200" />
-      <el-table-column align="center" label="地址" prop="detailAddress" width="180" />
-      <el-table-column align="center" label="距离进入公海天数" prop="poolDay" width="140">
+      <el-table-column v-if="showMoreColumns" align="center" label="最后跟进记录" prop="contactLastContent" width="200" />
+      <el-table-column v-if="showMoreColumns" align="center" label="地址" prop="detailAddress" width="180" />
+      <el-table-column v-if="showMoreColumns" align="center" label="距离进入公海天数" prop="poolDay" width="140">
         <template #default="scope"> {{ scope.row.poolDay }} 天</template>
       </el-table-column>
       <el-table-column align="center" label="负责人" prop="ownerUserName" width="100px" />
-      <el-table-column align="center" label="所属部门" prop="ownerUserDeptName" width="100px" />
+      <el-table-column v-if="showMoreColumns" align="center" label="所属部门" prop="ownerUserDeptName" width="100px" />
       <el-table-column
+        v-if="showMoreColumns"
         :formatter="dateFormatter"
         align="center"
         label="更新时间"
@@ -178,13 +180,14 @@
         width="180px"
       />
       <el-table-column
+        v-if="showMoreColumns"
         :formatter="dateFormatter"
         align="center"
         label="创建时间"
         prop="createTime"
         width="180px"
       />
-      <el-table-column align="center" label="创建人" prop="creatorName" width="100px" />
+      <el-table-column v-if="showMoreColumns" align="center" label="创建人" prop="creatorName" width="100px" />
       <el-table-column align="center" fixed="right" label="操作" min-width="150">
         <template #default="scope">
           <el-button
@@ -251,6 +254,7 @@ const queryParams = reactive({
 const queryFormRef = ref() // 搜索的表单
 const exportLoading = ref(false) // 导出的加载中
 const activeName = ref('1') // 列表 tab
+const showMoreColumns = ref(false)
 
 /** tab 切换 */
 const handleTabClick = (tab: TabsPaneContext) => {

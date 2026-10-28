@@ -38,5 +38,5 @@ public class AppPatientCheckinCreateReqVO {
     @Schema(description = "任务执行列表", requiredMode = Schema.RequiredMode.REQUIRED)
     @Valid
     @NotNull(message = "任务执行列表不能为空")
-    private List<AppPatientTaskExecutionItemVO> taskExecutions;
+    private List<@NotNull(message = "任务执行明细项不能为空") AppPatientTaskExecutionItemVO> taskExecutions;
 }

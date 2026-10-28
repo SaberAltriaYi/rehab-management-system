@@ -1,10 +1,36 @@
 import { useCache, CACHE_KEY } from '@/hooks/web/useCache'
 import { TokenType } from '@/api/login/types'
+import { invalidateReportIntents } from '@/utils/reportIntent'
+import { authSessionScope } from '@/utils/authSession'
 
 const { wsCache } = useCache()
 
 const AccessTokenKey = 'ACCESS_TOKEN'
 const RefreshTokenKey = 'REFRESH_TOKEN'
+
+export const invalidateSession = () => {
+  authSessionScope.reset()
+  invalidateReportIntents()
+}
+
+// Other tabs can log out/re-login while this tab is awaiting a refresh. Read
+// only the changed key, never event values; normal remote rotation also cancels
+// stale work conservatively rather than risking a cross-identity replay.
+if (typeof window !== 'undefined') {
+  window.addEventListener('storage', (event) => {
+    if (
+      event.key === null ||
+      [
+        AccessTokenKey,
+        RefreshTokenKey,
+        CACHE_KEY.TenantId,
+        CACHE_KEY.VisitTenantId,
+        CACHE_KEY.USER
+      ].includes(event.key)
+    )
+      invalidateSession()
+  })
+}
 
 // 获取token
 export const getAccessToken = () => {
@@ -19,13 +45,18 @@ export const getRefreshToken = () => {
 }
 
 // 设置token
-export const setToken = (token: TokenType) => {
+export const setToken = (
+  token: Pick<TokenType, 'accessToken' | 'refreshToken'>,
+  options?: { refresh?: boolean }
+) => {
+  if (!options?.refresh) invalidateSession()
   wsCache.set(RefreshTokenKey, token.refreshToken)
   wsCache.set(AccessTokenKey, token.accessToken)
 }
 
 // 删除token
 export const removeToken = () => {
+  invalidateSession()
   wsCache.delete(AccessTokenKey)
   wsCache.delete(RefreshTokenKey)
 }
@@ -70,10 +101,12 @@ export const getTenantId = () => {
 }
 
 export const setTenantId = (tenantId: number) => {
+  if (getTenantId() !== tenantId) invalidateSession()
   wsCache.set(CACHE_KEY.TenantId, tenantId)
 }
 
 export const removeTenantId = () => {
+  invalidateSession()
   wsCache.delete(CACHE_KEY.TenantId)
 }
 
@@ -82,5 +115,6 @@ export const getVisitTenantId = () => {
 }
 
 export const setVisitTenantId = (visitTenantId: number) => {
+  if (getVisitTenantId() !== visitTenantId) invalidateSession()
   wsCache.set(CACHE_KEY.VisitTenantId, visitTenantId)
 }

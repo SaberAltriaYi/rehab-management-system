@@ -133,6 +133,13 @@ public interface TenantService {
      *
      * @return 租户编号数组
      */
+    /**
+     * 获得所有租户详情（仅供系统拥有者总览使用）
+     *
+     * @return 租户数组
+     */
+    List<TenantDO> getTenantList();
+
     List<Long> getTenantIdList();
 
     /**

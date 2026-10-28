@@ -2,14 +2,28 @@ use serde::{Deserialize, Serialize};
 use crate::license::LicenseOverview;
 
 pub const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
+#[cfg(not(feature = "studio-internal"))]
 pub const APP_IDENTIFIER: &str = "com.saberaltriayi.rehab";
+#[cfg(feature = "studio-internal")]
+pub const APP_IDENTIFIER: &str = "com.saberaltriayi.rehab.internal";
+#[cfg(not(feature = "studio-internal"))]
 pub const COMPOSE_PROJECT: &str = "rehab-desktop";
+#[cfg(feature = "studio-internal")]
+pub const COMPOSE_PROJECT: &str = "rehab-studio-internal";
 pub const DELETE_CONFIRMATION: &str = "删除所有本地数据";
+#[cfg(not(feature = "studio-internal"))]
 pub const VOLUME_NAMES: [&str; 4] = [
     "rehab-desktop-mysql-data",
     "rehab-desktop-redis-data",
     "rehab-desktop-rehab-data",
     "rehab-desktop-server-logs",
+];
+#[cfg(feature = "studio-internal")]
+pub const VOLUME_NAMES: [&str; 4] = [
+    "rehab-studio-internal-mysql-data",
+    "rehab-studio-internal-redis-data",
+    "rehab-studio-internal-rehab-data",
+    "rehab-studio-internal-server-logs",
 ];
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
@@ -25,8 +39,8 @@ impl Default for LauncherSettings {
     fn default() -> Self {
         Self {
             bind_address: "127.0.0.1".to_owned(),
-            http_port: 8080,
-            https_port: 8443,
+            http_port: if cfg!(feature = "studio-internal") { 18080 } else { 8080 },
+            https_port: if cfg!(feature = "studio-internal") { 18443 } else { 8443 },
             lan_enabled: false,
         }
     }

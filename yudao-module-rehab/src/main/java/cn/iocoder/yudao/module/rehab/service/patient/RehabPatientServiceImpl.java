@@ -26,6 +26,7 @@ import cn.iocoder.yudao.module.rehab.dal.mysql.patient.RehabPatientMapper;
 import cn.iocoder.yudao.module.rehab.dal.mysql.report.RehabReportMapper;
 import cn.iocoder.yudao.module.rehab.enums.*;
 import cn.iocoder.yudao.module.rehab.service.RehabDataPermissionService;
+import cn.iocoder.yudao.module.rehab.service.RehabClinicalSources;
 import cn.iocoder.yudao.module.rehab.service.episode.RehabEpisodeService;
 import cn.iocoder.yudao.module.rehab.service.log.RehabAuditLogService;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
@@ -56,6 +57,8 @@ import static cn.iocoder.yudao.module.rehab.enums.ErrorCodeConstants.*;
 @Validated
 @Slf4j
 public class RehabPatientServiceImpl implements RehabPatientService {
+    @Resource
+    private RehabClinicalSources clinicalSources;
 
     private static final DateTimeFormatter PATIENT_NO_DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyyMMdd");
     private static final int MAX_IMPORT_ROWS = 2000;
@@ -96,6 +99,8 @@ public class RehabPatientServiceImpl implements RehabPatientService {
         List<RehabPatientDO> duplicatePatients = patientMapper.selectListByNameAndPhone(createReqVO.getName(), createReqVO.getPhone());
 
         RehabPatientDO patient = BeanUtils.toBean(createReqVO, RehabPatientDO.class);
+        // Ordinary create/import can never classify data through client input.
+        patient.setDataOrigin(RehabPatientDataOrigin.REAL);
         if (StrUtil.isBlank(patient.getCurrentStatus())) {
             patient.setCurrentStatus(RehabPatientStatusConstants.ACTIVE);
         }
@@ -132,6 +137,7 @@ public class RehabPatientServiceImpl implements RehabPatientService {
     public void updatePatient(RehabPatientUpdateReqVO updateReqVO, Long operatorUserId) {
         RehabPatientDO oldPatient = validatePatientExists(updateReqVO.getId());
         validatePatientReadable(updateReqVO.getId(), operatorUserId);
+        oldPatient = clinicalSources.patient(updateReqVO.getId());
 
         RehabPatientDO updateObj = BeanUtils.toBean(updateReqVO, RehabPatientDO.class);
         updateObj.clean();
@@ -147,9 +153,8 @@ public class RehabPatientServiceImpl implements RehabPatientService {
     public void deletePatient(Long id, Long operatorUserId) {
         RehabPatientDO oldPatient = validatePatientExists(id);
         validatePatientReadable(id, operatorUserId);
-        if (episodeMapper.selectCount("patient_id", id) > 0
-                || assessmentRecordMapper.selectCountByPatientId(id) > 0
-                || reportMapper.selectCountByPatientId(id) > 0) {
+        oldPatient = clinicalSources.patient(id);
+        if (clinicalSources.hasReferences(id)) {
             throw exception(PATIENT_CAN_NOT_DELETE);
         }
         patientMapper.deleteById(id);
@@ -256,8 +261,8 @@ public class RehabPatientServiceImpl implements RehabPatientService {
             } catch (Exception ex) {
                 String reason = getSafeImportFailureReason(ex);
                 if (!(ex instanceof IllegalArgumentException) && !(ex instanceof ServiceException)) {
-                    log.warn("患者批量导入单行失败，rowNumber={}, patientIdentity={}",
-                            excelRowNumber, identity, ex);
+                    log.warn("患者批量导入单行失败，rowNumber={}, exceptionType={}",
+                            excelRowNumber, ex.getClass().getSimpleName());
                 }
                 failures.add(new RehabPatientImportFailureVO(excelRowNumber, identity, reason));
             }
@@ -278,6 +283,9 @@ public class RehabPatientServiceImpl implements RehabPatientService {
     private void validateImportRow(RehabPatientImportExcelVO row) {
         if (row == null || StrUtil.isBlank(row.getName())) {
             throw new IllegalArgumentException("姓名不能为空");
+        }
+        if (StrUtil.isNotBlank(row.getDataOrigin()) && !RehabPatientDataOrigin.REAL.equals(row.getDataOrigin())) {
+            throw new IllegalArgumentException("模拟资料不能通过普通导入转为业务数据；请使用完整数据迁移或专属资料治理流程");
         }
         if (row.getName().trim().length() > 64) {
             throw new IllegalArgumentException("姓名不能超过 64 个字符");
