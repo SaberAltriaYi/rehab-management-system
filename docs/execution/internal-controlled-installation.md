@@ -58,3 +58,26 @@ node --test desktop/scripts/*.test.mjs
 - `desktop/build/installers/archived-20261014/康复管理系统_1.0.0_universal_20261010.dmg`
 
 这不是删除现用.app、整个历史目录、Git历史、Docker卷、患者资料、附件、证书或备份的授权。当前仍保留旧程序和两个DMG，不把“内部范围已确认”记为“安装已完成”。
+
+## 2026-10-28 空数据库新装授权与隔离实现
+
+用户进一步明确旧库全部是测试数据，允许直接新装并使用另一套空数据库。因此本次不迁移旧库，不将旧库升级作为新装前置条件；也不据此自动清空旧卷。
+
+新增 `studio-internal` 编译配置，必须与 `tauri.internal.conf.json` 一起使用。程序会核对应用标识，缺少配置时拒绝启动，防止错误复用旧目录。隔离范围：
+
+- 应用名：康复管理系统内部版；标识 `com.saberaltriayi.rehab.internal`。
+- macOS 数据目录：`~/Library/Application Support/com.saberaltriayi.rehab.internal/`。
+- Compose 项目与镜像前缀：`rehab-studio-internal`；四个卷均以此命名，不使用旧 `rehab-desktop-*` 卷。
+- 默认回环端口18080/18443，不占用旧8080/8443。配置、随机密码、TLS、数据、附件、备份、日志和单实例锁均单独保存。
+- 未选择此功能的正式/旧版标识、端口和卷默认值不变；许可强制功能及正式工作流没有修改。
+
+内部本机构建（先完成后端、内部前端、脱敏空库初始化及运行资源校验）：
+
+```bash
+cd desktop/launcher
+cargo test --locked --manifest-path src-tauri/Cargo.toml
+cargo test --locked --manifest-path src-tauri/Cargo.toml --features studio-internal
+pnpm tauri build --bundles app,dmg --features studio-internal --config src-tauri/tauri.internal.conf.json
+```
+
+这是明确授权的本地内部安装，不创建公开Release，不改变商业发行验收。首次空库也需要实际健康、迁移账本和零患者验证，不能将系统初始化账号等配置数据误算患者；运动/HEP跨服务及临床验收仍单列，不能把主系统四个容器启动就说整个产品族完成。
