@@ -51,6 +51,7 @@ export RUNTIME_BOOTSTRAP="${RUNTIME}/sql/desktop-bootstrap.sql"
 # testing, generate a separate, sanitized ledger-019 fixture in this private
 # temporary directory. Never modify the packaged runtime or an installed DB.
 EXPECTED_INITIAL_LEDGER="$(awk -F'|' '/^[0-9][0-9][0-9]\|/ {n=$1} END {print n+0}' "${RUNTIME}/sql/migrations.manifest")"
+RUNTIME_LATEST_LEDGER="${EXPECTED_INITIAL_LEDGER}"
 case "${MODE}" in
   --upgrade-smoke|--upgrade-auth-smoke|--upgrade-browser-smoke|--report-browser-smoke|--launcher-fault-restore)
     export RUNTIME_BOOTSTRAP="${STAGE}/baseline-019.sql"
@@ -243,10 +244,10 @@ for action in login bind; do
     --data '{"phone":"13800138000","bindCode":"SYNTHETIC_INVALID","patientNo":"SYNTHETIC_INVALID"}' \
     --output "${STAGE}/patient-auth.json" --write-out '%{http_code}' \
     "${BASE}/app-api/app-patient/auth/${action}")"
-  [[ "${status}" == '403' ]] || { echo "FAIL: ${action} returned HTTP ${status}, expected 403"; exit 1; }
-  jq -e '.code==403' "${STAGE}/patient-auth.json" >/dev/null
+  node "${SCRIPT_DIR}/patient-auth-contract.mjs" "${action}" "${status}" "${STAGE}/patient-auth.json" ||
+    { echo "FAIL: anonymous ${action} authentication contract rejected"; exit 1; }
 done
-echo 'PASS: both patient authentication routes return explicit HTTP 403'
+echo 'PASS: patient login and bind anonymous attempts rejected under their exact transport contracts'
 
 counts="$("${COMPOSE[@]}" exec -T mysql \
   mysql --defaults-extra-file=/run/rehab-secrets/mysql-client.cnf \
@@ -327,10 +328,15 @@ if [[ "${MODE}" == '--upgrade-smoke' || "${MODE}" == '--upgrade-auth-smoke' || "
     applied=$((applied + 1))
     echo "PASS: packaged migration ${version} applied with matching checksum"
   done < "${manifest}"
-  [[ "${applied}" == 7 ]] || { echo "FAIL: expected 7 upgrades 020-026, got ${applied}"; exit 1; }
+  expected_upgrades=$((RUNTIME_LATEST_LEDGER - 19))
+  [[ "${applied}" == "${expected_upgrades}" ]] ||
+    { echo "FAIL: expected ${expected_upgrades} upgrades 020-${RUNTIME_LATEST_LEDGER}, got ${applied}"; exit 1; }
 
   upgraded="$(sql "SELECT CONCAT((SELECT COUNT(*) FROM rehab_patient),'|',(SELECT COUNT(*) FROM internal_schema_history),'|',(SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name LIKE 'rehab_motion_%'),'|',(SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name LIKE 'rehab_motion_%' AND column_name IN ('creator','updater') AND is_nullable='YES'));")"
-  [[ "${upgraded}" == '0|26|11|22' ]] ||
+  IFS='|' read -r upgraded_patients upgraded_ledger upgraded_motion upgraded_audit <<< "${upgraded}"
+  [[ "${upgraded_patients}" == 0 && "${upgraded_ledger}" == "${RUNTIME_LATEST_LEDGER}" &&
+     "${upgraded_motion}" =~ ^[0-9]+$ && "${upgraded_motion}" -ge 11 &&
+     "${upgraded_audit}" == 22 ]] ||
     { echo "FAIL: unexpected upgraded synthetic structure ${upgraded}"; exit 1; }
   [[ "$(sql "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name='rehab_tenant_license_binding';")" == 1 ]] ||
     { echo 'FAIL: 026 tenant license binding table missing'; exit 1; }
@@ -362,7 +368,7 @@ if [[ "${MODE}" == '--upgrade-smoke' || "${MODE}" == '--upgrade-auth-smoke' || "
     { echo 'FAIL: second tenant patient was granted motion menus'; exit 1; }
   [[ "$(sql "SELECT COUNT(*) FROM system_role r JOIN system_role_menu rm ON rm.role_id=r.id AND rm.tenant_id=r.tenant_id WHERE r.code='rehab_patient' AND rm.menu_id BETWEEN 9700 AND 9717;")" == 0 ]] ||
     { echo 'FAIL: patient role granted therapist motion menus'; exit 1; }
-  echo 'PASS: packaged 020-026, ledger=26, 11 motion tables, 22 audit columns, two tenant-scoped therapists, no patient grants'
+  echo "PASS: packaged 020-${RUNTIME_LATEST_LEDGER}, ledger=${RUNTIME_LATEST_LEDGER}, ${upgraded_motion} motion tables, 22 audit columns, two tenant-scoped therapists, no patient grants"
 
   curl --noproxy '*' --fail --silent --show-error --cacert "${TLS_CERT_PATH}" "${BASE}/healthz" >/dev/null
   tenant="$(curl --noproxy '*' --fail --silent --show-error --cacert "${TLS_CERT_PATH}" --get \
@@ -374,10 +380,10 @@ if [[ "${MODE}" == '--upgrade-smoke' || "${MODE}" == '--upgrade-auth-smoke' || "
       --data '{"phone":"13800138000","bindCode":"SYNTHETIC_INVALID","patientNo":"SYNTHETIC_INVALID"}' \
       --output "${STAGE}/patient-auth-upgraded.json" --write-out '%{http_code}' \
       "${BASE}/app-api/app-patient/auth/${action}")"
-    [[ "${status}" == '403' ]] || { echo "FAIL: upgraded patient ${action} returned ${status}"; exit 1; }
-    jq -e '.code==403' "${STAGE}/patient-auth-upgraded.json" >/dev/null
+    node "${SCRIPT_DIR}/patient-auth-contract.mjs" "${action}" "${status}" "${STAGE}/patient-auth-upgraded.json" ||
+      { echo "FAIL: upgraded patient ${action} authentication contract rejected"; exit 1; }
   done
-  echo 'PASS: after packaged upgrade HTTPS, tenant API and patient HTTP 403 stay enforced'
+  echo 'PASS: after packaged upgrade HTTPS, tenant API and both patient authentication gates enforced'
   # A newly deployed motion controller must not allow unauthenticated data reads
   # or signatures. Yudao's AuthenticationEntryPointImpl writes CommonResult
   # with business code 401 without setting HTTP status (may be HTTP 200).
