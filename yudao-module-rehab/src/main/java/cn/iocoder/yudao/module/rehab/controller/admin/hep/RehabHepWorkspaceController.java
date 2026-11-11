@@ -40,10 +40,10 @@ public class RehabHepWorkspaceController {
         this.signing=signing;
         this.base=URI.create(server);
         if(!"http".equals(base.getScheme()) ||
-            !Set.of("127.0.0.1","localhost").contains(base.getHost()) ||
+            !Set.of("127.0.0.1","localhost","host.docker.internal").contains(base.getHost()) ||
             base.getPort()<=0 || !"/".equals(base.getPath().isEmpty()?"/":base.getPath()) ||
             base.getQuery()!=null || base.getUserInfo()!=null || base.getFragment()!=null)
-            throw new IllegalStateException("HEP BFF must target a loopback HTTP backend only");
+            throw new IllegalStateException("HEP BFF must target local HTTP or Docker Desktop host gateway only");
     }
 
     private void checkId(String id) {

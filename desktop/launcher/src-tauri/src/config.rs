@@ -1,9 +1,13 @@
 use crate::error::{LauncherError, LauncherResult};
 use crate::model::{LauncherSettings, VersionState, APP_VERSION, APP_IDENTIFIER, COMPOSE_PROJECT};
 use bcrypt::{hash, DEFAULT_COST};
+use chrono::Datelike;
 use directories::BaseDirs;
 use rand::distr::{Alphanumeric, SampleString};
-use rcgen::{generate_simple_self_signed, CertifiedKey};
+use rcgen::{
+    CertificateParams, DnType, ExtendedKeyUsagePurpose, IsCa, KeyPair,
+    KeyUsagePurpose,
+};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::fs::{self, OpenOptions};
@@ -324,9 +328,23 @@ fn ensure_tls(paths: &AppPaths) -> LauncherResult<()> {
     if cert_path.exists() && key_path.exists() {
         return Ok(());
     }
-    let CertifiedKey { cert, signing_key } =
-        generate_simple_self_signed(vec!["localhost".to_owned(), "127.0.0.1".to_owned()])
-            .map_err(|error| LauncherError::Internal(format!("生成本机 TLS 证书失败：{error}")))?;
+    // A server leaf, not an unbounded self-issued root. Trusting this local
+    // certificate in macOS is an explicit user action, never silently done
+    // by the launcher. Do not overwrite an existing trusted certificate.
+    let mut params = CertificateParams::new(vec![
+        "localhost".to_owned(), "127.0.0.1".to_owned(),
+    ]).map_err(|error| LauncherError::Internal(format!("配置本机 TLS 证书失败：{error}")))?;
+    let today = chrono::Utc::now().date_naive();
+    params.not_before = rcgen::date_time_ymd(today.year(), today.month() as u8, 1);
+    params.not_after = rcgen::date_time_ymd(today.year() + 2, today.month() as u8, 1);
+    params.distinguished_name.push(DnType::CommonName, "Rehab Internal Localhost");
+    params.is_ca = IsCa::ExplicitNoCa;
+    params.key_usages = vec![KeyUsagePurpose::DigitalSignature];
+    params.extended_key_usages = vec![ExtendedKeyUsagePurpose::ServerAuth];
+    let signing_key = KeyPair::generate()
+        .map_err(|error| LauncherError::Internal(format!("生成本机 TLS 密钥失败：{error}")))?;
+    let cert = params.self_signed(&signing_key)
+        .map_err(|error| LauncherError::Internal(format!("签发本机 TLS 证书失败：{error}")))?;
     write_private(&cert_path, cert.pem().as_bytes())?;
     write_private(&key_path, signing_key.serialize_pem().as_bytes())
 }
@@ -448,6 +466,29 @@ mod tests {
                 & 0o777;
             assert_eq!(mode, 0o644);
         }
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn generated_tls_leaf_has_localhost_ip_san_and_never_silently_rotates() {
+        let dir = tempdir().unwrap();
+        let paths = AppPaths::from_data_dir(dir.path().join("tls-check"));
+        initialize_config(&paths).unwrap();
+        let cert_path = paths.config_dir.join("tls/server.crt");
+        let first = fs::read(&cert_path).unwrap();
+        let details = std::process::Command::new("/usr/bin/openssl")
+            .args(["x509", "-in"])
+            .arg(&cert_path)
+            .args(["-noout", "-text"])
+            .output().unwrap();
+        assert!(details.status.success());
+        let text = String::from_utf8(details.stdout).unwrap();
+        assert!(text.contains("IP Address:127.0.0.1"), "missing IP SAN");
+        assert!(text.contains("DNS:localhost"), "missing localhost SAN");
+        assert!(text.contains("CA:FALSE"), "server certificate must not be a CA");
+        assert!(text.contains("TLS Web Server Authentication"), "missing serverAuth");
+        initialize_config(&paths).unwrap();
+        assert_eq!(first, fs::read(&cert_path).unwrap(), "existing TLS cert must be retained");
     }
 
     #[test]

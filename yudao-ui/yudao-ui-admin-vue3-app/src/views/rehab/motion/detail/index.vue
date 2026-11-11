@@ -30,6 +30,7 @@
         <el-button :loading="loading" @click="reload"
           ><Icon icon="ep:refresh" class="mr-4px" />刷新</el-button
         >
+        <el-button v-if="nextAction.tab !== 'review'" @click="tab = 'review'">查看审核</el-button>
         <el-button type="primary" plain @click="goNext">{{ nextAction.label }}</el-button>
       </div>
     </div>

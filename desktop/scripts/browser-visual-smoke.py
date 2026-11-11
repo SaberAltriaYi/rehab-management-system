@@ -300,12 +300,14 @@ async def main():
                             "动作评估 #990101", f"motion-detail-{label}",
                             width, height, width < 600))
                     clicked = await client.js("""(() => {
-                      const btn=[...document.querySelectorAll('button')]
-                        .find(el=>el.innerText?.includes('查看审核'));
-                      if (!btn) return false; btn.click(); return true;
+                      const buttons=[...document.querySelectorAll('.head-actions button')];
+                      const btn=buttons.find(el=>
+                        /^(进入审核|查看审核)$/.test(el.innerText?.trim()||''));
+                      if (!btn) return {clicked:false, labels:buttons.map(el=>el.innerText?.trim())};
+                      btn.click(); return {clicked:true, label:btn.innerText?.trim()};
                     })()""")
-                    if not clicked:
-                        raise RuntimeError("Mobile review entrypoint missing")
+                    if not clicked.get("clicked"):
+                        raise RuntimeError(f"Mobile review entrypoint missing: {clicked}")
                     await asyncio.sleep(1)
                     active = await client.js("""(() => [...document.querySelectorAll('.el-tabs__item.is-active')]
                       .some(el=>el.innerText?.includes('审核与签署')))()""")

@@ -10,6 +10,8 @@ CREATE TABLE IF NOT EXISTS rehab_hep_bridge_event (
   session_id VARCHAR(80) NOT NULL,
   payload_json TEXT NOT NULL,
   review_status VARCHAR(20) NOT NULL DEFAULT 'PENDING',
+  reviewed_by BIGINT DEFAULT NULL,
+  reviewed_at TIMESTAMP NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   UNIQUE KEY uk_hep_bridge_inbox (tenant_id,event_id),
   KEY ix_hep_bridge_patient (tenant_id,patient_id,created_at),

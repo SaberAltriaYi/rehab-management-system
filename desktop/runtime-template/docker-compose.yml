@@ -71,6 +71,14 @@ services:
       REHAB_STORAGE_PATH: /app/data/rehab
       OPENAI_ENABLE_AI_ANALYSIS: "false"
       SERVER_SERVLET_SESSION_PERSISTENT: "false"
+      # Disabled unless a separately provisioned, loopback-only HEP service
+      # and the private RSA key under the already-mounted license-runtime
+      # directory are explicitly configured and verified.
+      REHAB_HEP_BRIDGE_ENABLED: ${REHAB_HEP_BRIDGE_ENABLED:-false}
+      REHAB_HEP_BRIDGE_TOKEN: ${REHAB_HEP_BRIDGE_TOKEN:-}
+      REHAB_HEP_INTERNAL_BASE_URL: ${REHAB_HEP_INTERNAL_BASE_URL:-http://host.docker.internal:8088}
+      REHAB_HEP_JWT_ISSUER: ${REHAB_HEP_JWT_ISSUER:-http://127.0.0.1:18080}
+      REHAB_HEP_JWT_PRIVATE_KEY_FILE: /app/license/hep-core-jwt-private.pem
       YUDAO_LICENSE_ENFORCE: ${REHAB_LICENSE_ENFORCE:-false}
       YUDAO_LICENSE_TRUSTED_PUBLIC_KEYS: ${REHAB_LICENSE_TRUSTED_PUBLIC_KEYS:-}
       YUDAO_LICENSE_OWNER_STATUS_URL: ${REHAB_LICENSE_OWNER_STATUS_URL:-}

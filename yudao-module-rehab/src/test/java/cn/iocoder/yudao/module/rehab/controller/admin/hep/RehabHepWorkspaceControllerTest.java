@@ -18,6 +18,8 @@ class RehabHepWorkspaceControllerTest {
             assertThrows(IllegalStateException.class,()->
                 new RehabHepWorkspaceController(signer,unsafe));
         }
+        assertDoesNotThrow(() ->
+            new RehabHepWorkspaceController(signer,"http://host.docker.internal:8088"));
     }
     @Test void neverForwardsArbitraryCollectionOrIdentifiers(){
         RehabHepWorkspaceController bff=new RehabHepWorkspaceController(mock(RehabHepTokenService.class),

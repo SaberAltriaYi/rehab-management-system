@@ -47,7 +47,7 @@ export TLS_KEY_PATH="${STAGE}/server.key"
 export FIRST_START_SQL_PATH="${STAGE}/first.sql"
 export MYSQL_CLIENT_CONFIG_PATH="${STAGE}/client.cnf"
 export RUNTIME_BOOTSTRAP="${RUNTIME}/sql/desktop-bootstrap.sql"
-# The release bootstrap already has ledger 001-026. For upgrade/recovery
+# The release bootstrap already has the manifest's full ledger. For upgrade/recovery
 # testing, generate a separate, sanitized ledger-019 fixture in this private
 # temporary directory. Never modify the packaged runtime or an installed DB.
 EXPECTED_INITIAL_LEDGER="$(awk -F'|' '/^[0-9][0-9][0-9]\|/ {n=$1} END {print n+0}' "${RUNTIME}/sql/migrations.manifest")"
@@ -281,11 +281,11 @@ if [[ "${MODE}" == '--launcher-fault-restore' ]]; then
   [[ "$("${COMPOSE[@]}" exec -T mysql mysql \
      --defaults-extra-file=/run/rehab-secrets/mysql-client.cnf \
      --batch --skip-column-names ruoyi-vue-pro --execute \
-     'SELECT COUNT(*) FROM internal_schema_history;')" == 26 ]] ||
-    { echo 'FAIL: successful launcher upgrade ledger is not 26'; exit 1; }
+     'SELECT COUNT(*) FROM internal_schema_history;')" == "${RUNTIME_LATEST_LEDGER}" ]] ||
+    { echo "FAIL: successful launcher upgrade ledger is not ${RUNTIME_LATEST_LEDGER}"; exit 1; }
   [[ "$("${COMPOSE[@]}" exec -T server cat /app/data/rehab/synthetic-attachment.txt)" == 'SYNTHETIC_ATTACHMENT_BEFORE_UPGRADE' ]] ||
     { echo 'FAIL: restored synthetic attachment mismatch'; exit 1; }
-  echo 'PASS: REAL launcher orchestration, partial-DDL failure, explicit DB/attachment recovery, then packaged 020-026 successful upgrade'
+  echo "PASS: REAL launcher orchestration, partial-DDL failure, explicit DB/attachment recovery, then packaged 020-${RUNTIME_LATEST_LEDGER} successful upgrade"
   exit 0
 fi
 
@@ -368,6 +368,25 @@ if [[ "${MODE}" == '--upgrade-smoke' || "${MODE}" == '--upgrade-auth-smoke' || "
     { echo 'FAIL: second tenant patient was granted motion menus'; exit 1; }
   [[ "$(sql "SELECT COUNT(*) FROM system_role r JOIN system_role_menu rm ON rm.role_id=r.id AND rm.tenant_id=r.tenant_id WHERE r.code='rehab_patient' AND rm.menu_id BETWEEN 9700 AND 9717;")" == 0 ]] ||
     { echo 'FAIL: patient role granted therapist motion menus'; exit 1; }
+  if (( RUNTIME_LATEST_LEDGER >= 37 )); then
+    [[ "$(sql "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name LIKE 'rehab_hep_%';")" == 10 ]] ||
+      { echo 'FAIL: expected 10 HEP Core business/bridge tables'; exit 1; }
+    [[ "$(sql "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name='rehab_patient_app_invitation';")" == 1 ]] ||
+      { echo 'FAIL: patient invitation table missing'; exit 1; }
+    [[ "$(sql "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='rehab_hep_bridge_event' AND column_name IN ('reviewed_by','reviewed_at');")" == 2 ]] ||
+      { echo 'FAIL: HEP bridge audit columns missing'; exit 1; }
+    [[ "$(sql "SELECT COUNT(*) FROM system_menu WHERE id BETWEEN 98900 AND 98909 AND status=0 AND deleted=b'0';")" == 10 ]] ||
+      { echo 'FAIL: HEP Core navigation and permissions missing'; exit 1; }
+    [[ "$(sql "SELECT COUNT(*) FROM system_role r JOIN system_role_menu rm ON rm.role_id=r.id AND rm.tenant_id=r.tenant_id AND rm.deleted=b'0' WHERE r.code='super_admin' AND r.tenant_id=1 AND rm.menu_id BETWEEN 98900 AND 98909;")" == 10 ]] ||
+      { echo 'FAIL: administrator HEP role grants are incomplete'; exit 1; }
+    [[ "$(sql "SELECT COUNT(*) FROM system_role r JOIN system_role_menu rm ON rm.role_id=r.id AND rm.tenant_id=r.tenant_id AND rm.deleted=b'0' WHERE r.code='rehab_therapist' AND r.tenant_id=1 AND rm.menu_id BETWEEN 98900 AND 98909;")" == 8 ]] ||
+      { echo 'FAIL: therapist HEP role grants are incomplete'; exit 1; }
+    [[ "$(sql "SELECT COUNT(*) FROM system_role_menu WHERE menu_id BETWEEN 98900 AND 98909 AND role_id IN (990001,990002);")" == 0 ]] ||
+      { echo 'FAIL: unapproved HEP grants leaked to synthetic second-tenant roles'; exit 1; }
+    [[ "$(sql "SELECT COUNT(*) FROM system_role r JOIN system_role_menu rm ON rm.role_id=r.id AND rm.tenant_id=r.tenant_id WHERE r.code='rehab_patient' AND rm.menu_id BETWEEN 98900 AND 98909;")" == 0 ]] ||
+      { echo 'FAIL: patient role acquired HEP therapist menus'; exit 1; }
+    echo 'PASS: HEP 037 Core business/bridge tables, UI navigation, admin/therapist scope and patient denial'
+  fi
   echo "PASS: packaged 020-${RUNTIME_LATEST_LEDGER}, ledger=${RUNTIME_LATEST_LEDGER}, ${upgraded_motion} motion tables, 22 audit columns, two tenant-scoped therapists, no patient grants"
 
   curl --noproxy '*' --fail --silent --show-error --cacert "${TLS_CERT_PATH}" "${BASE}/healthz" >/dev/null
