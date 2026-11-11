@@ -77,7 +77,13 @@ node --test desktop/scripts/*.test.mjs
 cd desktop/launcher
 cargo test --locked --manifest-path src-tauri/Cargo.toml
 cargo test --locked --manifest-path src-tauri/Cargo.toml --features studio-internal
+export APPLE_SIGNING_IDENTITY=-  # 仅本机内部 ad-hoc 签名，非 Developer ID 公证
+umask 022                      # 运行资源必须能被容器遍历/读取
 pnpm tauri build --bundles app,dmg --features studio-internal --config src-tauri/tauri.internal.conf.json
+codesign --verify --deep --strict src-tauri/target/release/bundle/macos/康复管理系统内部版.app
+hdiutil verify src-tauri/target/release/bundle/dmg/康复管理系统内部版_1.0.0_aarch64.dmg
 ```
+
+打包迁移候选前，必须单独备份当前 `src-tauri/resources/runtime/1.0.0` 与原 DMG；只复制经过 `desktop/scripts/check-runtime.mjs` 验证的无凭据候选资源。若来源目录使用 `0700/0600`，仅在构建副本中补齐必要的目录遍历和静态文件读取权限，切勿将 `.env`、密钥或患者资料放入运行资源。构建成功后只读挂载 DMG，复验其中 `.app` 的签名、`VERSION.json` 迁移号、资源哈希及访问权限，不能仅校验未封装的 `.app`。构建完成后**显式**恢复旧资源及原始 DMG，并核对 SHA-256，不能只依赖 Shell 的退出钩子。
 
 这是明确授权的本地内部安装，不创建公开Release，不改变商业发行验收。首次空库也需要实际健康、迁移账本和零患者验证，不能将系统初始化账号等配置数据误算患者；运动/HEP跨服务及临床验收仍单列，不能把主系统四个容器启动就说整个产品族完成。

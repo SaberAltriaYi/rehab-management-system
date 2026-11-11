@@ -4,7 +4,7 @@ import { spawnSync } from 'node:child_process'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { evaluateHepReleasePreflight, probeStrictLocalTls } from './hep-release-preflight.mjs'
+import { evaluateHepReleasePreflight, probeStrictLocalTls, probeStrictSystemTls } from './hep-release-preflight.mjs'
 
 const good = {
   candidateLedger: '001-037', deployedLedger: '001-037', bridgeEnabled: true,
@@ -44,6 +44,27 @@ test('strict TLS network probe never connects to a remote/public target', async 
   const result = await probeStrictLocalTls('https://example.com')
   assert.equal(result.probe, 'NON_LOOPBACK_TARGET_REJECTED')
   assert.equal(result.coreReachable, false)
+})
+
+test('system TLS probe uses strict platform CA and refuses off-machine addresses', () => {
+  let called = false
+  const success = probeStrictSystemTls('https://127.0.0.1:18443', (program, args, options) => {
+    called = true
+    assert.equal(program, '/usr/bin/curl')
+    assert.ok(args.includes('--proto') && args.includes('=https'))
+    assert.ok(!args.some(arg => ['-k', '--insecure', '--cacert', '-L', '--location'].includes(arg)))
+    assert.ok(args.includes('https://127.0.0.1:18443/login'))
+    assert.equal(options.timeout, 6500)
+    return { status: 0, stdout: '200,0' }
+  })
+  assert.equal(called, true)
+  assert.equal(success.tlsTrusted, true)
+  assert.equal(success.coreReachable, true)
+  const failed = probeStrictSystemTls('https://127.0.0.1:18443', () => ({ status: 60, stdout: '000,18' }))
+  assert.equal(failed.probe, 'CERTIFICATE_UNTRUSTED')
+  assert.equal(failed.tlsTrusted, false)
+  const rejected = probeStrictSystemTls('https://example.com', () => { throw Error('must not connect') })
+  assert.equal(rejected.probe, 'NON_LOOPBACK_TARGET_REJECTED')
 })
 
 test('CLI rejects an unverified candidate directory even if operator claims all gates passed', () => {

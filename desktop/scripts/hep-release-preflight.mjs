@@ -2,6 +2,7 @@
 // Read-only preflight. No database access, authentication, certificate changes,
 // service restarts, private-key access or deployment actions are performed.
 import { readFileSync } from 'node:fs'
+import { spawnSync } from 'node:child_process'
 import { get } from 'node:https'
 import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -74,6 +75,34 @@ export function probeStrictLocalTls(origin = DEFAULT_CORE_ORIGIN, timeoutMs = 50
   })
 }
 
+// Probe the macOS Keychain via strict system curl. Node's built-in CA roots
+// may not match macOS trust, and Java HEP trust needs its own E2E test.
+export function probeStrictSystemTls(origin = DEFAULT_CORE_ORIGIN, run = spawnSync) {
+  let url
+  try {
+    url = new URL('/login', origin)
+    if (url.protocol !== 'https:' ||
+        !['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname) ||
+        url.username || url.password) {
+      return { tlsTrusted: false, coreReachable: false, probe: 'NON_LOOPBACK_TARGET_REJECTED' }
+    }
+  } catch {
+    return { tlsTrusted: false, coreReachable: false, probe: 'BAD_TARGET' }
+  }
+  const result = run('/usr/bin/curl', [
+    '--silent', '--show-error', '--noproxy', '*', '--proto', '=https',
+    '--max-time', '5', '--output', '/dev/null',
+    '--write-out', '%{http_code},%{ssl_verify_result}', url.href
+  ], { encoding: 'utf8', timeout: 6500, maxBuffer: 512 })
+  const parts = String(result?.stdout || '').trim().match(/^(\d{3}),(\d+)$/)
+  const tlsTrusted = result?.status === 0 && !!parts && parts[2] === '0'
+  const coreReachable = tlsTrusted && parts[1] === '200'
+  return { tlsTrusted, coreReachable,
+    probe: coreReachable ? 'HTTP_200' :
+      (result?.status === 60 || (parts && parts[2] !== '0'))
+        ? 'CERTIFICATE_UNTRUSTED' : 'CONNECTION_OR_HTTP_ERROR' }
+}
+
 function flag(args, name) {
   const i = args.indexOf(name)
   return i >= 0 ? args[i + 1] : undefined
@@ -94,7 +123,9 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
       }
     }
     catch { /* missing candidate evidence is a blocker */ }
-    const live = await probeStrictLocalTls(DEFAULT_CORE_ORIGIN)
+    const live = process.platform === 'darwin'
+      ? probeStrictSystemTls(DEFAULT_CORE_ORIGIN)
+      : await probeStrictLocalTls(DEFAULT_CORE_ORIGIN)
     const liveMode = args.includes('--live')
     let installed = null
     if (liveMode && !['--deployed-ledger', '--bridge-enabled', '--hep-core-url'].some(name => args.includes(name))) {
