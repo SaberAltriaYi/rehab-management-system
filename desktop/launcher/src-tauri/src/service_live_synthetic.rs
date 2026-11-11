@@ -246,7 +246,19 @@ fn partial_ddl_then_explicit_restore_on_real_synthetic_docker() {
     let states = read_service_states(service.runner.as_ref(), &ctx).unwrap();
     assert!(states.len() == 4 && states.iter().all(|s| s.state == "healthy"));
     assert!(sql_age.exists() && attachment_age.exists());
-    println!("PASS: explicit synthetic recovery restored ledger 19, original SQL row, and 4 healthy services");
+    let restored_media = service
+        .run_compose_os(&ctx, vec![
+            "exec".into(), "--no-TTY".into(), "server".into(),
+            "cat".into(), "/app/data/rehab/synthetic-attachment.txt".into(),
+        ])
+        .unwrap()
+        .stdout;
+    assert_eq!(
+        Sha256::digest(restored_media.as_bytes()),
+        Sha256::digest(b"SYNTHETIC_ATTACHMENT_BEFORE_UPGRADE\n"),
+        "restored synthetic media SHA-256 differs from pre-upgrade bytes"
+    );
+    println!("PASS: explicit synthetic recovery restored ledger 19, original SQL row, media SHA-256 and 4 healthy services");
 
     // From the recovered 19-version snapshot run every ORIGINAL packaged
     // migration via the real launcher method, not a shell imitation.
