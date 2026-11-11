@@ -315,6 +315,34 @@ async def main():
                         raise RuntimeError("Review tab did not activate after Chrome click")
                     await client.capture(DEST / "motion-review-mobile.png")
                     print("PASS: real Chrome mobile review entrypoint interactive")
+                    # The clinical assessment form has more fields than the
+                    # motion detail; verify responsive base inputs separately.
+                    for width, height, label in [(768, 1024, 'tablet'), (390, 844, 'mobile')]:
+                        checks.append(await check_view(
+                            client, "/rehab/assessment/create",
+                            "请选择评估类型以加载对应评估表单",
+                            f"assessment-create-{label}", width, height, width < 600))
+                        layout = await client.js("""(() => {
+                          const form=document.querySelector('.el-form');
+                          const first=form?.querySelector('.el-row');
+                          const columns=[...(first?.children||[])].filter(x=>x.classList.contains('el-col'));
+                          const patient=form?.querySelector('.el-form-item');
+                          const label=patient?.querySelector('.el-form-item__label');
+                          const field=patient?.querySelector('.el-form-item__content');
+                          return {
+                            columns:columns.length,
+                            minColumnWidth:Math.round(Math.min(...columns.map(c=>c.getBoundingClientRect().width))),
+                            labelBottom:label?.getBoundingClientRect().bottom||0,
+                            inputTop:field?.getBoundingClientRect().top||0,
+                            draftButton:[...form?.querySelectorAll('button')||[]]
+                              .some(b=>(b.innerText||'').includes('保存草稿'))
+                          }
+                        })()""")
+                        if (not layout['draftButton'] or layout['columns'] < 2 or
+                            (width < 600 and (layout['minColumnWidth'] < 220 or
+                             layout['labelBottom'] > layout['inputTop'] + 3))):
+                            raise RuntimeError(f"Assessment form responsive layout failed: {label}, {layout}")
+                    print('PASS: real Chrome assessment base form on tablet and mobile')
                 result = {"chromeVersion": "154", "origin": "synthetic-localhost-only",
                           "realBrowser": True, "humanVisualSignoff": False,
                           "views": checks}

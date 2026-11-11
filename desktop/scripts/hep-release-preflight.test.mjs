@@ -55,5 +55,14 @@ test('CLI rejects an unverified candidate directory even if operator claims all 
       '--hep-core-url', 'https://127.0.0.1:18443'], { encoding: 'utf8', timeout: 10000 })
     assert.equal(result.status, 2)
     assert.ok(JSON.parse(result.stdout).blockers.includes('CANDIDATE_037_NOT_VERIFIED'))
+    assert.ok(JSON.parse(result.stdout).blockers.includes('MANUAL_EVIDENCE_UNVERIFIED'))
   } finally { rmSync(folder, { recursive: true, force: true }) }
+})
+
+test('live mode rejects manually supplied versions or bridge state', () => {
+  const result = spawnSync(process.execPath, [new URL('./hep-release-preflight.mjs', import.meta.url).pathname,
+    '--live', '--deployed-ledger', '001-037', '--bridge-enabled', 'true',
+    '--hep-core-url', 'https://127.0.0.1:18443'], { encoding: 'utf8', timeout: 10000 })
+  assert.equal(result.status, 2)
+  assert.ok(JSON.parse(result.stdout).blockers.includes('LIVE_EVIDENCE_UNAVAILABLE'))
 })

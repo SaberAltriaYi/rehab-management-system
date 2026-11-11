@@ -5,6 +5,21 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RUNTIME="${1:?Usage: test-runtime-e2e-ephemeral.sh /path/to/runtime/1.0.0 [--preflight-only|--upgrade-smoke|--upgrade-auth-smoke|--upgrade-browser-smoke|--report-browser-smoke|--launcher-fault-restore]}"
 MODE="${2:-run}"
 [[ "${MODE}" == 'run' || "${MODE}" == '--preflight-only' || "${MODE}" == '--upgrade-smoke' || "${MODE}" == '--upgrade-auth-smoke' || "${MODE}" == '--upgrade-browser-smoke' || "${MODE}" == '--report-browser-smoke' || "${MODE}" == '--launcher-fault-restore' ]] || exit 2
+if [[ "${MODE}" == '--upgrade-browser-smoke' || "${MODE}" == '--report-browser-smoke' ]]; then
+  if [[ -z "${REHAB_BROWSER_EVIDENCE_DIR:-}" || "${REHAB_BROWSER_EVIDENCE_DIR}" != /* ]]; then
+    echo 'FAIL: browser smoke requires an absolute REHAB_BROWSER_EVIDENCE_DIR' >&2
+    exit 2
+  fi
+  if [[ "${REHAB_BROWSER_EVIDENCE_DIR}" != *'/validation-evidence/'* ]]; then
+    echo 'FAIL: browser smoke evidence must live under validation-evidence' >&2
+    exit 2
+  fi
+  if [[ -d "${REHAB_BROWSER_EVIDENCE_DIR}" ]] &&
+    [[ -n "$(ls -A "${REHAB_BROWSER_EVIDENCE_DIR}")" ]]; then
+    echo 'FAIL: browser smoke will not overwrite a non-empty evidence directory' >&2
+    exit 2
+  fi
+fi
 RUNTIME="$(cd "${RUNTIME}" && pwd)"
 node "${SCRIPT_DIR}/check-runtime.mjs" "${RUNTIME}" >/dev/null
 umask 077

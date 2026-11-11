@@ -6,6 +6,7 @@ import { get } from 'node:https'
 import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { validateRuntime } from './runtime-tools.mjs'
+import { observeInstalledHep } from './hep-installed-evidence.mjs'
 
 const DEFAULT_CORE_ORIGIN = 'https://127.0.0.1:18443'
 
@@ -81,7 +82,7 @@ function flag(args, name) {
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const args = process.argv.slice(2)
   if (args.includes('--help')) {
-    process.stdout.write('Usage: node desktop/scripts/hep-release-preflight.mjs --candidate DIR --deployed-ledger 001-037 --bridge-enabled true|false --hep-core-url https://127.0.0.1:18443\n')
+    process.stdout.write('Usage: node desktop/scripts/hep-release-preflight.mjs --candidate DIR --live (read actual installed DB/runtime/bridge/HEP configuration, no writes)\n')
   } else {
     let ledger = ''
     try {
@@ -94,11 +95,26 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     }
     catch { /* missing candidate evidence is a blocker */ }
     const live = await probeStrictLocalTls(DEFAULT_CORE_ORIGIN)
+    const liveMode = args.includes('--live')
+    let installed = null
+    if (liveMode && !['--deployed-ledger', '--bridge-enabled', '--hep-core-url'].some(name => args.includes(name))) {
+      try { installed = observeInstalledHep() } catch { /* fail closed, never log credentials or system error output */ }
+    }
     const report = evaluateHepReleasePreflight({ candidateLedger: ledger,
-      deployedLedger: flag(args, '--deployed-ledger'),
-      bridgeEnabled: flag(args, '--bridge-enabled') === 'true',
-      hepCoreUrl: flag(args, '--hep-core-url'), ...live })
-    process.stdout.write(JSON.stringify({ ...report, liveProbe: live.probe }, null, 2) + '\n')
-    process.exitCode = report.ready ? 0 : 2
+      deployedLedger: installed?.deployedLedger || (liveMode ? undefined : flag(args, '--deployed-ledger')),
+      bridgeEnabled: installed?.bridgeEnabled ?? (liveMode ? false : flag(args, '--bridge-enabled') === 'true'),
+      hepCoreUrl: installed?.hepCoreUrl || (liveMode ? undefined : flag(args, '--hep-core-url')),
+      ...live })
+    const extra = installed ? Object.entries(installed.checks).filter(([, passed]) => passed !== true)
+      .map(([name]) => `LIVE_${name.toUpperCase()}`)
+      : [liveMode ? 'LIVE_EVIDENCE_UNAVAILABLE' : 'MANUAL_EVIDENCE_UNVERIFIED']
+    const blockers = [...new Set([...report.blockers, ...extra])]
+    const result = { ...report, ready: blockers.length === 0, blockers,
+      source: installed?.observation || 'unverified-manual-input',
+      liveProbe: live.probe,
+      installedStatistics: installed?.statistics || null,
+      installedChecks: installed?.checks || null }
+    process.stdout.write(JSON.stringify(result, null, 2) + '\n')
+    process.exitCode = result.ready ? 0 : 2
   }
 }

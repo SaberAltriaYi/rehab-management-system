@@ -10,11 +10,12 @@
       :model="formData"
       :rules="rules"
       :disabled="submitLoading"
-      label-width="130px"
+      :label-width="isCompactViewport ? 'auto' : '130px'"
+      :label-position="isCompactViewport ? 'top' : 'right'"
       v-loading="loading || submitLoading"
     >
       <el-row :gutter="12">
-        <el-col :span="12">
+        <el-col :xs="24" :sm="12">
           <el-form-item label="患者" prop="patientId">
             <el-select
               v-model="formData.patientId"
@@ -36,7 +37,7 @@
             </el-select>
           </el-form-item>
         </el-col>
-        <el-col :span="12">
+        <el-col :xs="24" :sm="12">
           <el-form-item label="Episode" prop="episodeId">
             <el-select v-model="formData.episodeId" filterable clearable class="!w-full" placeholder="请选择 episode">
               <el-option
@@ -51,7 +52,7 @@
       </el-row>
 
       <el-row :gutter="12">
-        <el-col :span="12">
+        <el-col :xs="24" :sm="12">
           <el-form-item label="评估类型" prop="assessmentType">
             <el-select v-model="formData.assessmentType" class="!w-full" placeholder="请选择评估类型" @change="handleAssessmentTypeChange">
               <el-option
@@ -63,7 +64,7 @@
             </el-select>
           </el-form-item>
         </el-col>
-        <el-col :span="12">
+        <el-col :xs="24" :sm="12">
           <el-form-item label="评估日期" prop="assessmentDate">
             <el-date-picker
               v-model="formData.assessmentDate"
@@ -76,12 +77,12 @@
       </el-row>
 
       <el-row :gutter="12">
-        <el-col :span="12">
+        <el-col :xs="24" :sm="12">
           <el-form-item label="本次重点" prop="chiefFocus">
             <el-input v-model="formData.chiefFocus" placeholder="例如：体态与下肢稳定" />
           </el-form-item>
         </el-col>
-        <el-col :span="12">
+        <el-col :xs="24" :sm="12">
           <el-form-item label="疼痛评分" prop="painScore">
             <el-input-number v-model="formData.painScore" :min="0" :max="10" :step="0.5" class="!w-full" />
           </el-form-item>
@@ -138,6 +139,7 @@
 
 <script lang="ts" setup>
 import dayjs from 'dayjs'
+import { useWindowSize } from '@vueuse/core'
 import {
   createRehabAssessment,
   getRehabAssessment,
@@ -170,6 +172,8 @@ const message = useMessage()
 const route = useRoute()
 const { push, replace } = useRouter()
 const userStore = useUserStore()
+const { width: viewportWidth } = useWindowSize()
+const isCompactViewport = computed(() => viewportWidth.value < 640)
 
 const loading = ref(false)
 const patientLoading = ref(false)
