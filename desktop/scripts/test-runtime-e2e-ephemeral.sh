@@ -462,6 +462,16 @@ if [[ "${MODE}" == '--upgrade-smoke' || "${MODE}" == '--upgrade-auth-smoke' || "
       sql "INSERT INTO rehab_episode(id,episode_no,patient_id,tenant_id) VALUES (990201,'SYNTHETIC_EPISODE',990101,1);" >/dev/null
       sql "INSERT INTO rehab_assessment_record(id,assessment_no,patient_id,episode_id,assessment_type,assessment_date,tenant_id) VALUES (990301,'SYNTHETIC_ASSESSMENT',990101,990201,'initial','2026-10-09',1);" >/dev/null
       sql "INSERT INTO rehab_report(id,report_no,patient_id,episode_id,assessment_id,report_type,report_status,generation_mode,html_snapshot_path,tenant_id) VALUES (990401,'SYNTHETIC_REPORT',990101,990201,990301,'comprehensive','draft','auto','/app/data/rehab/synthetic-report-preview.html',1);" >/dev/null
+      # A single consistent, entirely invented clinical trajectory. All rows
+      # live only inside this test's randomly named tmpfs MySQL container.
+      # Clinical approval and signature are intentionally NOT simulated.
+      sql "INSERT INTO rehab_care_plan(id,plan_no,patient_id,episode_id,source_assessment_id,plan_name,plan_type,status,tenant_id) VALUES (990501,'SYNTHETIC_PLAN',990101,990201,990301,'SYNTHETIC_TRAINING_PLAN','rehab','draft',1);" >/dev/null
+      sql "INSERT INTO rehab_daily_checkin(id,patient_id,episode_id,plan_id,checkin_date,submit_role_type,overall_completion_rate,pain_score_before,pain_score_after,tenant_id) VALUES (990601,990101,990201,990501,'2026-10-10','therapist',80,3,2,1);" >/dev/null
+      sql "INSERT INTO rehab_reassessment_trigger(id,patient_id,episode_id,plan_id,trigger_type,trigger_level,trigger_status,tenant_id) VALUES (990701,990101,990201,990501,'time_due','medium','pending',1);" >/dev/null
+      sql "INSERT INTO rehab_assessment_record(id,assessment_no,patient_id,episode_id,assessment_type,assessment_date,status,tenant_id) VALUES (990302,'SYNTHETIC_REASSESSMENT',990101,990201,'reassessment','2026-10-11','draft',1);" >/dev/null
+      clinical_chain="$(sql "SELECT COUNT(*) FROM rehab_patient p JOIN rehab_episode e ON e.patient_id=p.id AND e.tenant_id=p.tenant_id JOIN rehab_assessment_record a ON a.episode_id=e.id AND a.patient_id=p.id AND a.assessment_type='initial' JOIN rehab_report r ON r.assessment_id=a.id AND r.report_status='draft' JOIN rehab_care_plan c ON c.source_assessment_id=a.id AND c.episode_id=e.id AND c.status='draft' JOIN rehab_daily_checkin d ON d.plan_id=c.id AND d.patient_id=p.id JOIN rehab_reassessment_trigger t ON t.plan_id=c.id AND t.patient_id=p.id AND t.trigger_status='pending' JOIN rehab_assessment_record a2 ON a2.episode_id=e.id AND a2.assessment_type='reassessment' AND a2.status='draft' WHERE p.id=990101 AND p.tenant_id=1 AND e.id=990201 AND d.id=990601 AND t.id=990701 AND a2.id=990302;")"
+      [[ "${clinical_chain}" == 1 ]] || { echo 'FAIL: synthetic clinical chain patient/episode/assessment/report/plan/checkin/trigger/reassessment'; exit 1; }
+      echo 'PASS: isolated synthetic clinical chain has 1 consistent patient/episode/assessment/unsigned report/draft plan/checkin/pending trigger/draft reassessment'
       # Deliberately untrusted harmless markup for the HTML sanitizer test.
       # The synthetic file is inside this disposable server tmpfs, never on host.
       printf '%s\n' '<h3>SYNTHETIC_PREVIEW_OK</h3><img src="x" onerror="window.__rehab_html_injected=1"><script>window.__rehab_html_injected=2</script><iframe src="about:blank"></iframe><a href="javascript:alert(1)">unsafe link</a>' |
@@ -551,6 +561,24 @@ if [[ "${MODE}" == '--upgrade-smoke' || "${MODE}" == '--upgrade-auth-smoke' || "
         "${STAGE}/synthetic-report-preview.json" >/dev/null ||
         { echo 'FAIL: synthetic report preview API'; exit 1; }
       echo 'PASS: report patient-page and unsafe synthetic preview supplied by real Java API'
+      # Exercise the live Java REST data path, not just foreign-key integrity.
+      for resource in 'plan/get?id=990501' 'checkin/get?id=990601' 'reassessment-trigger/get?id=990701' 'assessment/get?id=990302'; do
+        curl --noproxy '*' --silent --show-error --cacert "${TLS_CERT_PATH}" \
+          --header "Authorization: Bearer ${admin_token}" --header 'tenant-id: 1' \
+          --output "${STAGE}/synthetic-clinical-get.json" \
+          "${BASE}/admin-api/rehab/${resource}"
+        if [[ "${resource}" == assessment/* ]]; then
+          # Assessment detail is an aggregate: { assessment, patient, episode,
+          # moduleDataList, ... }, not the simple { id, ... } used elsewhere.
+          jq -e '.code==0 and .data.assessment.id==990302 and .data.patient.id==990101 and .data.episode.id==990201' \
+            "${STAGE}/synthetic-clinical-get.json" >/dev/null ||
+            { echo "FAIL: assessment detail omitted its synthetic patient/episode link"; exit 1; }
+        else
+          jq -e '.code==0 and (.data.id|type=="number")' "${STAGE}/synthetic-clinical-get.json" >/dev/null ||
+            { echo "FAIL: clinical chain API ${resource} did not return the synthetic record"; exit 1; }
+        fi
+        echo "PASS: real Java API resolves synthetic ${resource} for tenant-1 admin"
+      done
     fi
     if [[ "${MODE}" == '--upgrade-browser-smoke' || "${MODE}" == '--report-browser-smoke' ]]; then
       : "${REHAB_BROWSER_EVIDENCE_DIR:?Set an empty private evidence directory for synthetic browser screenshots}"
