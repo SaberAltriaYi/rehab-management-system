@@ -174,6 +174,14 @@ fn partial_ddl_then_explicit_restore_on_real_synthetic_docker() {
         "SYNTHETIC_BEFORE_UPGRADE"
     );
 
+    // Ensure the backup/recovery round-trip has a nonzero synthetic patient
+    // count. This test only writes to random tmpfs-only Docker volumes.
+    service.mysql_query(&ctx,
+        "INSERT INTO rehab_patient (id,patient_no,name,tenant_id) VALUES (990777,'SYNTHETIC_RECOVERY_990777','SYNTHETIC_RECOVERY_PATIENT',1);"
+    ).unwrap();
+    assert_eq!(service.mysql_query(&ctx,
+        "SELECT COUNT(*) FROM rehab_patient WHERE id=990777 AND patient_no='SYNTHETIC_RECOVERY_990777' AND tenant_id=1;"
+    ).unwrap().trim(), "1");
     let error = service.upgrade_database(&ctx).unwrap_err().to_string();
     assert!(
         error.contains("021") && error.contains("账本未登记"),
@@ -258,7 +266,10 @@ fn partial_ddl_then_explicit_restore_on_real_synthetic_docker() {
         Sha256::digest(b"SYNTHETIC_ATTACHMENT_BEFORE_UPGRADE\n"),
         "restored synthetic media SHA-256 differs from pre-upgrade bytes"
     );
-    println!("PASS: explicit synthetic recovery restored ledger 19, original SQL row, media SHA-256 and 4 healthy services");
+    assert_eq!(service.mysql_query(&ctx,
+        "SELECT COUNT(*) FROM rehab_patient WHERE id=990777 AND patient_no='SYNTHETIC_RECOVERY_990777' AND tenant_id=1;"
+    ).unwrap().trim(), "1", "synthetic patient disappeared after restore");
+    println!("PASS: explicit synthetic recovery restored ledger 19, synthetic patient count, SQL row, media SHA-256 and 4 healthy services");
 
     // From the recovered 19-version snapshot run every ORIGINAL packaged
     // migration via the real launcher method, not a shell imitation.
@@ -296,6 +307,9 @@ fn partial_ddl_then_explicit_restore_on_real_synthetic_docker() {
             .trim(),
         "SYNTHETIC_BEFORE_UPGRADE"
     );
+    assert_eq!(service.mysql_query(&ctx,
+        "SELECT COUNT(*) FROM rehab_patient WHERE id=990777 AND patient_no='SYNTHETIC_RECOVERY_990777' AND tenant_id=1;"
+    ).unwrap().trim(), "1", "synthetic patient disappeared after re-upgrade");
     let states = read_service_states(service.runner.as_ref(), &ctx).unwrap();
     assert!(states.len() == 4 && states.iter().all(|s| s.state == "healthy"));
     assert_eq!(
