@@ -343,6 +343,39 @@ async def main():
                              layout['labelBottom'] > layout['inputTop'] + 3))):
                             raise RuntimeError(f"Assessment form responsive layout failed: {label}, {layout}")
                     print('PASS: real Chrome assessment base form on tablet and mobile')
+                    # HEP menu rows in migration 037 are not the same as a
+                    # successfully rendered authorized route. Verify the
+                    # synthetic administrator's actual desktop/mobile UI,
+                    # without issuing or signing any clinical prescription.
+                    for width, height, label in [
+                        (1440, 900, 'desktop'),
+                        (390, 844, 'mobile'),
+                    ]:
+                        checks.append(await check_view(
+                            client, "/rehab/hep/console",
+                            "HEP 家庭康复 · 一体化工作台",
+                            f"hep-console-admin-{label}",
+                            width, height, width < 600))
+                        access = await client.js("""(() => ({
+                          unauthorized:document.body.innerText.includes('当前账号未获得 HEP 权限'),
+                          backendHttpError:(document.body.innerText.match(/HTTP\\s*(404|503)\\b/i)||[])[1]||null,
+                          tabs:[...document.querySelectorAll('.el-tabs__item')]
+                            .filter(el=>el.getBoundingClientRect().width>0)
+                            .map(el=>el.innerText.trim()).filter(Boolean),
+                          hasRefresh:[...document.querySelectorAll('button')]
+                            .some(el=>el.innerText?.includes('刷新'))
+                        }))()""")
+                        if (access['unauthorized'] or not access['tabs'] or
+                                not access['hasRefresh']):
+                            raise RuntimeError(f"Synthetic Core admin HEP route missing permitted tabs: {access}")
+                        # Route visibility and API availability are separate
+                        # acceptance gates. In this isolated test the bridge
+                        # intentionally remains disabled, so a 404/503 must
+                        # not be silently counted as an operational HEP API.
+                        checks[-1]['hepBackendVerified'] = False
+                        checks[-1]['observedBackendHttpError'] = access['backendHttpError']
+                    print('PASS: authorized synthetic Core 037 HEP route and tabs rendered on desktop/mobile')
+                    print('NOTE: HEP API backend is not enabled in this isolated fixture; no positive Core–HEP data flow claimed')
                 result = {"chromeVersion": "154", "origin": "synthetic-localhost-only",
                           "realBrowser": True, "humanVisualSignoff": False,
                           "views": checks}

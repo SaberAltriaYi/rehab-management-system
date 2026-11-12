@@ -4,6 +4,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { useRoute } from 'vue-router'
 import request from '@/config/axios'
 import { useUserStore } from '@/store/modules/user'
+import { hepLoadError } from './hepErrors'
 
 type Entry = Record<string, any>
 type Section = 'patients' | 'library' | 'prescription' | 'risks' | 'feedback' |
@@ -108,7 +109,7 @@ async function load(){
   else if(tab==='approval')adminActions.value=await get('admin/exercises')
   else if(tab==='compliance')records.value=await get('admin/compliance?days='+daysWindow.value)
   else records.value=await get('admin/'+tab)
- }catch(e){error.value=e instanceof Error?e.message:'请求失败，请核对 HEP 服务或账号权限'}
+ }catch(e){error.value=hepLoadError(e)}
  finally{pending.value=false}
 }
 async function switchTab(tab:Section){active.value=tab;await load()}
@@ -119,7 +120,7 @@ async function act(path:string,payload:Entry={},method:'POST'|'PUT'='POST'){
   ElMessage.success('操作已保存')
   await load()
   return out
- }catch(e){error.value=e instanceof Error?e.message:'操作失败，请检查角色、租户和处方状态';return null}
+ }catch(e){error.value=hepLoadError(e);return null}
  finally{pending.value=false}
 }
 async function createAction(){
