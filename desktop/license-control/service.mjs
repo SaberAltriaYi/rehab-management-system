@@ -20,6 +20,14 @@ const STEP_UP_MS = 2 * 60_000
 const CHALLENGE_MS = 5 * 60_000
 const LOCK_MS = 15 * 60_000
 const ATTEMPT_LIMIT = 5
+const CORE_RECOVERY_LIFETIME_MS = 120_000
+const RECOVERY_CODE = /^[A-Za-z0-9_-]{43}$/
+
+function validCoreRecoverySecret(value) {
+  return typeof value === 'string' && RECOVERY_CODE.test(value) &&
+    Buffer.from(value, 'base64url').length === 32 &&
+    Buffer.from(value, 'base64url').toString('base64url') === value
+}
 
 export class LicensingServiceError extends Error {
   constructor(code) {
@@ -252,6 +260,53 @@ export class OwnerLicensingService {
     this.store.transaction(() => {
       this.db.prepare('DELETE FROM owner_sessions WHERE token_hash=?').run(hashToken(token))
       this.store.audit({ actor, action: 'OWNER_LOGOUT', subject: 'owner', nowMs })
+    })
+  }
+
+  // This does not receive the new Core password. Owner auth and recent TOTP
+  // step-up are independent of the clinic administrator being recovered.
+  authorizeCoreAdminRecovery({ token, deviceChallenge, confirmation, nowMs }) {
+    const actor = this.requireStrongOwner(token, nowMs)
+    if (confirmation !== 'RECOVER-CORE-ADMIN') deny('INVALID_RECOVERY_CONFIRMATION')
+    if (!validCoreRecoverySecret(deviceChallenge)) deny('INVALID_RECOVERY_CHALLENGE')
+    const authorizationCode = randomBytes(32).toString('base64url')
+    this.store.transaction(() => {
+      this.db.prepare('DELETE FROM core_admin_recovery_grants WHERE issued_at < ?')
+        .run(nowMs - 7 * 86400000)
+      const recent = this.db.prepare(`SELECT COUNT(*) AS n FROM core_admin_recovery_grants
+        WHERE issued_at > ?`).get(nowMs - 3600000).n
+      if (recent >= 3) deny('RECOVERY_RATE_LIMITED')
+      this.db.prepare(`INSERT INTO core_admin_recovery_grants
+        (token_hash,challenge_hash,issued_at,expires_at,actor) VALUES(?,?,?,?,?)`)
+        .run(hashToken(authorizationCode), hashToken(deviceChallenge), nowMs,
+          nowMs + CORE_RECOVERY_LIFETIME_MS, actor)
+      this.store.audit({ actor, action: 'CORE_ADMIN_RECOVERY_AUTHORIZED',
+        subject: 'core-tenant-1-admin',
+        details: { expiresInSeconds: 120, scope: 'password-only' }, nowMs })
+    })
+    return { authorizationCode, targetUsername: 'admin',
+      expiresAt: new Date(nowMs + CORE_RECOVERY_LIFETIME_MS).toISOString() }
+  }
+
+  // Only the localhost desktop launcher can redeem this on the HTTPS API.
+  // Both halves of the credential are 256-bit secrets; SQLite stores hashes.
+  redeemCoreAdminRecovery({ authorizationCode, deviceChallenge, nowMs }) {
+    validMs(nowMs)
+    if (!validCoreRecoverySecret(authorizationCode) ||
+        !validCoreRecoverySecret(deviceChallenge)) deny('INVALID_RECOVERY_AUTHORIZATION')
+    return this.store.transaction(() => {
+      const tokenHash = hashToken(authorizationCode)
+      const consumed = this.db.prepare(`UPDATE core_admin_recovery_grants
+        SET consumed_at = ? WHERE token_hash = ? AND challenge_hash = ?
+        AND consumed_at IS NULL AND expires_at > ?`)
+        .run(nowMs, tokenHash, hashToken(deviceChallenge), nowMs)
+      if (consumed.changes !== 1) deny('INVALID_RECOVERY_AUTHORIZATION')
+      const grant = this.db.prepare('SELECT actor FROM core_admin_recovery_grants WHERE token_hash = ?')
+        .get(tokenHash)
+      this.store.audit({ actor: grant.actor, action: 'CORE_ADMIN_RECOVERY_REDEEMED',
+        subject: 'core-tenant-1-admin',
+        details: { scope: 'password-only', replayable: false }, nowMs })
+      return { tenantId: 1, userId: 1, username: 'admin', scope: 'password-only' }
     })
   }
 

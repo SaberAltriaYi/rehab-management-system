@@ -13,6 +13,10 @@ const $ = (id) => document.getElementById(id)
 const formData = (id) => Object.fromEntries(new FormData($(id)))
 const errorLabels = {
   OWNER_STEP_UP_REQUIRED: '高风险操作需要重新验证 TOTP。',
+  INVALID_RECOVERY_CHALLENGE: '请使用桌面启动器当前生成的 43 位设备挑战码。',
+  INVALID_RECOVERY_CONFIRMATION: '管理员密码恢复确认信息不正确。',
+  RECOVERY_RATE_LIMITED: '管理员恢复授权过于频繁，请稍后再试。',
+  INVALID_RECOVERY_AUTHORIZATION: '恢复授权码已失效或已使用，请重新获取。',
   CROSS_ORIGIN_FORBIDDEN: '登录地址与 Owner 服务允许的 HTTPS 来源不一致。请在本机浏览器地址栏直接打开 https://127.0.0.1:9444/owner/console 后重新登录；不要从主系统、端口转发或不受信任的域名提交。',
 
   OWNER_UNAUTHORIZED: '所有者会话已失效，请重新登录。',
@@ -57,6 +61,9 @@ function displaySession() {
   $('owner-content').hidden = !session
   $('connection').textContent = session ? '所有者 MFA 会话已验证' : '尚未登录'
   if (!session) {
+    $('core-recovery-code').value = ''
+    $('core-recovery-expiry').textContent = ''
+    $('core-recovery-form').reset()
     provisioningConfigured = null
     selected = null
     selectedTenant = null
@@ -291,6 +298,7 @@ async function waitForProvisioning(applicationId) {
 }
 async function refreshApplications({ announce = true } = {}) {
   const result = await api('/owner/v1/applications')
+  $('core-recovery-panel').hidden = result.adminRecoveryEnabled !== true
   const applications = result.applications || []
   currentApplications = applications
   setWorkflowStatus(result.provisioningConfigured, result.activationEmailConfigured)
@@ -503,6 +511,34 @@ $('logout').addEventListener('click', () => void handle(async () => {
   finally { session = null; selected = null; selectedTenant = null; displaySession(); feedback('已注销此浏览器会话') }
 }))
 $('stepup').addEventListener('click', () => void handle(stepUp))
+$('core-recovery-form').addEventListener('submit', event => {
+  event.preventDefault()
+  void handle(async () => {
+    const field = $('core-recovery-form').elements.namedItem('deviceChallenge')
+    const deviceChallenge = String(field.value ?? '').trim()
+    if (!/^[A-Za-z0-9_-]{43}$/.test(deviceChallenge)) {
+      throw Error('请从桌面启动器复制完整的 43 位设备挑战码')
+    }
+    $('core-recovery-code').value = ''
+    $('core-recovery-expiry').textContent = ''
+    let issued = null
+    const confirmed = await strongOperation(async () => {
+      issued = await api('/owner/v1/core-admin-recovery/authorize', {
+        method: 'POST', body: { deviceChallenge, confirmation: 'RECOVER-CORE-ADMIN' }
+      })
+    }, '签发仅可恢复本机 Core admin 密码的一次性授权')
+    if (!confirmed) return
+    $('core-recovery-code').value = issued.authorizationCode
+    $('core-recovery-expiry').textContent = '有效至 ' + issued.expiresAt + '；使用一次立即失效。'
+    window.setTimeout(() => {
+      if ($('core-recovery-code').value === issued.authorizationCode) {
+        $('core-recovery-code').value = ''
+        $('core-recovery-expiry').textContent = '恢复授权码已过期；如仍需要请重新 MFA 认证。'
+      }
+    }, Math.max(1000, Date.parse(issued.expiresAt) - Date.now()))
+    feedback('已核验 Owner MFA。请立即复制授权码到启动器，所有者不会看到新 Core 密码。')
+  })
+})
 $('refresh').addEventListener('click', () => void handle(refreshAll))
 $('use-default-policy').addEventListener('click', () => void handle(async () => {
   fillDefaultPolicy()

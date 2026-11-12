@@ -47,7 +47,8 @@ function restricted(ip, path, nowMs) {
   if (nowMs > v.until) { v.count = 0; v.until = nowMs + 60_000 }
   ++v.count
   limiter.set(key, v)
-  return v.count > (path.includes('/login') || path.includes('/mfa/recover') ? 12 : 60)
+  return v.count > (path.includes('/login') || path.includes('/mfa/recover') ||
+    path.includes('/core-admin-recovery/') ? 12 : 60)
 }
 function writeJson(res, status, value) {
   res.writeHead(status, {
@@ -120,7 +121,8 @@ export function canonicalOwnerPageRedirect(path, host, permittedOrigins, hasTls)
 export function createOwnerControlServer(service, {
   tlsOptions,
   allowInsecureLoopbackForTests = false,
-  permittedBrowserOrigin = null
+  permittedBrowserOrigin = null,
+  adminRecoveryEnabled = false
 } = {}) {
   if (!tlsOptions && !allowInsecureLoopbackForTests) {
     throw new Error('Owner control API requires TLS by default')
@@ -246,6 +248,20 @@ export function createOwnerControlServer(service, {
         }
         return writeJson(res, 200, await service.recoverMfa({ ...b, nowMs }))
       }
+      // Loopback launcher redemption: a single-use, challenge-bound approval.
+      // Refuse browser requests even from the legitimate Owner origin.
+      if (path === '/owner/v1/core-admin-recovery/redeem' && req.method === 'POST') {
+        if (!adminRecoveryEnabled) return writeJson(res, 404, { error: 'NOT_FOUND' })
+        if (!loopback(req.socket.remoteAddress) || req.headers.origin) {
+          return writeJson(res, 403, { error: 'LOCAL_LAUNCHER_ONLY' })
+        }
+        const b = await readJson(req)
+        fieldsOnly(b, ['authorizationCode', 'deviceChallenge'])
+        return writeJson(res, 200, service.redeemCoreAdminRecovery({ ...b, nowMs }))
+      }
+      if (path === '/owner/v1/core-admin-recovery/authorize' && !adminRecoveryEnabled) {
+        return writeJson(res, 404, { error: 'NOT_FOUND' })
+      }
       // Every owner operation must carry an MFA-authenticated bearer session.
       // Never accept owner flag, role or TOTP bypass from user-supplied JSON.
       if (!PRIVATE_ENDPOINT.test(path)) return writeJson(res, 404, { error: 'NOT_FOUND' })
@@ -260,9 +276,17 @@ export function createOwnerControlServer(service, {
         fieldsOnly(b, ['totp'])
         return writeJson(res, 200, service.stepUp({ token, totp: b.totp, nowMs }))
       }
+      if (path === '/owner/v1/core-admin-recovery/authorize' && req.method === 'POST') {
+        if (!adminRecoveryEnabled) return writeJson(res, 404, { error: 'NOT_FOUND' })
+        if (!loopback(req.socket.remoteAddress)) return writeJson(res, 403, { error: 'LOOPBACK_REQUIRED' })
+        const b = await readJson(req)
+        fieldsOnly(b, ['deviceChallenge', 'confirmation'])
+        return writeJson(res, 200, service.authorizeCoreAdminRecovery({ token, ...b, nowMs }))
+      }
       if (path === '/owner/v1/applications' && req.method === 'GET') {
         return writeJson(res, 200, {
           applications: service.applicationList({ token, nowMs }),
+          adminRecoveryEnabled,
           // This is only a capability flag. Never expose the provisioning URL,
           // token or plan/package identifiers to the browser.
           provisioningConfigured: service.provisioningConfigured(),

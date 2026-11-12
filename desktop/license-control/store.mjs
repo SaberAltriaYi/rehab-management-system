@@ -23,6 +23,18 @@ CREATE TABLE IF NOT EXISTS owner_sessions (
   step_up_until INTEGER NOT NULL DEFAULT 0,
   mfa_failure_count INTEGER NOT NULL DEFAULT 0
 );
+-- Owner MFA authorization for a local desktop password recovery.
+-- Never store a recovery code, device challenge or password in plaintext.
+CREATE TABLE IF NOT EXISTS core_admin_recovery_grants (
+  token_hash TEXT PRIMARY KEY,
+  challenge_hash TEXT NOT NULL,
+  issued_at INTEGER NOT NULL,
+  expires_at INTEGER NOT NULL,
+  consumed_at INTEGER,
+  actor TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS core_admin_recovery_issued_idx
+  ON core_admin_recovery_grants(issued_at);
 CREATE TABLE IF NOT EXISTS signing_keys (
   kid TEXT PRIMARY KEY,
   public_pem TEXT NOT NULL,

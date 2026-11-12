@@ -36,6 +36,22 @@
       <button id="logout" type="button" class="outline">注销会话</button>
     </nav>
     <p id="workflow-status" class="workflow-status" role="status"></p>
+    <section class="panel" id="core-recovery-panel" hidden aria-label="本机 Core 管理员账号恢复">
+      <h2>本机 Core 管理员密码恢复（高风险）</h2>
+      <p class="hint">先在本机康复管理系统启动器点击“找回内置管理员”，复制 43 位设备挑战码到下面。
+        此操作仅授权租户 1、用户 ID 1 的 <code>admin</code> 密码重设，不修改账号名称、机构许可证或患者资料。
+        需软件所有者重新验证 TOTP；授权码仅显示一次，120 秒后失效。</p>
+      <form id="core-recovery-form">
+        <label>启动器设备挑战码
+          <input name="deviceChallenge" required minlength="43" maxlength="43" pattern="[A-Za-z0-9_-]{43}" autocomplete="off" />
+        </label>
+        <button type="submit" class="warning">Owner MFA 核验并签发一次性恢复授权码</button>
+        <label>一次性恢复授权码（只显示在本次操作中）
+          <input id="core-recovery-code" readonly autocomplete="off" aria-label="复制到本机桌面启动器的一次性恢复授权码" />
+        </label>
+        <p id="core-recovery-expiry" class="hint" role="status"></p>
+      </form>
+    </section>
     <section class="panel">
       <div class="section-heading"><h2>待审批工作室</h2><span id="application-count" aria-live="polite">—</span></div>
       <div class="table-scroll"><table><thead><tr><th>工作室</th><th>租户 / 设备编号</th><th>申请状态</th><th>操作</th></tr></thead><tbody id="applications"></tbody></table></div>

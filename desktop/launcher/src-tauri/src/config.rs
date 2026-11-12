@@ -322,6 +322,30 @@ pub fn build_admin_update_sql(username: &str, password: &str) -> LauncherResult<
     ))
 }
 
+/// Owner-MFA recovery is independent of the disabled general admin editor.
+/// It updates only the existing tenant-1 user-id-1 administrator password;
+/// a missing super_admin role causes a strict no-op.
+pub fn build_admin_recovery_sql(password: &str) -> LauncherResult<String> {
+    validate_admin_credentials("admin", password)?;
+    let hashed = hash(password, DEFAULT_COST)
+        .map_err(|error| LauncherError::Internal(format!("管理员密码哈希失败：{error}")))?;
+    Ok(format!(
+        "START TRANSACTION;\n\
+         SET @rehab_recovered := 0;\n\
+         UPDATE system_users SET password = '{hashed}', updater = 'owner-mfa-recovery', update_time = NOW()\n\
+         WHERE id = 1 AND tenant_id = 1 AND username = 'admin' AND status = 0 AND deleted = b'0'\n\
+         AND EXISTS (SELECT 1 FROM system_user_role ur JOIN system_role r ON r.id = ur.role_id\n\
+            WHERE ur.user_id = 1 AND ur.tenant_id = 1 AND r.tenant_id = 1\n\
+              AND r.code = 'super_admin' AND r.status = 0 AND r.deleted = b'0');\n\
+         SET @rehab_recovered := ROW_COUNT();\n\
+         DELETE FROM system_oauth2_access_token WHERE user_id = 1 AND user_type = 2 AND @rehab_recovered = 1;\n\
+         DELETE FROM system_oauth2_refresh_token WHERE user_id = 1 AND user_type = 2 AND @rehab_recovered = 1;\n\
+         SELECT CONCAT('REHAB_ADMIN_RECOVERED=', @rehab_recovered);\n\
+         COMMIT;\n",
+        hashed = hashed.replace('\'', "''")
+    ))
+}
+
 fn ensure_tls(paths: &AppPaths) -> LauncherResult<()> {
     let cert_path = paths.config_dir.join("tls/server.crt");
     let key_path = paths.config_dir.join("tls/server.key");
@@ -427,6 +451,34 @@ mod tests {
         assert!(sql.contains("system_oauth2_refresh_token"));
         assert!(validate_admin_credentials("bad name", password).is_err());
         assert!(validate_admin_credentials("admin", "too-short").is_err());
+    }
+
+    #[test]
+    fn recovery_sql_is_password_only_and_scoped_to_existing_super_admin() {
+        let password = "TestOnlyPWD2026";
+        let sql = build_admin_recovery_sql(password).unwrap();
+        assert!(!sql.contains(password));
+        assert!(sql.contains("password = '$2"));
+        assert!(sql.contains("username = 'admin'"));
+        assert!(sql.contains("id = 1 AND tenant_id = 1"));
+        assert!(sql.contains("r.code = 'super_admin'"));
+        assert!(!sql.contains("SET username"));
+        assert!(!sql.contains("status = 0, updater"));
+        assert!(sql.contains("system_oauth2_access_token"));
+        assert!(sql.contains("system_oauth2_refresh_token"));
+        assert!(sql.contains("START TRANSACTION"));
+        assert!(sql.contains("COMMIT"));
+        assert!(build_admin_recovery_sql("short").is_err());
+    }
+
+    #[test]
+    #[ignore = "requires explicit isolated database test output; never run on production"]
+    fn export_synthetic_recovery_sql_for_disposable_mysql_qa() {
+        let path = std::env::var("REHAB_SYNTHETIC_RECOVERY_SQL_OUTPUT")
+            .expect("Requires an explicit isolated QA SQL output path");
+        let sql = build_admin_recovery_sql("QaOnlyFake2026").unwrap();
+        assert!(!sql.contains("QaOnlyFake2026"));
+        std::fs::write(path, sql).unwrap();
     }
 
     #[test]

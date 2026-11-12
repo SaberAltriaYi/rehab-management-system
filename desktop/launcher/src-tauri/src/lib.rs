@@ -1,4 +1,5 @@
 mod config;
+mod admin_recovery;
 mod docker;
 mod error;
 mod license;
@@ -239,6 +240,21 @@ fn update_admin_credentials(
 }
 
 #[tauri::command]
+fn begin_admin_recovery(state: State<'_, LauncherState>) -> Result<String, String> {
+    state.0.lock().map_err(|_| "启动器状态锁异常".to_owned())?
+        .begin_admin_recovery().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn recover_admin_credentials(
+    state: State<'_, LauncherState>, authorization_code: String, new_password: String,
+) -> Result<LauncherOverview, String> {
+    state.0.lock().map_err(|_| "启动器状态锁异常".to_owned())?
+        .recover_admin_credentials(&authorization_code, &new_password)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 fn open_data_directory(
     app: tauri::AppHandle,
     state: State<'_, LauncherState>,
@@ -313,6 +329,8 @@ pub fn run() {
             export_full_transfer,
             import_full_transfer,
             update_admin_credentials,
+            begin_admin_recovery,
+            recover_admin_credentials,
             read_logs,
             open_data_directory,
             get_diagnostics,

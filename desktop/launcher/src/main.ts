@@ -138,6 +138,7 @@ function render(): void {
         <button data-action="export-data" ${busy || !overview.ready || overview.releaseRequiresLicense ? 'disabled' : ''}>一键导出整店数据</button>
         <button data-action="import-data" ${busy || !overview.ready || overview.releaseRequiresLicense ? 'disabled' : ''}>一键导入整店数据</button>
         <button data-action="admin-settings" ${busy || !overview.ready || overview.releaseRequiresLicense ? 'disabled' : ''}>管理员账号设置</button>
+        <button data-action="admin-recovery" class="secondary" ${busy || !overview.ready ? 'disabled' : ''}>通过 Owner MFA 找回管理员密码</button>
         <button data-action="logs">查看日志</button>
         <button data-action="directory">打开数据目录</button>
         <button data-action="diagnostics">复制诊断信息</button>
@@ -225,6 +226,29 @@ function render(): void {
         <menu>
           <button value="cancel" class="secondary">取消</button>
           <button value="default" data-action="save-admin">保存管理员账号</button>
+        </menu>
+      </form>
+    </dialog>
+    <dialog id="admin-recovery-dialog">
+      <form method="dialog" id="admin-recovery-form">
+        <h2>Owner MFA · 恢复内置 Core admin 密码</h2>
+        <p class="warning-text">仅适用于本机内置租户 1、用户 ID 1 的 admin 密码，不更改账号、租户或许可证。执行前自动创建加密备份，成功后撤销旧登录会话。需独立 Owner MFA 审批，不能跳过。</p>
+        <label>设备挑战码（复制到 Owner 控制台）
+          <input name="deviceChallenge" type="text" readonly autocomplete="off" />
+        </label>
+        <p>在浏览器中打开 <code>https://127.0.0.1:9444/owner/console</code>，登录独立 Owner 账号，完成 TOTP 再认证并生成 120 秒一次性授权码。</p>
+        <label>Owner 一次性恢复授权码
+          <input name="authorizationCode" minlength="43" maxlength="43" pattern="[A-Za-z0-9_-]{43}" autocomplete="off" required />
+        </label>
+        <label>新 Core admin 密码（12–16 位）
+          <input name="newPassword" type="password" minlength="12" maxlength="16" autocomplete="new-password" required />
+        </label>
+        <label>再次输入新密码
+          <input name="confirmPassword" type="password" minlength="12" maxlength="16" autocomplete="new-password" required />
+        </label>
+        <menu>
+          <button value="cancel" class="secondary">取消恢复</button>
+          <button data-action="confirm-admin-recovery" value="default">验证 Owner MFA 并重设密码</button>
         </menu>
       </form>
     </dialog>
@@ -457,6 +481,47 @@ function bindActions(): void {
         case 'admin-settings':
           document.querySelector<HTMLDialogElement>('#admin-dialog')?.showModal()
           break
+        case 'admin-recovery': {
+          try {
+            const deviceChallenge = await invoke<string>('begin_admin_recovery')
+            const dialog = document.querySelector<HTMLDialogElement>('#admin-recovery-dialog')
+            const field = dialog?.querySelector<HTMLInputElement>('input[name="deviceChallenge"]')
+            if (!dialog || !field) throw Error('管理员恢复对话框缺失')
+            dialog.querySelector<HTMLFormElement>('form')?.reset()
+            field.value = deviceChallenge
+            dialog.showModal()
+          } catch (error) {
+            overview.lastError = String(error)
+            render()
+          }
+          break
+        }
+        case 'confirm-admin-recovery': {
+          event.preventDefault()
+          const form = document.querySelector<HTMLFormElement>('#admin-recovery-form')
+          if (!form) return
+          const data = new FormData(form)
+          const authorizationCode = String(data.get('authorizationCode') ?? '').trim()
+          const newPassword = String(data.get('newPassword') ?? '')
+          const confirmPassword = String(data.get('confirmPassword') ?? '')
+          if (!/^[A-Za-z0-9_-]{43}$/.test(authorizationCode) ||
+              !isValidAdminCredentialInput('admin', newPassword) ||
+              newPassword !== confirmPassword) {
+            window.alert('请输入完整的 Owner 一次性授权码，并确认两次新密码相同且为 12–16 位。')
+            return
+          }
+          if (!window.confirm('确认以 Owner MFA 授权恢复 Core admin 密码？将先自动备份，成功后旧登录会话失效。')) return
+          try {
+            overview = await invokeOperation<LauncherOverview>('recover_admin_credentials', {
+              authorizationCode, newPassword
+            })
+            window.alert('Core admin 密码已恢复。请使用租户“工作室内部”、账号 admin 和新密码重新登录。')
+          } catch (error) {
+            overview.lastError = String(error)
+          }
+          await refresh()
+          break
+        }
         case 'save-admin': {
           event.preventDefault()
           const form = document.querySelector<HTMLFormElement>('#admin-form')

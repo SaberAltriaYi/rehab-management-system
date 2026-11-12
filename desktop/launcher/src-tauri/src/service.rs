@@ -1,7 +1,8 @@
 use crate::config::{
-    build_admin_update_sql, check_port_available, initialize_config, load_settings, save_settings,
-    AppPaths,
+    build_admin_recovery_sql, build_admin_update_sql, check_port_available,
+    initialize_config, load_settings, save_settings, AppPaths,
 };
+use crate::admin_recovery::{new_device_challenge, redeem_owner_approval};
 use crate::docker::{
     context_for, detect_docker, read_service_states, redact_sensitive, run_compose,
     wait_for_healthy_default, DockerContext,
@@ -40,6 +41,7 @@ pub struct LauncherService {
     first_login_password: Option<String>,
     last_error: Option<String>,
     operation: Option<String>,
+    admin_recovery_pending: Option<(String, DateTime<Utc>)>,
     _instance_lock: InstanceLock,
 }
 
@@ -62,6 +64,7 @@ impl LauncherService {
             first_login_password: first.temporary_admin_password,
             last_error: None,
             operation: None,
+            admin_recovery_pending: None,
             _instance_lock: instance_lock,
         })
     }
@@ -444,6 +447,65 @@ impl LauncherService {
                 fs::remove_file(path)?;
             }
             self.first_login_password = None;
+            Ok(self.overview())
+        })();
+        let result = self.finish(result);
+        self.operation = None;
+        result
+    }
+
+    /// In-memory random challenge, not a persistent login or bypass token.
+    pub fn begin_admin_recovery(&mut self) -> LauncherResult<String> {
+        let context = self.docker_context()?;
+        self.require_all_healthy(&context, "服务未全部健康，不能恢复管理员密码")?;
+        let challenge = new_device_challenge()?;
+        self.admin_recovery_pending = Some((
+            challenge.clone(), Utc::now() + chrono::Duration::minutes(10),
+        ));
+        Ok(challenge)
+    }
+
+    /// Independent of update_admin_credentials, which stays disabled in
+    /// license-required builds. Owner MFA approval is consumed first so an
+    /// unauthenticated local caller cannot repeatedly create large backups;
+    /// an encrypted backup remains mandatory before any password mutation.
+    pub fn recover_admin_credentials(
+        &mut self, authorization_code: &str, new_password: &str,
+    ) -> LauncherResult<LauncherOverview> {
+        crate::config::validate_admin_credentials("admin", new_password)?;
+        let (challenge, expires_at) = self.admin_recovery_pending.clone()
+            .ok_or_else(|| LauncherError::InvalidConfig("请先从启动器生成设备挑战码".into()))?;
+        if Utc::now() >= expires_at {
+            self.admin_recovery_pending = None;
+            return Err(LauncherError::InvalidConfig("设备挑战码已过期，请重新生成".into()));
+        }
+        self.operation = Some("正在核验 Owner MFA 恢复授权并备份".to_owned());
+        let result = (|| {
+            let context = self.docker_context()?;
+            self.require_all_healthy(&context, "服务未全部健康，不能恢复管理员密码")?;
+            let sql = build_admin_recovery_sql(new_password)?;
+            redeem_owner_approval(authorization_code, &challenge)?;
+            // A successful redeem burns the approval, even if backup/DB then
+            // fail: the operator must request a new Owner MFA authorization.
+            self.admin_recovery_pending = None;
+            self.create_backup_inner(&context)?;
+            let output = self.run_compose_os(&context, vec![
+                "exec".into(), "--no-TTY".into(), "mysql".into(), "mysql".into(),
+                "--defaults-extra-file=/run/rehab-secrets/mysql-client.cnf".into(),
+                "--batch".into(), "--skip-column-names".into(),
+                "ruoyi-vue-pro".into(), "--execute".into(), sql.into(),
+            ])?;
+            if !output.stdout.lines().any(|line| line.trim() == "REHAB_ADMIN_RECOVERED=1") {
+                return Err(LauncherError::InvalidConfig(
+                    "恢复授权已使用，但租户 1 的内置 admin 超级管理员记录未匹配".into()));
+            }
+            // SQL revokes the target user's access and refresh tokens. The
+            // corresponding Redis bearer cache must be invalidated as well,
+            // without clearing clinical data, settings or unrelated caches.
+            self.invalidate_oauth_cache(&context)?;
+            self.first_login_password = None;
+            let initial = self.paths.initial_admin_password_path();
+            if initial.exists() { fs::remove_file(initial)?; }
             Ok(self.overview())
         })();
         let result = self.finish(result);
@@ -854,6 +916,25 @@ impl LauncherService {
                 "迁移包附件包含不安全路径，已拒绝导入".to_owned(),
             ));
         }
+        Ok(())
+    }
+
+    fn invalidate_oauth_cache(&self, context: &DockerContext) -> LauncherResult<()> {
+        // Clear ONLY the OAuth2 access-token namespace. Other users may need
+        // to sign in again, but tenant/clinical/business caches are preserved.
+        // Redis script executes server-side, so token values/keys never appear
+        // in desktop CLI arguments, stdout or an operator audit file.
+        const SCRIPT: &str = "local cursor='0' local n=0 repeat local result=redis.call('SCAN',cursor,'MATCH','oauth2_access_token:*','COUNT',200) cursor=result[1] for _,key in ipairs(result[2]) do n=n+redis.call('UNLINK',key) end until cursor=='0' return n";
+        let secret = read_environment_secrets(&self.paths.env_path())?.redis_password;
+        self.run_compose_os(
+            context,
+            vec![
+                "exec".into(), "--no-TTY".into(), "redis".into(),
+                "redis-cli".into(), "-a".into(), secret.into(),
+                "--no-auth-warning".into(), "EVAL".into(),
+                SCRIPT.into(), "0".into(),
+            ],
+        )?;
         Ok(())
     }
 
