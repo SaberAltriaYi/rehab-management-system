@@ -119,6 +119,12 @@ jobs:
       - name: Enforce L3 commercial licensing release requirements
         run: node desktop/scripts/check-l3-release.mjs
 
+      # Clinical product MVP must be accepted case-by-case (including Owner,
+      # Core/HEP cross-tenant safety, human sign-off and reversible upgrade)
+      # before any official macOS/Windows installer runtime is prepared.
+      - name: Enforce reviewed 306-case MVP acceptance before packaging
+        run: node desktop/scripts/mvp306-release-gate.mjs
+
       - name: Generate sanitized database bootstrap
         run: node desktop/scripts/build-sanitized-bootstrap.mjs
 

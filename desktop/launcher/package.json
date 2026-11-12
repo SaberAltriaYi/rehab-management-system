@@ -9,6 +9,8 @@
     "build": "tsc --noEmit && vite build",
     "test": "vitest run",
     "cargo:test": "cargo test --manifest-path src-tauri/Cargo.toml",
+    "prepackage:mvp": "node ../scripts/mvp306-release-gate.mjs && node ../scripts/prepackage-readiness.mjs",
+    "package:mvp:dmg": "pnpm prepackage:mvp && tauri build --bundles dmg --features studio-internal",
     "tauri": "tauri"
   },
   "dependencies": {
