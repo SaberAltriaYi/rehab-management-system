@@ -81,10 +81,8 @@ export default ({command, mode}: ConfigEnv): UserConfig => {
             extensions: ['.mjs', '.js', '.ts', '.jsx', '.tsx', '.json', '.scss', '.css'],
             alias: [
                 ...internalAliases,
-                {
-                    find: 'vue-i18n',
-                    replacement: 'vue-i18n/dist/vue-i18n.cjs.js'
-                },
+                // Vue I18n 11 resolves its verified ESM entry via the package
+                // exports map. Do not force the unsupported old CJS filename.
                 {
                     find: /\@\//,
                     replacement: `${pathResolve('src')}/`
