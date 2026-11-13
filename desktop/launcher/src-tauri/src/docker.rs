@@ -2,6 +2,7 @@ use crate::error::{LauncherError, LauncherResult};
 use crate::model::{default_service_states, ServiceState, COMPOSE_PROJECT};
 use crate::runner::{find_docker, CommandOutput, CommandRunner};
 use serde::Deserialize;
+use std::fs;
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::thread;
@@ -15,8 +16,12 @@ pub struct DockerContext {
     pub working_dir: PathBuf,
 }
 
+const CORE_IDENTITY_OVERRIDE_NAME: &str = "core-identity.override.yml";
+const CORE_IDENTITY_OVERRIDE: &str =
+    include_str!("../resources/core-identity.override.yml");
+
 impl DockerContext {
-    pub fn compose_args<I, S>(&self, trailing: I) -> Vec<OsString>
+    pub fn compose_args<I, S>(&self, trailing: I) -> LauncherResult<Vec<OsString>>
     where
         I: IntoIterator<Item = S>,
         S: Into<OsString>,
@@ -30,8 +35,41 @@ impl DockerContext {
             OsString::from("--file"),
             self.compose_file.as_os_str().to_owned(),
         ];
+        // Only a source-pinned, owner-private override may carry Core/HEP
+        // identity settings. A symlink, changed template or world-readable
+        // file fails closed instead of letting Compose load arbitrary mounts.
+        if let Some(parent) = self.env_file.parent() {
+            let override_file = parent.join(CORE_IDENTITY_OVERRIDE_NAME);
+            match fs::symlink_metadata(&override_file) {
+                Ok(metadata) => {
+                    if !metadata.file_type().is_file() || metadata.len() > 4096 {
+                        return Err(LauncherError::InvalidConfig(
+                            "Core 身份覆盖文件类型或大小异常，拒绝使用".into(),
+                        ));
+                    }
+                    #[cfg(unix)]
+                    {
+                        use std::os::unix::fs::PermissionsExt;
+                        if metadata.permissions().mode() & 0o077 != 0 {
+                            return Err(LauncherError::InvalidConfig(
+                                "Core 身份覆盖文件权限必须为 0600".into(),
+                            ));
+                        }
+                    }
+                    if fs::read(&override_file)? != CORE_IDENTITY_OVERRIDE.as_bytes() {
+                        return Err(LauncherError::InvalidConfig(
+                            "Core 身份覆盖文件未经验证；请先使用固定模板".into(),
+                        ));
+                    }
+                    args.push(OsString::from("--file"));
+                    args.push(override_file.into_os_string());
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => return Err(error.into()),
+            }
+        }
         args.extend(trailing.into_iter().map(Into::into));
-        args
+        Ok(args)
     }
 }
 
@@ -69,7 +107,7 @@ pub fn run_compose(
     context: &DockerContext,
     trailing: &[&str],
 ) -> LauncherResult<CommandOutput> {
-    let args = context.compose_args(trailing.iter().copied());
+    let args = context.compose_args(trailing.iter().copied())?;
     let output = runner.run(&context.executable, &args, Some(&context.working_dir))?;
     if !output.success {
         return Err(LauncherError::CommandFailed(safe_error_summary(
@@ -300,13 +338,47 @@ mod tests {
         let runtime_dir = temp.path().join("runtime with spaces");
         let env_file = temp.path().join("data with spaces").join(".env");
         let context = context_for(PathBuf::from("docker"), &runtime_dir, env_file.clone());
-        let args = context.compose_args(["up", "-d"]);
+        let args = context.compose_args(["up", "-d"]).unwrap();
         assert_eq!(args[0], "compose");
         assert!(args.contains(&env_file.into_os_string()));
         assert!(args.contains(&runtime_dir.join("docker-compose.yml").into_os_string()));
         assert!(!args
             .iter()
             .any(|arg| arg.to_string_lossy().contains("sh -c")));
+    }
+
+    #[test]
+    fn identity_override_requires_private_byte_exact_template_and_never_changes_default() {
+        let temp = tempdir().unwrap();
+        let runtime = temp.path().join("runtime");
+        let config = temp.path().join("config");
+        fs::create_dir(&runtime).unwrap();
+        fs::create_dir(&config).unwrap();
+        let context = context_for(PathBuf::from("docker"), &runtime, config.join(".env"));
+        let plain = context.compose_args(["config"]).unwrap();
+        assert_eq!(plain.iter().filter(|x| *x == "--file").count(), 1);
+        let override_path = config.join(CORE_IDENTITY_OVERRIDE_NAME);
+        fs::write(&override_path, CORE_IDENTITY_OVERRIDE).unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(&override_path, fs::Permissions::from_mode(0o600)).unwrap();
+        }
+        let approved = context.compose_args(["config"]).unwrap();
+        assert_eq!(approved.iter().filter(|x| *x == "--file").count(), 2);
+        assert!(approved.contains(&override_path.clone().into_os_string()));
+        fs::write(&override_path, "services:\n  server:\n    privileged: true\n").unwrap();
+        assert!(context.compose_args(["config"]).is_err());
+        fs::write(&override_path, CORE_IDENTITY_OVERRIDE).unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(&override_path, fs::Permissions::from_mode(0o644)).unwrap();
+            assert!(context.compose_args(["config"]).is_err());
+            fs::remove_file(&override_path).unwrap();
+            std::os::unix::fs::symlink("/etc/passwd", &override_path).unwrap();
+            assert!(context.compose_args(["config"]).is_err());
+        }
     }
 
     #[test]

@@ -20,12 +20,37 @@ pub fn run() -> Result<(), ()> {
     {
         return Err(());
     }
-    let resources = Path::new("/Applications/康复管理系统内部版.app/Contents/Resources");
-    if !resources.is_dir() { return Err(()); }
-    let resources = fs::canonicalize(resources).map_err(|_| ())?;
+    let resources = verified_backup_resources(&paths)?;
     let mut service = LauncherService::new(paths, resources).map_err(|_| ())?;
     service.create_backup().map_err(|_| ())?;
     Ok(())
+}
+
+/// The owner may run Core from its previously installed, hash-pinned runtime
+/// even when the desktop .app has since been removed. This is BACKUP-ONLY:
+/// no QA app is installed, no runtime is copied, and no installer gate is
+/// weakened. Refuse unknown or altered installed runtime assets.
+fn verified_backup_resources(paths: &AppPaths) -> Result<PathBuf, ()> {
+    let app = Path::new("/Applications/康复管理系统内部版.app/Contents/Resources");
+    if app.is_dir() {
+        return fs::canonicalize(app).map_err(|_| ());
+    }
+    let installed = paths.runtime_dir.join(".installed");
+    let marker = fs::symlink_metadata(&installed).map_err(|_| ())?;
+    if !marker.file_type().is_file() || fs::read(&installed).map_err(|_| ())? != b"installed\n" {
+        return Err(());
+    }
+    let runtime = fs::canonicalize(&paths.runtime_dir).map_err(|_| ())?;
+    let expected = fs::canonicalize(paths.data_dir.join("runtime")).map_err(|_| ())?;
+    if runtime.parent() != Some(expected.as_path()) { return Err(()); }
+    // This module is available only under the studio-internal Cargo feature.
+    // Check every pinned runtime asset before relying on it for a backup.
+    crate::runtime::verify_runtime(&runtime).map_err(|_| ())?;
+    let version: serde_json::Value = serde_json::from_slice(
+        &fs::read(runtime.join("VERSION.json")).map_err(|_| ())?).map_err(|_| ())?;
+    if version.get("version").and_then(serde_json::Value::as_str)
+        != Some(crate::model::APP_VERSION) { return Err(()); }
+    Ok(runtime)
 }
 
 fn latest_manifest(backups: &Path) -> Result<PathBuf, ()> {

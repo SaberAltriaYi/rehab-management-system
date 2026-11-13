@@ -137,6 +137,9 @@ export class OwnerLicensingService {
     this.store = store
     this.vault = vault
     this.provisioning = {
+      // Configuring an HTTPS URL does not approve tenant provisioning.
+      // Keep it fail-closed until the independent live preflight passes.
+      enabled: process.env.REHAB_MAIN_PROVISIONING_ENABLED === 'true',
       baseUrl: String(process.env.REHAB_MAIN_PROVISIONING_URL ?? '').replace(/\/$/, ''),
       token: process.env.REHAB_MAIN_PROVISIONING_TOKEN ?? '',
       planId: Number(process.env.REHAB_MAIN_PROVISIONING_PLAN_ID ?? 0),
@@ -522,7 +525,8 @@ export class OwnerLicensingService {
   }
 
   provisioningConfigured() {
-    return Boolean(secureProvisioningOrigin(this.provisioning.baseUrl) &&
+    return Boolean(this.provisioning.enabled === true &&
+      secureProvisioningOrigin(this.provisioning.baseUrl) &&
       typeof this.provisioning.token === 'string' && this.provisioning.token.length >= 24 &&
       Number.isSafeInteger(this.provisioning.planId) && this.provisioning.planId > 0 &&
       Number.isSafeInteger(this.provisioning.packageId) && this.provisioning.packageId > 0)

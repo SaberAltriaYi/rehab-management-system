@@ -39,22 +39,10 @@ old_tenants="$(mysql_live -e 'SELECT COUNT(*) FROM system_tenant;')"
 old_patients="$(mysql_live -e 'SELECT COUNT(*) FROM rehab_patient;')"
 old_registered="$(mysql_live -e 'SELECT COUNT(*) FROM saas_registrations;')"
 
-# Owner current endpoint is deliberately not production-ready; if the service
-# is already configured for a live HTTPS target, reject until it can be held
-# in a controlled maintenance window.
-python3 - <<'PY'
-from pathlib import Path
-from urllib.parse import urlsplit
-env=Path.home()/'my-project/rehab-runtime/owner-local/owner.env'
-value=''
-for line in env.read_text().splitlines():
- if line.startswith('export REHAB_MAIN_PROVISIONING_URL='):
-  value=line.split('=',1)[1].strip().strip('"\'')
-  break
-u=urlsplit(value)
-if u.scheme=='https' and u.hostname in ('127.0.0.1','localhost') and u.port==18443:
- raise SystemExit('REFUSE_OWNER_ALREADY_TARGETING_CURRENT_CORE')
-PY
+# A repaired HTTPS Owner target is normal; only an explicitly disabled
+# provisioning flag is safe during SQL migration. Duplicate flags, symlinks,
+# insecure local permissions and the old HTTP target all fail closed.
+node "$ROOT/desktop/scripts/owner-maintenance-freeze.mjs" --verify-owner-disabled >/dev/null
 
 # The backup helper checks full ciphertext hashes AND decryptability, then
 # restores the current 036 snapshot to a disconnected ephemeral MySQL and

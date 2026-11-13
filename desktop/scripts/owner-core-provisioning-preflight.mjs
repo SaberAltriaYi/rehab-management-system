@@ -14,6 +14,7 @@ const defaultCoreSettings = resolve(homedir(), 'Library/Application Support/com.
 
 export function evaluateProvisioningReadiness(value) {
   const blockers = []
+  if (value.ownerFeatureEnabled !== true) blockers.push('OWNER_CORE_PROVISIONING_NOT_ACTIVATED')
   if (!value.ownerConfigured) blockers.push('OWNER_PROVISIONING_CONFIG_INCOMPLETE')
   if (!value.targetMatchesCurrentCore) blockers.push('OWNER_TARGET_NOT_CURRENT_CORE_HTTPS')
   if (!value.targetReachable) blockers.push('OWNER_TARGET_UNREACHABLE')
@@ -28,7 +29,7 @@ export function evaluateProvisioningReadiness(value) {
     // Only non-sensitive booleans are published; no URL, UUID, token, tenant
     // names, data rows, account IDs, environment variables or passwords.
     checks: Object.fromEntries(Object.entries(value).filter(([key]) => [
-      'ownerConfigured', 'targetMatchesCurrentCore', 'targetReachable',
+      'ownerConfigured', 'ownerFeatureEnabled', 'targetMatchesCurrentCore', 'targetReachable',
       'coreProvisioningEnabled', 'coreTokenMatched',
       'schemaV3Ready', 'schemaV4Ready', 'livePlanPackageVerified'
     ].includes(key)))
@@ -133,6 +134,7 @@ export async function inspectLocalProvisioning({
     try { counts = dbMetadata(planId, packageId) } catch { /* fail closed */ }
   }
   return evaluateProvisioningReadiness({
+    ownerFeatureEnabled: owner.REHAB_MAIN_PROVISIONING_ENABLED === 'true',
     ownerConfigured,
     targetMatchesCurrentCore: target === expected,
     targetReachable: await probeLocalTcp(target),

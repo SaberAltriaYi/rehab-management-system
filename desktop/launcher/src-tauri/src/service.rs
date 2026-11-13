@@ -699,7 +699,7 @@ impl LauncherService {
         trailing: &[&str],
         destination: &Path,
     ) -> LauncherResult<()> {
-        let args = context.compose_args(trailing.iter().copied());
+        let args = context.compose_args(trailing.iter().copied())?;
         let output = self.runner.run_to_file(
             &context.executable,
             &args,
@@ -961,7 +961,7 @@ impl LauncherService {
         context: &DockerContext,
         trailing: Vec<OsString>,
     ) -> LauncherResult<crate::runner::CommandOutput> {
-        let args = context.compose_args(trailing);
+        let args = context.compose_args(trailing)?;
         let output = self
             .runner
             .run(&context.executable, &args, Some(&context.working_dir))?;

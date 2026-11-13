@@ -55,9 +55,13 @@ test('main-system authorization gates provisioning and blocks unsynchronized rev
     const first = svc.submitPublicApplication({
       organization: 'Synthetic motion-only studio', contactName: 'Synthetic contact', nowMs
     })
-    svc.provisioning = { baseUrl: 'https://core.example.invalid', token: 'synthetic-test-token-32characters',
+    svc.provisioning = { enabled: true, baseUrl: 'https://core.example.invalid', token: 'synthetic-test-token-32characters',
       planId: 1, packageId: 1, timeoutMs: 1000 }
     assert.equal(svc.provisioningConfigured(), true)
+    svc.provisioning.enabled = false
+    assert.equal(svc.provisioningConfigured(), false,
+      'Valid HTTPS and a configured token do not activate tenant provisioning')
+    svc.provisioning.enabled = true
     assert.equal(svc.decideApplication({ token, applicationId: first.applicationId,
       decision: 'APPROVED', reason: 'Motion only', policy, nowMs }).provisioning, 'NOT_AUTHORIZED')
     assert.deepEqual(svc.status({ token, tenantId: first.tenantId, nowMs }).modules,

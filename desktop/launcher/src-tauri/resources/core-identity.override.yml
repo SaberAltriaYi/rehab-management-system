@@ -1,0 +1,15 @@
+# Optional, explicitly staged Owner/Core/HEP identity bridge.
+# No secrets belong in this file. All tokens come from the local 0600 .env.
+# Never auto-install it or enable the feature on the production Core.
+services:
+  server:
+    environment:
+      YUDAO_PROVISIONING_ENABLED: ${YUDAO_PROVISIONING_ENABLED:-false}
+      YUDAO_PROVISIONING_TOKEN: ${YUDAO_PROVISIONING_TOKEN:-}
+      REHAB_HEP_BRIDGE_ENABLED: ${REHAB_HEP_BRIDGE_ENABLED:-false}
+      REHAB_HEP_BRIDGE_TOKEN: ${REHAB_HEP_BRIDGE_TOKEN:-}
+      REHAB_HEP_INTERNAL_BASE_URL: ${REHAB_HEP_INTERNAL_BASE_URL:-http://host.docker.internal:8088}
+      REHAB_HEP_JWT_ISSUER: ${REHAB_HEP_JWT_ISSUER:-}
+      REHAB_HEP_JWT_PRIVATE_KEY_FILE: /run/rehab-secrets/hep-core-jwt-private.pem
+    volumes:
+      - ${REHAB_HEP_JWT_HOST_FILE:?APPROVED_PRIVATE_KEY_FILE_REQUIRED}:/run/rehab-secrets/hep-core-jwt-private.pem:ro

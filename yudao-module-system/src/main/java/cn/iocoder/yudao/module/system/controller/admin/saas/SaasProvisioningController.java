@@ -13,6 +13,8 @@ import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.bind.annotation.*;
 import javax.annotation.security.PermitAll;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.util.Map;
 
 import static cn.iocoder.yudao.framework.common.pojo.CommonResult.success;
@@ -51,7 +53,12 @@ public class SaasProvisioningController {
     }
 
     private void requireProvisioningToken(String token) {
-        if (provisioningToken == null || provisioningToken.length() < 24 || !provisioningToken.equals(token)) {
+        // Do not use an early-exit String comparison for a machine secret.
+        // Keep the endpoint disabled when an explicit 24+ character token is
+        // missing, even when the feature flag is mistakenly enabled.
+        if (provisioningToken == null || provisioningToken.length() < 24 || token == null ||
+                !MessageDigest.isEqual(provisioningToken.getBytes(StandardCharsets.UTF_8),
+                        token.getBytes(StandardCharsets.UTF_8))) {
             throw new org.springframework.web.server.ResponseStatusException(HttpStatus.UNAUTHORIZED, "provisioning token invalid");
         }
     }
