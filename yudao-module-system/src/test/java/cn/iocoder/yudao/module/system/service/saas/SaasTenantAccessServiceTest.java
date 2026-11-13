@@ -104,4 +104,15 @@ class SaasTenantAccessServiceTest {
         assertDoesNotThrow(() -> service.reserve(SaasTenantAccessService.Resource.MOTION, 2000));
         verify(jdbc, never()).update(anyString(), anyLong(), eq(999002L), anyLong());
     }
+    @Test void approvedFiveGibStorageBoundRejectsOneByteOverWithoutWriting() {
+        final long approvedStorageBytes = 5L * 1024 * 1024 * 1024;
+        plan(SaasTenantAccessService.Resource.STORAGE, approvedStorageBytes);
+        assertThrows(SaasTenantAccessService.AccessDenied.class,
+                () -> service.reserve(SaasTenantAccessService.Resource.STORAGE, approvedStorageBytes + 1));
+        verify(jdbc, never()).update(anyString(), anyLong(), anyLong(), anyLong());
+        when(jdbc.update(contains("SET storage_bytes=storage_bytes+?"),
+                eq(approvedStorageBytes), eq(910001L), eq(0L))).thenReturn(1);
+        assertDoesNotThrow(() -> service.reserve(
+                SaasTenantAccessService.Resource.STORAGE, approvedStorageBytes));
+    }
 }

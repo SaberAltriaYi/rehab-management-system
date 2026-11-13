@@ -60,8 +60,10 @@ public class SaasProvisioningService {
             if ("ACTIVE".equals(status)) {
                 Object tenantId = row.get("tenant_id");
                 if (!(tenantId instanceof Number) ||
-                        jdbc.queryForList("SELECT id FROM system_tenant WHERE id=? AND tenant_uuid=? AND deleted=0",
-                                ((Number) tenantId).longValue(), request.tenantUuid).size() != 1) {
+                        jdbc.queryForList("SELECT id FROM system_tenant WHERE id=? AND tenant_uuid=? "
+                                + "AND package_id=? AND registration_source='owner-control-plane' AND deleted=0",
+                                ((Number) tenantId).longValue(), request.tenantUuid,
+                                request.packageId).size() != 1) {
                     // Do not re-issue an old ACTIVE claim when the actual
                     // tenant has disappeared, been deactivated or rebound.
                     // The Owner must reconcile it; never silently recreate.
@@ -84,7 +86,13 @@ public class SaasProvisioningService {
         }
 
         try {
-            List<Map<String, Object>> byUuid = jdbc.queryForList("SELECT id FROM system_tenant WHERE tenant_uuid=? AND deleted=0", request.tenantUuid);
+            // Check the effective SaaS package on both first provisioning and
+            // retries; a half-finished prior attempt must not bypass the plan.
+            int planMaxUsers = maxUsers(request.planId);
+            int seats = resolveSeatLimit(planMaxUsers, request.seatLimit, planMaxUsers);
+            List<Map<String, Object>> byUuid = jdbc.queryForList(
+                    "SELECT id,registration_source,package_id FROM system_tenant "
+                    + "WHERE tenant_uuid=? AND deleted=0", request.tenantUuid);
             Long tenantId;
             if (byUuid.isEmpty()) {
                 TenantSaveReqVO create = new TenantSaveReqVO();
@@ -94,10 +102,9 @@ public class SaasProvisioningService {
                 create.setStatus(0);
                 create.setPackageId(request.packageId);
                 create.setExpireTime(request.expiresAt);
-                int planMaxUsers = maxUsers(request.planId);
                 // An absent Owner seat override means the plan limit, NEVER
                 // an unbounded number of accounts.
-                create.setAccountCount(resolveSeatLimit(planMaxUsers, request.seatLimit, planMaxUsers));
+                create.setAccountCount(seats);
                 create.setUsername(request.adminUsername);
                 create.setPassword(request.adminPassword);
                 create.setWebsites(Collections.emptyList());
@@ -105,6 +112,12 @@ public class SaasProvisioningService {
                 jdbc.update("UPDATE system_tenant SET tenant_uuid=?,registration_status='active',registration_source='owner-control-plane' WHERE id=?",
                         request.tenantUuid, tenantId);
             } else {
+                if (byUuid.size() != 1
+                        || !"owner-control-plane".equals(byUuid.get(0).get("registration_source"))
+                        || !(byUuid.get(0).get("package_id") instanceof Number)
+                        || ((Number) byUuid.get(0).get("package_id")).longValue() != request.packageId) {
+                    throw new IllegalArgumentException("CORE_TENANT_BINDING_REQUIRES_RECONCILIATION");
+                }
                 tenantId = ((Number) byUuid.get(0).get("id")).longValue();
             }
             jdbc.update("INSERT INTO tenant_subscriptions(tenant_id,plan_id,status,start_time,expire_time) VALUES (?,?,'active',CURRENT_TIMESTAMP,?) ON DUPLICATE KEY UPDATE plan_id=VALUES(plan_id),status='active',expire_time=VALUES(expire_time)",

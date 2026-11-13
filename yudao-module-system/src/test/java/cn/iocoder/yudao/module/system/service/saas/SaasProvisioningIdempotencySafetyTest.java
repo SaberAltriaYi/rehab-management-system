@@ -20,7 +20,13 @@ class SaasProvisioningIdempotencySafetyTest {
                 "id BIGINT PRIMARY KEY, idempotency_key VARCHAR(36) UNIQUE, tenant_uuid VARCHAR(36) UNIQUE," +
                 "organization_name VARCHAR(120),plan_id BIGINT,package_id BIGINT,tenant_id BIGINT," +
                 "status VARCHAR(20),failure_reason VARCHAR(500))");
-        jdbc.execute("CREATE TABLE system_tenant(id BIGINT PRIMARY KEY,tenant_uuid VARCHAR(36),deleted INT DEFAULT 0)");
+        jdbc.execute("CREATE TABLE system_tenant(id BIGINT PRIMARY KEY,tenant_uuid VARCHAR(36),"
+                + "deleted INT DEFAULT 0,registration_source VARCHAR(40),package_id BIGINT)");
+        jdbc.execute("CREATE TABLE saas_plans(id BIGINT PRIMARY KEY,max_users INT,status INT)");
+        jdbc.execute("INSERT INTO saas_plans VALUES(1,20,1)");
+        jdbc.execute("CREATE TABLE tenant_subscriptions(tenant_id BIGINT PRIMARY KEY,plan_id BIGINT,"
+                + "status VARCHAR(20),start_time TIMESTAMP,expire_time TIMESTAMP)");
+        jdbc.execute("CREATE TABLE tenant_usage(tenant_id BIGINT PRIMARY KEY,user_count INT)");
         return jdbc;
     }
 
@@ -46,7 +52,8 @@ class SaasProvisioningIdempotencySafetyTest {
         jdbc.update("INSERT INTO saas_provisioning_requests(id,idempotency_key,tenant_uuid," +
                 "organization_name,plan_id,package_id,status,tenant_id) VALUES(1,?,?,?,1,1,'ACTIVE',71)",
                 key, ownerUuid, "Synthetic clinic A");
-        jdbc.update("INSERT INTO system_tenant(id,tenant_uuid,deleted) VALUES(71,?,0)", ownerUuid);
+        jdbc.update("INSERT INTO system_tenant(id,tenant_uuid,deleted,registration_source,package_id)"
+                + " VALUES(71,?,0,'owner-control-plane',1)", ownerUuid);
         TenantService tenants = mock(TenantService.class);
         SaasProvisioningService service = new SaasProvisioningService(jdbc, tenants);
 
@@ -87,5 +94,62 @@ class SaasProvisioningIdempotencySafetyTest {
         assertEquals("CORE_PROVISIONING_REQUIRES_REVIEW", safe);
         assertFalse(safe.contains("SyntheticPassword123"));
         assertFalse(safe.contains("secret-token"));
+    }
+
+    @Test
+    void retryMustNotBindAnExistingSelfServiceInstitutionWithSameUuid() {
+        JdbcTemplate jdbc = syntheticDb();
+        String key = UUID.randomUUID().toString(), ownerUuid = UUID.randomUUID().toString();
+        jdbc.update("INSERT INTO saas_provisioning_requests(id,idempotency_key,tenant_uuid,"
+                + "organization_name,plan_id,package_id,status) VALUES(1,?,?,?,1,1,'FAILED')",
+                key,ownerUuid,"Synthetic clinic A");
+        jdbc.update("INSERT INTO system_tenant(id,tenant_uuid,deleted,registration_source,package_id)"
+                + " VALUES(71,?,0,'self-service',1)",ownerUuid);
+        TenantService tenants = mock(TenantService.class);
+        SaasProvisioningService service = new SaasProvisioningService(jdbc,tenants);
+        assertEquals("FAILED", service.provision(request(key,ownerUuid,"Synthetic clinic A")).get("status"));
+        assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM tenant_subscriptions",Integer.class));
+        verifyNoInteractions(tenants);
+    }
+
+    @Test
+    void failedRetryReusesOnlyVerifiedOwnerInstitutionAndOriginalPackage() {
+        JdbcTemplate jdbc = syntheticDb();
+        String key = UUID.randomUUID().toString(), ownerUuid = UUID.randomUUID().toString();
+        jdbc.update("INSERT INTO saas_provisioning_requests(id,idempotency_key,tenant_uuid,"
+                + "organization_name,plan_id,package_id,status) VALUES(1,?,?,?,1,1,'FAILED')",
+                key,ownerUuid,"Synthetic clinic A");
+        jdbc.update("INSERT INTO system_tenant(id,tenant_uuid,deleted,registration_source,package_id)"
+                + " VALUES(71,?,0,'owner-control-plane',1)",ownerUuid);
+        TenantService tenants = mock(TenantService.class);
+        SaasProvisioningService service = new SaasProvisioningService(jdbc,tenants);
+        assertEquals("ACTIVE",service.provision(request(key,ownerUuid,"Synthetic clinic A")).get("status"));
+        assertEquals(1,jdbc.queryForObject("SELECT COUNT(*) FROM tenant_subscriptions",Integer.class));
+        verifyNoInteractions(tenants);
+        // Existing tenant is not secretly reusable under a different package.
+        jdbc.update("UPDATE saas_provisioning_requests SET status='FAILED' WHERE id=1");
+        jdbc.execute("UPDATE system_tenant SET package_id=2 WHERE id=71");
+        assertEquals("FAILED",service.provision(request(key,ownerUuid,"Synthetic clinic A")).get("status"));
+        assertEquals(1,jdbc.queryForObject("SELECT COUNT(*) FROM tenant_subscriptions",Integer.class));
+    }
+
+    @Test
+    void inactivePlanAndExcessiveOwnerSeatsCannotProvisionAnExistingTenant() {
+        JdbcTemplate jdbc = syntheticDb();
+        String key = UUID.randomUUID().toString(), ownerUuid = UUID.randomUUID().toString();
+        jdbc.update("INSERT INTO saas_provisioning_requests(id,idempotency_key,tenant_uuid,"
+                + "organization_name,plan_id,package_id,status) VALUES(1,?,?,?,1,1,'FAILED')",
+                key,ownerUuid,"Synthetic clinic A");
+        jdbc.update("INSERT INTO system_tenant(id,tenant_uuid,deleted,registration_source,package_id)"
+                + " VALUES(71,?,0,'owner-control-plane',1)",ownerUuid);
+        TenantService tenants = mock(TenantService.class);
+        SaasProvisioningService service = new SaasProvisioningService(jdbc,tenants);
+        SaasProvisioningRequest excess = request(key,ownerUuid,"Synthetic clinic A");
+        excess.seatLimit = 21;
+        assertEquals("FAILED",service.provision(excess).get("status"));
+        jdbc.execute("UPDATE saas_plans SET status=0 WHERE id=1");
+        assertEquals("FAILED",service.provision(request(key,ownerUuid,"Synthetic clinic A")).get("status"));
+        assertEquals(0,jdbc.queryForObject("SELECT COUNT(*) FROM tenant_subscriptions",Integer.class));
+        verifyNoInteractions(tenants);
     }
 }

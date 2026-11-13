@@ -37,29 +37,34 @@ test('ambiguous or changed quota fixture fails instead of guessing a business pl
     motionQuota: 1000, storageQuotaBytes: 1000 }, choices), /INVALID_DRAFT/)
 })
 
-test('user-approved 20/400/2000 overrides old synthetic limits without inventing storage consent', () => {
+test('user-approved 20/400/2000/5GiB overrides old synthetic limits, but retains MFA', () => {
   const selected = prepareSelectedPilotDraft(parseSyntheticPlanSeed(sql), choices, {
-    maxUsers: 20, maxPatients: 400, motionQuota: 2000, storageQuotaBytes: null
+    maxUsers: 20, maxPatients: 400, motionQuota: 2000, storageQuotaBytes: 5 * 1024 ** 3
   })
   assert.deepEqual(selected.selectedQuota, {
-    maxUsers: 20, maxPatients: 400, motionQuota: 2000, storageQuotaBytes: null
+    maxUsers: 20, maxPatients: 400, motionQuota: 2000, storageQuotaBytes: 5368709120
   })
-  assert.equal(selected.selectedQuotaApproved.storageQuotaBytes, false)
-  assert.equal(selected.provisionalStorageBytesForSyntheticOnly, 1073741824)
+  assert.equal(selected.selectedQuotaApproved.storageQuotaBytes, true)
+  assert.equal(selected.supersededSyntheticSeedStorageBytes, 1073741824)
+  assert.equal(selected.quotaApprovedForRealTenant, true)
+  assert.equal(selected.candidateName, 'rehab-internal-pilot-20-400-2000-5gib')
   assert.equal(selected.productionPlanCreationAllowed, false)
-  assert.equal(selected.storageRequiresOwnerDecision, true)
+  assert.equal(selected.storageRequiresOwnerDecision, false)
   assert.equal(selected.trueOwnerMfaCompleted, false)
   assert.equal(selected.formalSigning, 'QA_ONLY_NO_DEVELOPER_ID')
   assert.equal(selected.liveSaasPlanId, null)
   assert.equal(selected.noSqlExecuted, true)
 })
 
-test('custom pilot rejects silent storage approval or changed custom limits', () => {
+test('custom pilot rejects wrong storage and changed custom limits', () => {
   const baseline = parseSyntheticPlanSeed(sql)
   assert.throws(() => prepareSelectedPilotDraft(baseline, choices, {
     maxUsers: 20, maxPatients: 400, motionQuota: 2000, storageQuotaBytes: 1073741824
   }), /CUSTOM_PILOT_DECISION_NOT_VERIFIED/)
   assert.throws(() => prepareSelectedPilotDraft(baseline, choices, {
-    maxUsers: 21, maxPatients: 400, motionQuota: 2000, storageQuotaBytes: null
+    maxUsers: 20, maxPatients: 400, motionQuota: 2000, storageQuotaBytes: null
+  }), /CUSTOM_PILOT_DECISION_NOT_VERIFIED/)
+  assert.throws(() => prepareSelectedPilotDraft(baseline, choices, {
+    maxUsers: 21, maxPatients: 400, motionQuota: 2000, storageQuotaBytes: 5368709120
   }), /CUSTOM_PILOT_DECISION_NOT_VERIFIED/)
 })

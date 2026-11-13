@@ -64,35 +64,39 @@ export function preparePilotDraft(seed, choices) {
   }
 }
 
-/** The user approved three metrics, but did not approve a storage quota. */
+/** B/custom: all four limits now explicitly confirmed; execution still gated. */
 export function prepareSelectedPilotDraft(seed, choices, selected) {
   const base = preparePilotDraft(seed, choices)
   if (selected?.maxUsers !== 20 || selected?.maxPatients !== 400 ||
-      selected?.motionQuota !== 2000 || selected?.storageQuotaBytes != null) {
+      selected?.motionQuota !== 2000 ||
+      selected?.storageQuotaBytes !== 5 * 1024 ** 3) {
     throw Error('CUSTOM_PILOT_DECISION_NOT_VERIFIED')
   }
   return {
     ...base,
     schema: 'rehab-owner-internal-pilot-custom-draft/1',
-    candidateName: 'rehab-internal-pilot-20u-400p-2000motion',
+    candidateName: 'rehab-internal-pilot-20-400-2000-5gib',
     selectedQuota: {
       maxUsers: 20, maxPatients: 400, motionQuota: 2000,
-      storageQuotaBytes: null
+      storageQuotaBytes: 5 * 1024 ** 3
     },
     selectedQuotaApproved: {
       maxUsers: true, maxPatients: true, motionQuota: true,
-      storageQuotaBytes: false
+      storageQuotaBytes: true
     },
-    provisionalStorageBytesForSyntheticOnly: seed.storageQuotaBytes,
+    quotaApprovedForRealTenant: true,
+    supersededSyntheticSeedStorageBytes: seed.storageQuotaBytes,
     proposedFullQuotaForSyntheticOnly: {
       maxUsers: 20, maxPatients: 400, motionQuota: 2000,
-      storageQuotaBytes: seed.storageQuotaBytes
+      storageQuotaBytes: 5 * 1024 ** 3
     },
+    // Quotas are approved, but a real plan, package, and tenant cannot be
+    // provisioned until Owner MFA and formal deployment gates are verified.
     productionPlanCreationAllowed: false,
-    storageRequiresOwnerDecision: true,
+    storageRequiresOwnerDecision: false,
     formalSigning: 'QA_ONLY_NO_DEVELOPER_ID',
     trueOwnerMfaCompleted: false,
-    source: 'User-selected 20/400/2000; storage provisional from synthetic-beta fixture'
+    source: 'User-confirmed 20 users, 400 patients, 2000 assessments, 5 GiB storage'
   }
 }
 
@@ -111,7 +115,7 @@ if (process.argv[1] && pathToFileURL(resolve(process.argv[1])).href === import.m
       const draft = process.argv[2] === '--selected-quota-draft'
         ? prepareSelectedPilotDraft(values, choices, {
           maxUsers: 20, maxPatients: 400, motionQuota: 2000,
-          storageQuotaBytes: null
+          storageQuotaBytes: 5 * 1024 ** 3
         })
         : preparePilotDraft(values, choices)
       process.stdout.write(JSON.stringify(draft, null, 2) + '\n')

@@ -15,9 +15,10 @@ printf '%s' "$preview" | node -e '
   if(x.selectedQuota.maxUsers!==20 ||
      x.selectedQuota.maxPatients!==400 ||
      x.selectedQuota.motionQuota!==2000 ||
-     x.selectedQuota.storageQuotaBytes!==null ||
+     x.selectedQuota.storageQuotaBytes!==5368709120 ||
+     x.selectedQuotaApproved.storageQuotaBytes!==true ||
      x.productionPlanCreationAllowed!==false ||
-     x.provisionalStorageBytesForSyntheticOnly!==1073741824)process.exit(2)
+     x.trueOwnerMfaCompleted!==false)process.exit(2)
 '
 free_kb="$(df -k "$ROOT" | awk 'NR==2{print $4}')"
 [[ "$free_kb" -ge 8388608 ]] || {
@@ -54,12 +55,12 @@ docker exec rehab-studio-internal-mysql-1 mysqldump \
   ruoyi-vue-pro saas_plans | mysql_test synthetic_pilot >/dev/null
 mysql_test synthetic_pilot -e "
   INSERT INTO saas_plans(name,max_users,max_patients,motion_quota,storage_quota,status)
-  VALUES('rehab-internal-pilot-20-400-2000',20,400,2000,1073741824,0);
+  VALUES('rehab-internal-pilot-20-400-2000-5gib',20,400,2000,5368709120,0);
 " >/dev/null
 first="$(mysql_test synthetic_pilot -e "
   SELECT CONCAT(max_users,'|',max_patients,'|',motion_quota,'|',storage_quota,'|',status)
-  FROM saas_plans WHERE name='rehab-internal-pilot-20-400-2000';")"
-[[ "$first" == '20|400|2000|1073741824|0' ]] || {
+  FROM saas_plans WHERE name='rehab-internal-pilot-20-400-2000-5gib';")"
+[[ "$first" == '20|400|2000|5368709120|0' ]] || {
   echo 'INVALID_SYNTHETIC_PLAN_QUOTA'; exit 4;
 }
 [[ "$(mysql_test synthetic_pilot -e 'SELECT COUNT(*) FROM saas_plans WHERE status=1')" == 0 ]] || {
@@ -67,22 +68,22 @@ first="$(mysql_test synthetic_pilot -e "
 }
 if mysql_test synthetic_pilot -e "
   INSERT INTO saas_plans(name,max_users,max_patients,motion_quota,storage_quota,status)
-  VALUES('rehab-internal-pilot-20-400-2000',20,400,2000,1073741824,0);
+  VALUES('rehab-internal-pilot-20-400-2000-5gib',20,400,2000,5368709120,0);
 " >/dev/null 2>&1; then
   echo 'DUPLICATE_PLAN_NOT_REJECTED'; exit 4;
 fi
 mysql_test synthetic_pilot -e "
-  UPDATE saas_plans SET status=1 WHERE name='rehab-internal-pilot-20-400-2000';
+  UPDATE saas_plans SET status=1 WHERE name='rehab-internal-pilot-20-400-2000-5gib';
 " >/dev/null
 [[ "$(mysql_test synthetic_pilot -e "SELECT COUNT(*) FROM saas_plans
- WHERE status=1 AND max_users=20 AND max_patients=400 AND motion_quota=2000")" == 1 ]] || {
+ WHERE status=1 AND max_users=20 AND max_patients=400 AND motion_quota=2000 AND storage_quota=5368709120")" == 1 ]] || {
   echo 'PLAN_NOT_ACTIVATABLE_IN_DISPOSABLE_DB'; exit 4;
 }
 mysql_test synthetic_pilot -e "
-  UPDATE saas_plans SET status=0 WHERE name='rehab-internal-pilot-20-400-2000';
+  UPDATE saas_plans SET status=0 WHERE name='rehab-internal-pilot-20-400-2000-5gib';
 " >/dev/null
 echo 'SYNTHETIC_USER_APPROVED_QUOTAS=20|400|2000'
-echo 'SYNTHETIC_STORAGE_PROVISIONAL_BYTES=1073741824'
+echo 'USER_APPROVED_STORAGE_BYTES=5368709120'
 echo 'ACTUAL_SAAS_PLAN_TABLE_SCHEMA=PASS'
 echo 'DUPLICATE_PLAN_NAME_REJECTED=PASS'
 echo 'SYNTHETIC_ACTIVATION_THEN_DEACTIVATION=PASS'
