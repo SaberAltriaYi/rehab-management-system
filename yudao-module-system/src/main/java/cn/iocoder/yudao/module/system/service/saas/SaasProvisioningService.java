@@ -43,14 +43,41 @@ public class SaasProvisioningService {
     public Map<String, Object> provision(SaasProvisioningRequest request) {
         validate(request);
         List<Map<String, Object>> existing = jdbc.queryForList(
-                "SELECT id,tenant_id,tenant_uuid,status,failure_reason FROM saas_provisioning_requests WHERE idempotency_key=?",
+                "SELECT id,tenant_id,tenant_uuid,organization_name,plan_id,package_id,status,failure_reason FROM saas_provisioning_requests WHERE idempotency_key=?",
                 request.idempotencyKey);
         if (!existing.isEmpty()) {
             Map<String, Object> row = existing.get(0);
+            // An idempotency key can only retry its original organization and
+            // immutable Owner tenant. Otherwise an ACTIVE response could
+            // incorrectly bind another institution to the previous tenant.
+            if (!request.tenantUuid.equals(row.get("tenant_uuid"))
+                    || !request.organizationName.equals(row.get("organization_name"))
+                    || request.planId != ((Number) row.get("plan_id")).longValue()
+                    || request.packageId != ((Number) row.get("package_id")).longValue()) {
+                throw new IllegalArgumentException("幂等申请与原机构不一致");
+            }
             String status = String.valueOf(row.get("status"));
-            if ("ACTIVE".equals(status) || "PROVISIONING".equals(status)) return response(status, row);
+            if ("ACTIVE".equals(status)) {
+                Object tenantId = row.get("tenant_id");
+                if (!(tenantId instanceof Number) ||
+                        jdbc.queryForList("SELECT id FROM system_tenant WHERE id=? AND tenant_uuid=? AND deleted=0",
+                                ((Number) tenantId).longValue(), request.tenantUuid).size() != 1) {
+                    // Do not re-issue an old ACTIVE claim when the actual
+                    // tenant has disappeared, been deactivated or rebound.
+                    // The Owner must reconcile it; never silently recreate.
+                    throw new IllegalStateException("CORE_TENANT_BINDING_REQUIRES_RECONCILIATION");
+                }
+                return response(status, row);
+            }
+            if ("PROVISIONING".equals(status)) return response(status, row);
             jdbc.update("UPDATE saas_provisioning_requests SET status='PROVISIONING',failure_reason=NULL WHERE id=?", row.get("id"));
         } else {
+            // A different request must never reuse the same immutable Owner
+            // tenant UUID even if it also supplies a unique application ID.
+            if (!jdbc.queryForList("SELECT idempotency_key FROM saas_provisioning_requests WHERE tenant_uuid=?",
+                    request.tenantUuid).isEmpty()) {
+                throw new IllegalArgumentException("机构 UUID 已绑定其他申请");
+            }
             jdbc.update("INSERT INTO saas_provisioning_requests(idempotency_key,tenant_uuid,organization_name,contact_name,contact_mobile,plan_id,package_id,status) VALUES (?,?,?,?,?,?,?,'PROVISIONING')",
                     request.idempotencyKey, request.tenantUuid, request.organizationName, request.contactName,
                     request.contactMobile, request.planId, request.packageId);
@@ -165,7 +192,12 @@ public class SaasProvisioningService {
 
     private static String value(String value) { return value == null ? "" : value; }
     private static boolean blank(String value) { return value == null || value.trim().isEmpty(); }
-    private static String safeMessage(RuntimeException ex) { String m = ex.getMessage(); return m == null ? ex.getClass().getSimpleName() : m.substring(0, Math.min(500, m.length())); }
+    // Untrusted JDBC/TenantService exception text may contain raw SQL
+    // parameters, phone numbers or administrator credentials. Never persist
+    // it in failure_reason (which is exposed to the Owner control plane).
+    static String safeMessage(RuntimeException ex) {
+        return "CORE_PROVISIONING_REQUIRES_REVIEW";
+    }
     private static Map<String, Object> map(Object... values) { Map<String, Object> result = new HashMap<>(); for (int i = 0; i + 1 < values.length; i += 2) result.put(String.valueOf(values[i]), values[i + 1]); return result; }
     private static Map<String, Object> response(String status, Map<String, Object> row) { Map<String, Object> response = new HashMap<>(row); response.put("status", status); return response; }
 }

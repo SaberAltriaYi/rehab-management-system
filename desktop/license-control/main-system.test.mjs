@@ -5,7 +5,35 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { OwnerLicenseStore } from './store.mjs'
-import { OwnerLicensingService } from './service.mjs'
+import { OwnerLicensingService, secureProvisioningOrigin, classifyCoreProvisioningFailure } from './service.mjs'
+
+test('Core errors never persist raw SQL, initial passwords or private endpoints', () => {
+  const raw = new Error("SQL VALUES('SyntheticPassword123','secret-token') host 127.0.0.1")
+  const sanitized = classifyCoreProvisioningFailure(raw)
+  assert.equal(sanitized, 'CORE_PROVISIONING_REQUIRES_REVIEW')
+  assert.equal(sanitized.includes('SyntheticPassword123'), false)
+  assert.equal(sanitized.includes('secret-token'), false)
+  assert.equal(classifyCoreProvisioningFailure({name:'AbortError'}), 'CORE_PROVISIONING_TIMEOUT')
+  assert.equal(classifyCoreProvisioningFailure({cause:{code:'UNABLE_TO_VERIFY_LEAF_SIGNATURE'}}),
+    'CORE_PROVISIONING_TLS_NOT_TRUSTED')
+  assert.equal(classifyCoreProvisioningFailure({cause:{code:'ECONNREFUSED'}}),
+    'CORE_PROVISIONING_UNREACHABLE')
+})
+
+test('provisioning target rejects stale internal HTTP port and credentialed URLs', () => {
+  assert.equal(secureProvisioningOrigin('https://127.0.0.1:18443'), true)
+  assert.equal(secureProvisioningOrigin('https://core.example.invalid'), true)
+  assert.equal(secureProvisioningOrigin('https://core.example.invalid/'), true)
+  for (const invalid of [
+    'http://127.0.0.1:48080', 'https://127.0.0.1:48080',
+    'http://localhost:18443', 'https://user:pass@core.example.invalid',
+    'https://core.example.invalid/admin-api', 'https://core.example.invalid?test=1',
+    'https://core.example.invalid#fragment',
+    'https://core.example.invalid.evil.invalid/path'
+  ]) {
+    assert.equal(secureProvisioningOrigin(invalid), false, invalid)
+  }
+})
 import { SecretVault, totpAt } from './security.mjs'
 
 test('main-system authorization gates provisioning and blocks unsynchronized revocation', async () => {
@@ -27,7 +55,7 @@ test('main-system authorization gates provisioning and blocks unsynchronized rev
     const first = svc.submitPublicApplication({
       organization: 'Synthetic motion-only studio', contactName: 'Synthetic contact', nowMs
     })
-    svc.provisioning = { baseUrl: 'https://core.example.invalid', token: 'synthetic-test-token',
+    svc.provisioning = { baseUrl: 'https://core.example.invalid', token: 'synthetic-test-token-32characters',
       planId: 1, packageId: 1, timeoutMs: 1000 }
     assert.equal(svc.provisioningConfigured(), true)
     assert.equal(svc.decideApplication({ token, applicationId: first.applicationId,

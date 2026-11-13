@@ -122,7 +122,8 @@ export function createOwnerControlServer(service, {
   tlsOptions,
   allowInsecureLoopbackForTests = false,
   permittedBrowserOrigin = null,
-  adminRecoveryEnabled = false
+  adminRecoveryEnabled = false,
+  adminRecoveryUntilMs
 } = {}) {
   if (!tlsOptions && !allowInsecureLoopbackForTests) {
     throw new Error('Owner control API requires TLS by default')
@@ -143,6 +144,12 @@ export function createOwnerControlServer(service, {
   }
   const handle = async (req, res) => {
     const nowMs = Date.now()
+    // Production recovery grants expire even while launchd stays running.
+    // Synthetic HTTP tests can omit the window for deterministic fixtures.
+    const adminRecoveryOpen = adminRecoveryEnabled && (
+      (allowInsecureLoopbackForTests && !tlsOptions && adminRecoveryUntilMs === undefined) ||
+      (Number.isSafeInteger(adminRecoveryUntilMs) && nowMs < adminRecoveryUntilMs)
+    )
     const path = req.url
     try {
       if (typeof path !== 'string' || path.length > 256 ||
@@ -251,7 +258,7 @@ export function createOwnerControlServer(service, {
       // Loopback launcher redemption: a single-use, challenge-bound approval.
       // Refuse browser requests even from the legitimate Owner origin.
       if (path === '/owner/v1/core-admin-recovery/redeem' && req.method === 'POST') {
-        if (!adminRecoveryEnabled) return writeJson(res, 404, { error: 'NOT_FOUND' })
+        if (!adminRecoveryOpen) return writeJson(res, 404, { error: 'NOT_FOUND' })
         if (!loopback(req.socket.remoteAddress) || req.headers.origin) {
           return writeJson(res, 403, { error: 'LOCAL_LAUNCHER_ONLY' })
         }
@@ -259,7 +266,7 @@ export function createOwnerControlServer(service, {
         fieldsOnly(b, ['authorizationCode', 'deviceChallenge'])
         return writeJson(res, 200, service.redeemCoreAdminRecovery({ ...b, nowMs }))
       }
-      if (path === '/owner/v1/core-admin-recovery/authorize' && !adminRecoveryEnabled) {
+      if (path === '/owner/v1/core-admin-recovery/authorize' && !adminRecoveryOpen) {
         return writeJson(res, 404, { error: 'NOT_FOUND' })
       }
       // Every owner operation must carry an MFA-authenticated bearer session.
@@ -277,7 +284,7 @@ export function createOwnerControlServer(service, {
         return writeJson(res, 200, service.stepUp({ token, totp: b.totp, nowMs }))
       }
       if (path === '/owner/v1/core-admin-recovery/authorize' && req.method === 'POST') {
-        if (!adminRecoveryEnabled) return writeJson(res, 404, { error: 'NOT_FOUND' })
+        if (!adminRecoveryOpen) return writeJson(res, 404, { error: 'NOT_FOUND' })
         if (!loopback(req.socket.remoteAddress)) return writeJson(res, 403, { error: 'LOOPBACK_REQUIRED' })
         const b = await readJson(req)
         fieldsOnly(b, ['deviceChallenge', 'confirmation'])
@@ -286,7 +293,7 @@ export function createOwnerControlServer(service, {
       if (path === '/owner/v1/applications' && req.method === 'GET') {
         return writeJson(res, 200, {
           applications: service.applicationList({ token, nowMs }),
-          adminRecoveryEnabled,
+          adminRecoveryEnabled: adminRecoveryOpen,
           // This is only a capability flag. Never expose the provisioning URL,
           // token or plan/package identifiers to the browser.
           provisioningConfigured: service.provisioningConfigured(),
@@ -314,6 +321,14 @@ export function createOwnerControlServer(service, {
         }))
       }
       const application = /^\/owner\/v1\/applications\/([0-9a-f-]{36})\/(approve|reject|request-info)$/.exec(path)
+      const pendingDelete = /^\/owner\/v1\/applications\/([0-9a-f-]{36})\/delete$/.exec(path)
+      if (pendingDelete && req.method === 'POST') {
+        const b = await readJson(req)
+        fieldsOnly(b, ['reason'])
+        return writeJson(res, 200, service.deletePendingApplication({
+          token, applicationId: pendingDelete[1], reason: b.reason, nowMs
+        }))
+      }
       if (application && req.method === 'POST') {
         const b = await readJson(req)
         fieldsOnly(b, application[2] === 'approve' ? ['reason', 'policy', 'credentials'] : ['reason'])
@@ -374,7 +389,8 @@ export function createOwnerControlServer(service, {
       const status = code === 'OWNER_UNAUTHORIZED' || code === 'INVALID_OWNER_CREDENTIALS' ||
         code === 'OWNER_STEP_UP_REQUIRED' ? 401
         : code === 'OWNER_ALREADY_PROVISIONED' || code === 'APPLICATION_ALREADY_EXISTS' ||
-          code === 'APPLICATION_NOT_PENDING' || code === 'TENANT_NOT_APPROVED' ||
+          code === 'APPLICATION_NOT_PENDING' || code === 'APPLICATION_HAS_LICENSE' ||
+          code === 'TENANT_NOT_APPROVED' ||
           code === 'CHALLENGE_CAPACITY_EXHAUSTED' || code === 'TENANT_NOT_ACTIVE' ? 409
           : code === 'INTERNAL_ERROR' ? 500 : 400
       // Never serialize exception details, bearer tokens or request bodies.

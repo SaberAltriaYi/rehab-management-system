@@ -23,6 +23,39 @@ const ATTEMPT_LIMIT = 5
 const CORE_RECOVERY_LIFETIME_MS = 120_000
 const RECOVERY_CODE = /^[A-Za-z0-9_-]{43}$/
 
+// A configured-but-unreachable local HTTP port is not a valid provisioning
+// target. Do not sign a license and attempt a best-effort tenant creation
+// against an insecure or stale endpoint.
+export function secureProvisioningOrigin(value) {
+  if (typeof value !== 'string' || !value || value.length > 2048) return false
+  try {
+    const url = new URL(value)
+    if (url.protocol !== 'https:' || url.username || url.password ||
+        url.search || url.hash || url.pathname !== '/' || url.origin + '/' !== value + (value.endsWith('/') ? '' : '/')) {
+      return false
+    }
+    if (['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname) &&
+        url.port !== '18443') return false
+    return true
+  } catch { return false }
+}
+
+// Never store raw Core/JDBC/HTTP exceptions: upstream errors may echo SQL
+// values, initial passwords, organization names, URLs or machine tokens.
+export function classifyCoreProvisioningFailure(error) {
+  if (error?.name === 'AbortError') return 'CORE_PROVISIONING_TIMEOUT'
+  const code = String(error?.cause?.code ?? '')
+  if (['SELF_SIGNED_CERT_IN_CHAIN', 'DEPTH_ZERO_SELF_SIGNED_CERT',
+      'UNABLE_TO_VERIFY_LEAF_SIGNATURE', 'CERT_HAS_EXPIRED',
+      'ERR_TLS_CERT_ALTNAME_INVALID'].includes(code)) {
+    return 'CORE_PROVISIONING_TLS_NOT_TRUSTED'
+  }
+  if (['ECONNREFUSED', 'ENOTFOUND', 'EHOSTUNREACH', 'ETIMEDOUT'].includes(code)) {
+    return 'CORE_PROVISIONING_UNREACHABLE'
+  }
+  return 'CORE_PROVISIONING_REQUIRES_REVIEW'
+}
+
 function validCoreRecoverySecret(value) {
   return typeof value === 'string' && RECOVERY_CODE.test(value) &&
     Buffer.from(value, 'base64url').length === 32 &&
@@ -425,6 +458,26 @@ export class OwnerLicensingService {
       FROM applications ORDER BY submitted_at,id`).all()
   }
 
+  deletePendingApplication({ token, applicationId, reason, nowMs }) {
+    const actor = this.requireStrongOwner(token, nowMs)
+    validUuid(applicationId)
+    validMs(nowMs)
+    if (typeof reason !== 'string' || reason.trim().length < 5 || reason.length > 240) deny('INVALID_REASON')
+    return this.store.transaction(() => {
+      const app = this.db.prepare('SELECT tenant_uuid,status FROM applications WHERE id=?').get(applicationId)
+      if (!app || !['PENDING', 'NEEDS_INFO'].includes(app.status)) deny('APPLICATION_NOT_PENDING')
+      if (this.db.prepare('SELECT 1 FROM entitlements WHERE tenant_uuid=?').get(app.tenant_uuid) ||
+          this.db.prepare('SELECT 1 FROM installations WHERE tenant_uuid=?').get(app.tenant_uuid)) {
+        deny('APPLICATION_HAS_LICENSE')
+      }
+      const removed = this.db.prepare("DELETE FROM applications WHERE id=? AND status IN ('PENDING','NEEDS_INFO')").run(applicationId)
+      if (removed.changes !== 1) deny('APPLICATION_NOT_PENDING')
+      this.store.audit({ actor, action: 'APPLICATION_DELETED', subject: app.tenant_uuid,
+        details: { applicationId, reason: reason.trim(), previousStatus: app.status }, nowMs })
+      return { applicationId, status: 'DELETED' }
+    })
+  }
+
   decideApplication({ token, applicationId, decision, reason = '', policy, credentials = {}, nowMs }) {
     const actor = this.requireStrongOwner(token, nowMs)
     if (!['APPROVED', 'REJECTED', 'NEEDS_INFO'].includes(decision)) deny('INVALID_DECISION')
@@ -469,7 +522,8 @@ export class OwnerLicensingService {
   }
 
   provisioningConfigured() {
-    return Boolean(this.provisioning.baseUrl && this.provisioning.token &&
+    return Boolean(secureProvisioningOrigin(this.provisioning.baseUrl) &&
+      typeof this.provisioning.token === 'string' && this.provisioning.token.length >= 24 &&
       Number.isSafeInteger(this.provisioning.planId) && this.provisioning.planId > 0 &&
       Number.isSafeInteger(this.provisioning.packageId) && this.provisioning.packageId > 0)
   }
@@ -564,7 +618,7 @@ export class OwnerLicensingService {
       }
       return { status: 'ACTIVE', tenantId: result.tenant_id ?? null, tenantUuid: result.tenant_uuid ?? app.tenant_uuid }
     }).catch(error => {
-      const message = error?.name === 'AbortError' ? '主系统开通请求超时' : String(error?.message || error).slice(0, 500)
+      const message = classifyCoreProvisioningFailure(error)
       this.db.prepare("UPDATE applications SET provisioning_status='FAILED',provisioning_error=? WHERE id=?").run(message, app.id)
       return { status: 'FAILED', error: message }
     }).finally(() => clearTimeout(timer))

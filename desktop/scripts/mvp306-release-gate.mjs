@@ -52,6 +52,21 @@ export function validateScope(scope) {
   return { business, safety, required, all, deferred }
 }
 
+// Release evidence stays outside the Git source tree so QA logs (which may
+// contain sensitive diagnostics) are never staged as application sources.
+// Only the sibling validation-evidence workspace is an admissible override.
+// realpathSync rejects symlink tricks and paths outside the approved tree.
+export function resolveAcceptanceEvidenceRoot(projectRoot, override) {
+  const source = realpathSync(projectRoot)
+  if (!override) return source
+  const allowed = realpathSync(resolve(source, '../validation-evidence'))
+  const requested = realpathSync(override)
+  const displacement = relative(allowed, requested)
+  if (displacement === '..' || displacement.startsWith('..' + sep) ||
+      isAbsolute(displacement)) throw Error('UNTRUSTED_QA_EVIDENCE_ROOT')
+  return requested
+}
+
 function verifyLog(base, evidence, caseId) {
   const file = evidence?.file
   if (typeof file !== 'string' || !file || isAbsolute(file) ||
@@ -66,8 +81,13 @@ function verifyLog(base, evidence, caseId) {
   if (!stats.isFile() || stats.size > 2_000_000 || stats.size < 8) return false
   if (!/^[a-f0-9]{64}$/.test(evidence.sha256 ?? '')) return false
   const bytes = readFileSync(realFile)
-  // Every independent assertion must have an explicit identifier in the log.
-  return digest(bytes) === evidence.sha256 && bytes.toString('utf8').includes(caseId)
+  // A substring would incorrectly count T-0010 as T-001, or count T-001
+  // even if the only matching log line says FAIL. An independent acceptance
+  // result must use: T-001|PASS|<nonempty assertion summary>.
+  const prefix = `${caseId}|PASS|`
+  return digest(bytes) === evidence.sha256 &&
+    bytes.toString('utf8').split(/\r?\n/).some(
+      line => line.startsWith(prefix) && line.slice(prefix.length).trim().length > 0)
 }
 
 /**
@@ -130,14 +150,26 @@ export function evaluateMvp306({ root, sourceRevision, dirty, scope, approval })
 function main() {
   const root = rootDefault
   const scope = JSON.parse(readFileSync(join(root, 'docs/qa/mvp306-release-scope.json')))
-  const filename = process.argv[2] ?? join(root, 'docs/releases/mvp306-evidence.json')
+  const args = process.argv.slice(2)
+  const rootFlag = args.find(arg => arg.startsWith('--evidence-root='))
+  const filename = args.find(arg => !arg.startsWith('--')) ??
+    join(root, 'docs/releases/mvp306-evidence.json')
   let sourceRevision = null, dirty = true, approval = null
   try {
     sourceRevision = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim()
     dirty = Boolean(execFileSync('git', ['status', '--porcelain'], { cwd: root, encoding: 'utf8' }).trim())
   } catch { /* fail-closed */ }
   try { approval = JSON.parse(readFileSync(filename, 'utf8')) } catch { /* fail-closed */ }
-  const result = evaluateMvp306({ root, sourceRevision, dirty, scope, approval })
+  let evidenceRoot
+  try {
+    evidenceRoot = resolveAcceptanceEvidenceRoot(root, rootFlag?.slice('--evidence-root='.length))
+  } catch {
+    process.stdout.write(JSON.stringify({ ready: false, blockerCount: 1,
+      blockers: ['UNTRUSTED_QA_EVIDENCE_ROOT'] }, null, 2) + '\n')
+    process.exitCode = 2
+    return
+  }
+  const result = evaluateMvp306({ root: evidenceRoot, sourceRevision, dirty, scope, approval })
   process.stdout.write(`${JSON.stringify(result, null, 2)}\n`)
   process.exitCode = result.ready ? 0 : 2
 }

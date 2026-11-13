@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import { test } from 'node:test'
-import { mkdtempSync, rmSync, writeFileSync, readFileSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, symlinkSync, realpathSync, rmSync, writeFileSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { evaluateMvp306, expandRanges, idFor, validateScope } from './mvp306-release-gate.mjs'
+import { evaluateMvp306, expandRanges, idFor, validateScope, resolveAcceptanceEvidenceRoot } from './mvp306-release-gate.mjs'
 import { buildMvp306Template } from './mvp306-evidence-template.mjs'
 
 const scope = JSON.parse(readFileSync(
@@ -15,7 +15,7 @@ const idList = Array.from({ length: 306 }, (_, i) => idFor(i + 1))
 
 function fixture(root) {
   const plan = validateScope(scope)
-  const text = idList.map(id => `${id}: synthetic reviewer fixture, not real production acceptance`).join('\n')
+  const text = idList.map(id => `${id}|PASS|synthetic reviewer fixture, not real production acceptance`).join('\n')
   writeFileSync(join(root, 'evidence.txt'), text)
   const checksum = createHash('sha256').update(text).digest('hex')
   const cases = idList.map(id => plan.required.has(id) ? {
@@ -100,4 +100,57 @@ test('synthetic all-PASS still requires explicit clinician-review metadata on fi
     assert.equal(evaluateMvp306({ root: dir, sourceRevision: revision,
       dirty: false, scope, approval: bypass }).ready, false)
   } finally { rmSync(dir, { force: true, recursive: true }) }
+})
+
+test('case evidence requires a precise PASS assertion, not a substring or an unrelated result', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'rehab-mvp306-case-precision-'))
+  try {
+    const approval = fixture(dir)
+    for (const id of scope.manualClinicalReviewCases) {
+      const caseRow = approval.cases.find(row => row.id === id)
+      caseRow.tier = 'supervised_clinical_e2e'
+      caseRow.clinicianReviewedBy = 'clinician.synthetic'
+    }
+    const source = readFileSync(join(dir, 'evidence.txt'), 'utf8')
+    const run = replacementLine => {
+      const content = source.replace(/^T-001\|PASS\|[^\n]*/m, replacementLine)
+      writeFileSync(join(dir, 'evidence.txt'), content)
+      const hash = createHash('sha256').update(content).digest('hex')
+      for (const item of approval.cases) if (item.evidence) item.evidence.sha256 = hash
+      return evaluateMvp306({ root: dir, sourceRevision: revision,
+        dirty: false, scope, approval })
+    }
+    assert.equal(run('T-001|PASS|valid synthetic test fixture').ready, true)
+    for (const invalid of [
+      'T-0010|PASS|other test number',
+      'T-001|FAIL|the assertion failed',
+      'report mentioned T-001|PASS|not a case assertion',
+      'T-001|PASS|  '
+    ]) {
+      const result = run(invalid)
+      assert.equal(result.ready, false, invalid)
+      assert.ok(result.blockers.includes('T-001_PENDING_OR_UNVERIFIED'), invalid)
+    }
+  } finally { rmSync(dir, { force: true, recursive: true }) }
+})
+
+test('accepts private QA evidence only from the real sibling validation tree', () => {
+  const base = mkdtempSync(join(tmpdir(), 'rehab-mvp306-trust-root-'))
+  try {
+    const source = join(base, 'rehab-management-system')
+    const qa = join(base, 'validation-evidence')
+    const campaign = join(qa, 'synthetic-review-20261113')
+    mkdirSync(source)
+    mkdirSync(qa)
+    mkdirSync(campaign)
+    assert.equal(resolveAcceptanceEvidenceRoot(source), realpathSync(source))
+    assert.equal(resolveAcceptanceEvidenceRoot(source, qa), realpathSync(qa))
+    assert.equal(resolveAcceptanceEvidenceRoot(source, campaign), realpathSync(campaign))
+    assert.throws(() => resolveAcceptanceEvidenceRoot(source, base), /UNTRUSTED/)
+    assert.throws(() => resolveAcceptanceEvidenceRoot(source, source), /UNTRUSTED/)
+    assert.throws(() => resolveAcceptanceEvidenceRoot(source, join(base, 'missing')), /ENOENT/)
+    const redirected = join(qa, 'redirected-outside')
+    symlinkSync(base, redirected)
+    assert.throws(() => resolveAcceptanceEvidenceRoot(source, redirected), /UNTRUSTED/)
+  } finally { rmSync(base, { recursive: true, force: true }) }
 })

@@ -16,7 +16,10 @@
         </el-form-item>
       </el-col>
       <el-col :span="24" class="px-10px">
-        <el-form-item v-if="loginData.tenantEnable === 'true'" prop="tenantName">
+        <el-form-item v-if="loginData.tenantEnable === 'true' && fixedTenantName">
+          <div class="fixed-tenant-name" role="status">当前机构：{{ fixedTenantName }}</div>
+        </el-form-item>
+        <el-form-item v-else-if="loginData.tenantEnable === 'true'" prop="tenantName">
           <el-input
             v-model="loginData.loginForm.tenantName"
             :placeholder="t('login.tenantNamePlaceholder')"
@@ -91,6 +94,7 @@ import * as authUtil from '@/utils/auth'
 import { usePermissionStore } from '@/store/modules/permission'
 import * as LoginApi from '@/api/login'
 import { LoginStateEnum, useFormValid, useLoginState } from './useLogin'
+import { getFixedLoginTenantName, getLoginTenantName } from '@/utils/loginExperience'
 
 defineOptions({ name: 'LoginForm' })
 
@@ -113,6 +117,11 @@ const verify = ref()
 const captchaType = ref('blockPuzzle') // blockPuzzle 滑块 clickWord 点击文字 pictureWord 文字验证码
 
 const getShow = computed(() => unref(getLoginState) === LoginStateEnum.LOGIN)
+const fixedTenantName = getFixedLoginTenantName(
+  import.meta.env.VITE_APP_TENANT_ENABLE,
+  import.meta.env.VITE_APP_FIXED_TENANT_LOGIN,
+  import.meta.env.VITE_APP_DEFAULT_LOGIN_TENANT
+)
 
 const LoginRules = {
   tenantName: [required],
@@ -124,7 +133,12 @@ const loginData = reactive({
   captchaEnable: import.meta.env.VITE_APP_CAPTCHA_ENABLE,
   tenantEnable: import.meta.env.VITE_APP_TENANT_ENABLE,
   loginForm: {
-    tenantName: import.meta.env.VITE_APP_DEFAULT_LOGIN_TENANT || '',
+    tenantName: getLoginTenantName(
+      import.meta.env.VITE_APP_TENANT_ENABLE,
+      import.meta.env.VITE_APP_FIXED_TENANT_LOGIN,
+      import.meta.env.VITE_APP_DEFAULT_LOGIN_TENANT,
+      undefined
+    ),
     username: import.meta.env.VITE_APP_DEFAULT_LOGIN_USERNAME || '',
     password: import.meta.env.VITE_APP_DEFAULT_LOGIN_PASSWORD || '',
     captchaVerification: '',
@@ -146,6 +160,9 @@ const getCode = async () => {
 }
 // 获取租户 ID
 const getTenantId = async () => {
+  // Never trust a previously remembered organization when the deployed UI is
+  // configured for a fixed studio; the backend still resolves the real ID.
+  if (fixedTenantName) loginData.loginForm.tenantName = fixedTenantName
   if (loginData.tenantEnable === 'true') {
     // A failed lookup must not reuse a previously selected organization.
     authUtil.removeTenantId()
@@ -156,6 +173,9 @@ const getTenantId = async () => {
       ElMessage.error(error instanceof Error ? error.message : '机构识别失败，请重试')
       return false
     }
+  } else {
+    // A tenant-disabled deployment must not inherit a stale tenant header.
+    authUtil.removeTenantId()
   }
   return true
 }
@@ -166,9 +186,14 @@ const getLoginFormCache = () => {
     loginData.loginForm = {
       ...loginData.loginForm,
       username: loginForm.username ? loginForm.username : loginData.loginForm.username,
-      password: loginForm.password ? loginForm.password : loginData.loginForm.password,
+      password: '', // Do not restore legacy persisted passwords.
       rememberMe: loginForm.rememberMe,
-      tenantName: loginForm.tenantName ? loginForm.tenantName : loginData.loginForm.tenantName
+      tenantName: getLoginTenantName(
+        loginData.tenantEnable,
+        import.meta.env.VITE_APP_FIXED_TENANT_LOGIN,
+        import.meta.env.VITE_APP_DEFAULT_LOGIN_TENANT,
+        loginForm.tenantName
+      )
     }
   }
 }
@@ -228,6 +253,13 @@ onMounted(() => {
 </script>
 
 <style lang="scss" scoped>
+.fixed-tenant-name {
+  width: 100%;
+  padding: 9px 12px;
+  border-radius: 8px;
+  background: var(--el-fill-color-light);
+  color: var(--el-text-color-primary);
+}
 :deep(.anticon) {
   &:hover {
     color: var(--el-color-primary) !important;

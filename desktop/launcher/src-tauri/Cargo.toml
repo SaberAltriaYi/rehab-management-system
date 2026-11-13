@@ -19,6 +19,21 @@ studio-internal = []
 # Set this feature ONLY on signed, migration-ready release artifacts.
 # Legacy unlicensed installations must not be silently locked before L5 GO.
 license-required = []
+# Separate, intentionally limited local admin recovery utility.
+# This is not a full clinical release and must not expose launcher management IPC.
+recovery-maintenance = ["studio-internal"]
+owner-recovery-headless = ["studio-internal"]
+core-backup-headless = ["studio-internal"]
+
+[[bin]]
+name = "rehab-core-encrypted-backup"
+path = "src/bin/core_encrypted_backup.rs"
+required-features = ["core-backup-headless"]
+
+[[bin]]
+name = "rehab-owner-recovery-helper"
+path = "src/bin/owner_recovery_helper.rs"
+required-features = ["owner-recovery-headless"]
 
 [[bin]]
 name = "rehab-management-launcher"

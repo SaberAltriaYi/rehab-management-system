@@ -8,6 +8,7 @@ let selectedTenant = null
 let currentApplications = []
 let provisioningConfigured = null
 let activationEmailConfigured = false
+let recoveryWindowEnabled = false
 let operationBusy = false
 const $ = (id) => document.getElementById(id)
 const formData = (id) => Object.fromEntries(new FormData($(id)))
@@ -22,6 +23,7 @@ const errorLabels = {
   OWNER_UNAUTHORIZED: '所有者会话已失效，请重新登录。',
   INVALID_OWNER_CREDENTIALS: '所有者账号、密码或 TOTP 不正确。',
   APPLICATION_NOT_PENDING: '此申请已经处理，先刷新申请列表。',
+  APPLICATION_HAS_LICENSE: '申请已关联许可证或设备，不能按待审申请删除。',
   APPLICATION_NOT_APPROVED: '只有已授权申请才可以重试主系统开通。',
   PROVISIONING_NOT_CONFIGURED: '本地尚未配置主系统自动开通，先完成许可授权即可。',
   PROVISIONING_ALREADY_ACTIVE: '主系统已在开通中或已经开通，不允许再次用此表单覆盖管理员密码。',
@@ -56,11 +58,23 @@ function feedback(message, isError = false) {
   element.textContent = message
   element.classList.toggle('error', isError)
 }
+function inlineResult(id, message, warning = false) {
+  const element = $(id)
+  element.textContent = message
+  element.className = 'selection-status' + (warning ? ' warning' : ' ready')
+}
+async function tenantActionWithFeedback(id, action) {
+  try { await action() } catch (error) {
+    inlineResult(id, '无法执行：' + (error.message || '未通过 Owner 权限校验'), true)
+    throw error
+  }
+}
 function displaySession() {
   $('auth-panel').hidden = Boolean(session)
   $('owner-content').hidden = !session
   $('connection').textContent = session ? '所有者 MFA 会话已验证' : '尚未登录'
   if (!session) {
+    recoveryWindowEnabled = false
     $('core-recovery-code').value = ''
     $('core-recovery-expiry').textContent = ''
     $('core-recovery-form').reset()
@@ -156,11 +170,43 @@ function setTenantControls(status) {
   const active = status === 'ACTIVE'
   const suspended = status === 'SUSPENDED'
   const revoked = status === 'REVOKED'
-  $('update-policy').disabled = !active
-  $('suspend').disabled = !active
-  $('resume').disabled = !suspended
-  $('revoke').disabled = revoked
+  // Do not silently disable buttons. The click handlers below show the
+  // missing tenant/status and never submit to Owner unless allowed.
+  $('update-policy').disabled = false
+  $('suspend').disabled = false
+  $('resume').disabled = false
+  $('revoke').disabled = false
   $('offline-form').querySelector('button[type="submit"]').disabled = !active
+  $('tenant-action-guide').textContent = active
+    ? '当前租户已启用：可按左侧策略续期/扩容或暂停。开通主系统请使用下方独立开通区域，不能通过“批准新申请”重复创建账号。'
+    : suspended ? '当前租户已暂停：可恢复或撤销；先恢复为 ACTIVE 才能续期/扩容或开通主系统。'
+      : revoked ? '当前租户已永久撤销：不能恢复或续期，不能开通主系统。'
+        : '尚未载入租户：请先在上方已批准申请点“维护”，或输入 UUID 后点“查询当前许可”。'
+  const explanation = revoked
+    ? '永久撤销（REVOKED）不可恢复、续期或扩容。要继续使用需走新机构申请与审批流程。'
+    : suspended ? '许可证已暂停（SUSPENDED）。需要先恢复为 ACTIVE 才能续期或开通。'
+      : active ? '已载入 ACTIVE 许可证。可按左侧策略提交续期/扩容，仍需 Owner MFA。'
+        : '请先选择已批准机构并查询许可证。'
+  inlineResult('tenant-policy-result', explanation, !active)
+  $('update-policy').title = explanation
+}
+
+function requireLoadedTenant(action) {
+  const id = tenantId()
+  if (!selectedTenant || selectedTenant.tenantId !== id) {
+    throw Error('请先通过已批准申请的“维护”按钮或“查询当前许可”载入该租户，不能只填写租户编号。')
+  }
+  const status = selectedTenant.status
+  if ((action === 'policy' || action === 'SUSPENDED') && status !== 'ACTIVE') {
+    throw Error('只有 ACTIVE 的租户才能续期/扩容或暂停。当前状态：' + status)
+  }
+  if (action === 'ACTIVE' && status !== 'SUSPENDED') {
+    throw Error('只有已暂停（SUSPENDED）的租户可以执行恢复。当前状态：' + status)
+  }
+  if (action === 'REVOKED' && status === 'REVOKED') {
+    throw Error('此租户已经永久撤销，不能重复撤销。')
+  }
+  return id
 }
 
 function updateApprovedProvisionPanel() {
@@ -169,8 +215,14 @@ function updateApprovedProvisionPanel() {
   const state = approvedProvisionState(app, selectedTenant, provisioningConfigured)
   $('approved-provision-panel').hidden = !state.visible
   $('approved-provision-status').textContent = state.message
+  inlineResult('approved-provision-result', state.ready
+    ? '许可证具备界面开通条件，仍需新的管理员凭据、Owner MFA 和正式 Core 接口验收。'
+    : '无法执行主系统开通：' + (state.message || '请先载入已批准机构。'), !state.ready)
   $('approved-provision-credentials').hidden = !state.ready
-  $('provision-approved').disabled = !state.ready
+  // Display the policy rejection reason on click rather than presenting
+  // a mute button when the panel itself is visible.
+  $('provision-approved').disabled = false
+  $('provision-approved').title = state.ready ? '执行 Owner MFA 后开通主系统' : state.message
   for (const name of ['provisionAdminUsername', 'provisionAdminPassword']) {
     const input = $('tenant-form').elements.namedItem(name)
     input.disabled = !state.ready
@@ -188,7 +240,7 @@ function setWorkflowStatus(configured, emailConfigured) {
     if (!canProvision) input.value = ''
   }
   $('workflow-status').textContent = provisioningConfigured
-    ? '主系统自动开通已配置：只有显示「主系统已开通」后，机构管理员才能登录。'
+    ? '主系统开通配置项已填写，但不代表接口、数据库结构与机器令牌已生效。必须核对正式 Core 中的租户 ID 与正常登录结果；Owner 状态为 ACTIVE 也不能代替真实登录验收。'
     : '重要：当前仅启用许可证授权，未配置主系统开通！审批后不会创建机构或管理员账号，输入任何密码都不能据此登录主系统。'
   $('workflow-status').textContent += activationEmailConfigured
     ? ' 机构开通后可向联系人发送开通通知（邮件不包含密码）。'
@@ -244,7 +296,7 @@ const provisioningStatusLabel = {
   NOT_AUTHORIZED: '未授权主系统（不会创建机构账号）',
   NOT_CONFIGURED: '许可证已批准；主系统未开通（不能登录）',
   PROVISIONING: '主系统开通中',
-  ACTIVE: '主系统已开通（可按机构名登录）',
+  ACTIVE: 'Owner 历史状态 ACTIVE（须核对当前 Core 租户及登录）',
   FAILED: '主系统开通失败（不能登录）'
 }
 const notificationStatusLabel = {
@@ -271,6 +323,7 @@ async function loadTenantStatus(id, { updatePolicy = true } = {}) {
     selectedTenant = null
     $('tenant-status').textContent = '没有已批准许可证'
     setTenantControls(null)
+    updateApprovedProvisionPanel()
     setSelectionStatus('这个申请还没有已批准许可证，请先完成审批。', 'warning')
     return null
   }
@@ -283,7 +336,10 @@ async function loadTenantStatus(id, { updatePolicy = true } = {}) {
   setTenantControls(tenant.status)
   if (updatePolicy) fillPolicyFromTenant(tenant)
   updateApprovedProvisionPanel()
-  setSelectionStatus('已载入 ' + tenant.tenantId + ' 的当前策略，可直接续期 / 扩容。', 'ready')
+  setSelectionStatus(tenant.status === 'ACTIVE'
+    ? '已载入 ' + tenant.tenantId + ' 的 ACTIVE 许可证，可以按策略续期 / 扩容。'
+    : '已载入 ' + tenant.tenantId + '，当前状态 ' + tenant.status + '；操作受许可证状态限制。',
+    tenant.status === 'ACTIVE' ? 'ready' : 'warning')
   return tenant
 }
 async function waitForProvisioning(applicationId) {
@@ -298,7 +354,13 @@ async function waitForProvisioning(applicationId) {
 }
 async function refreshApplications({ announce = true } = {}) {
   const result = await api('/owner/v1/applications')
-  $('core-recovery-panel').hidden = result.adminRecoveryEnabled !== true
+  // Always expose the Owner MFA workflow and its current availability,
+  // even after the time-limited maintenance window expires.
+  recoveryWindowEnabled = result.adminRecoveryEnabled === true
+  $('core-recovery-panel').hidden = false
+  $('core-recovery-status').textContent = recoveryWindowEnabled
+    ? '本机恢复维护窗口已开放。仍须在本机工具生成挑战码，再完成 Owner MFA 签发。'
+    : '当前本机密码恢复维护窗口未开启或已到期。请先通过受控运维流程重新开通；这里不能绕过 MFA 或直接修改密码。'
   const applications = result.applications || []
   currentApplications = applications
   setWorkflowStatus(result.provisioningConfigured, result.activationEmailConfigured)
@@ -341,8 +403,7 @@ async function refreshApplications({ announce = true } = {}) {
         fillDefaultPolicy()
         setTenantControls(null)
         setSelectionStatus('已选中 ' + app.organization + '：核实资料后可直接批准或要求补充。', 'ready')
-        $('approve').disabled = false
-        $('reject').disabled = false
+        $('approval-action-guide').textContent = '已选中待审批机构：“' + app.organization + '”。请核对策略、临时管理员凭据和审核理由，点击批准会要求 Owner MFA 二次验证。'
         for (const tr of body.children) tr.classList.remove('selected')
         row.classList.add('selected')
         $('policy-form').scrollIntoView({ behavior: 'smooth', block: 'center' })
@@ -360,6 +421,28 @@ async function refreshApplications({ announce = true } = {}) {
         await refreshAll()
       }))
       actions.append(requestInfo)
+      const remove = node('button', '删除申请')
+      remove.type = 'button'
+      remove.className = 'danger'
+      remove.title = '仅删除未审批的申请；需删除理由及 Owner MFA，永久保留审计'
+      remove.addEventListener('click', () => void handle(() =>
+        tenantActionWithFeedback('pending-action-result', async () => {
+        const reason = window.prompt('永久删除待审申请“' + app.organization + '”。请填写至少 5 个字符的删除理由：')
+        if (reason === null) return
+        if (reason.trim().length < 5 || reason.length > 240) {
+          throw Error('删除理由须为 5–240 个字符；未执行删除。')
+        }
+        const confirmed = await strongOperation(() => api(
+          '/owner/v1/applications/' + requireUuid(app.id) + '/delete', {
+            method: 'POST', body: { reason: reason.trim() }
+          }), '永久删除未审批的申请“' + app.organization + '”（保留审计，不能撤回）')
+        if (!confirmed) return
+        if (selected?.id === app.id) selected = null
+        await refreshAll()
+        inlineResult('pending-action-result', '申请“' + app.organization + '”已从待审列表删除，审计记录已保存。')
+        feedback('待审申请已删除；不会影响任何已批准许可证。')
+      })))
+      actions.append(remove)
     }
     if (app.status === 'APPROVED') {
       const manage = node('button', '维护')
@@ -369,9 +452,9 @@ async function refreshApplications({ announce = true } = {}) {
         selected = null
         selectedTenant = app
         applyTenant(app.tenantId, app.installationId)
-        $('approve').disabled = true
-        $('reject').disabled = true
-        await loadTenantStatus(app.tenantId)
+        $('approval-action-guide').textContent = '当前选中的是已批准租户：“' + app.organization + '”。不能重复点击批准；请操作右侧租户维护或下方主系统开通。'
+        const loaded = await loadTenantStatus(app.tenantId)
+        if (!loaded) throw Error('此申请已批准，但当前未找到匹配的许可记录；不能执行租户维护，请先复核 Owner 许可证。')
         $('tenant-form').scrollIntoView({ behavior: 'smooth', block: 'center' })
       }))
       actions.append(manage)
@@ -384,7 +467,8 @@ async function refreshApplications({ announce = true } = {}) {
       retry.addEventListener('click', () => void handle(async () => {
         selected = null
         applyTenant(app.tenantId, app.installationId)
-        await loadTenantStatus(app.tenantId)
+        const loaded = await loadTenantStatus(app.tenantId)
+        if (!loaded) throw Error('此机构缺少已批准的有效租户许可，不能重试主系统开通。')
         $('approved-provision-panel').scrollIntoView({ behavior: 'smooth', block: 'center' })
       }))
       actions.append(retry)
@@ -414,8 +498,9 @@ async function refreshApplications({ announce = true } = {}) {
     row.append(name, ids, status, actions)
     body.append(row)
   }
-  $('approve').disabled = !selected
-  $('reject').disabled = !selected
+  $('approval-action-guide').textContent = selected
+    ? '已选中待审批机构：“' + selected.organization + '”。批准将签发许可并执行 Owner MFA。'
+    : '尚未选择待审申请。请先在上方列表点击某条 PENDING 申请的“审核”；已批准机构应使用“维护”或“重试开通”。'
   if (announce) feedback('申请与独立授权审计已刷新')
   return applications
 }
@@ -458,7 +543,7 @@ async function openApprovedMainSystem() {
   await refreshAudit()
   updateApprovedProvisionPanel()
   feedback(latest?.provisioningStatus === 'ACTIVE' && latest.mainTenantId
-    ? '主系统已开通，租户 ID：' + latest.mainTenantId + '。请使用机构名称、管理员账号和新密码登录。'
+    ? 'Owner 已记录主系统开通（租户 ID：' + latest.mainTenantId + '），仍需在当前正式 Core 核对租户存在、授权生效及管理员真实登录。'
     : latest?.provisioningStatus === 'FAILED'
       ? '主系统开通失败：' + (latest.provisioningError || '请检查接口或套餐配置')
       : '开通已提交但尚未确认创建成功，请刷新开通状态。')
@@ -514,6 +599,9 @@ $('stepup').addEventListener('click', () => void handle(stepUp))
 $('core-recovery-form').addEventListener('submit', event => {
   event.preventDefault()
   void handle(async () => {
+    if (!recoveryWindowEnabled) {
+      throw Error('本机恢复维护窗口尚未开放或已到期；请先通过受控运维重新开启窗口，不能通过普通租户审批替代。')
+    }
     const field = $('core-recovery-form').elements.namedItem('deviceChallenge')
     const deviceChallenge = String(field.value ?? '').trim()
     if (!/^[A-Za-z0-9_-]{43}$/.test(deviceChallenge)) {
@@ -547,7 +635,10 @@ $('use-default-policy').addEventListener('click', () => void handle(async () => 
 }))
 $('policy-form').elements.namedItem('mainSystem').addEventListener('change', refreshMainSystemOption)
 $('approve').addEventListener('click', () => void handle(async () => {
-  if (!selected) throw Error('请先选中待审核申请')
+  if (!selected) {
+    setSelectionStatus('尚未选中待审核申请。请在上方申请列表点击待审核机构的“审核”，再批准；已批准机构请使用“维护”。', 'warning')
+    throw Error('请先在上方“待审批工作室”列表选择状态为待审核的申请，不能只填写审批表单。')
+  }
   const applicationId = selected.id
   const policy = policyFromForm()
   const reason = String(formData('policy-form').reason || '').trim()
@@ -570,7 +661,10 @@ $('approve').addEventListener('click', () => void handle(async () => {
         : '审批已保存，正在等待主系统开通状态')
 }))
 $('reject').addEventListener('click', () => void handle(async () => {
-  if (!selected) throw Error('请先选中待审核申请')
+  if (!selected) {
+    setSelectionStatus('请先从上方待审列表点击“审核”选中具体申请。', 'warning')
+    throw Error('尚未选中待审批申请。')
+  }
   const reason = String(formData('policy-form').reason || '').trim()
   if (reason.length < 5) throw Error('驳回需要填写清晰审核理由')
   const confirmed = await strongOperation(async () => {
@@ -589,9 +683,11 @@ $('tenant-form').addEventListener('submit', event => {
     await loadTenantStatus(id)
   })
 })
-$('provision-approved').addEventListener('click', () => void handle(openApprovedMainSystem))
-$('update-policy').addEventListener('click', () => void handle(async () => {
-  const id = tenantId()
+$('provision-approved').addEventListener('click', () => void handle(() =>
+  tenantActionWithFeedback('approved-provision-result', openApprovedMainSystem)))
+$('update-policy').addEventListener('click', () => void handle(() =>
+  tenantActionWithFeedback('tenant-policy-result', async () => {
+  const id = requireLoadedTenant('policy')
   const policy = policyFromForm()
   const reason = String(formData('policy-form').reason || '').trim()
   if (reason.length < 5) throw Error('续期或扩容需要填写至少五个字符的变更理由')
@@ -609,10 +705,11 @@ $('update-policy').addEventListener('click', () => void handle(async () => {
     (result.coreSyncStatus === 'PENDING' ? ' 主系统正在异步同步，请刷新并确认状态。' :
       result.coreSyncStatus === 'NOT_CONFIGURED' ? ' 主系统尚未同步，请勿将其视为已生效。' :
         ' 主系统无需额外同步或尚未开通。'))
-}))
+  inlineResult('tenant-policy-result', 'Owner 许可证策略已更新。Core 授权同步状态：' + result.coreSyncStatus + '。')
+})))
 for (const [id, status] of [['suspend', 'SUSPENDED'], ['resume', 'ACTIVE'], ['revoke', 'REVOKED']]) {
   $(id).addEventListener('click', () => void handle(async () => {
-    const uuid = tenantId()
+    const uuid = requireLoadedTenant(status)
     if (status === 'REVOKED' && window.prompt(
       '撤销是不可逆操作。请输入租户 UUID 确认：') !== uuid) throw Error('撤销确认编号不匹配')
     const confirmed = await strongOperation(() => api('/owner/v1/tenants/' + uuid + '/status', {

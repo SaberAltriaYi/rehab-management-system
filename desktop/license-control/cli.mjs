@@ -106,6 +106,7 @@ async function main() {
     // Opt-in, even when a newer Owner service build is installed. Must be
     // enabled only for a supervised on-device recovery maintenance window.
     adminRecoveryEnabled: process.env.REHAB_CORE_ADMIN_RECOVERY_ENABLED === 'true',
+    adminRecoveryUntilMs: Number(process.env.REHAB_CORE_ADMIN_RECOVERY_UNTIL_MS ?? 0),
     // Explicit HTTPS loopback default for the isolated same-origin L4 owner
     // console. Reverse-proxy deployments must set their own exact HTTPS origin.
     permittedBrowserOrigin: process.env.REHAB_OWNER_BROWSER_ORIGIN

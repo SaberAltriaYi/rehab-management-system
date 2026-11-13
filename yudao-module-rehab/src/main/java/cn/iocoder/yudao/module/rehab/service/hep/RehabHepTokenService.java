@@ -12,6 +12,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.net.URI;
 import java.security.KeyFactory;
 import java.security.interfaces.RSAPrivateCrtKey;
 import java.security.interfaces.RSAPublicKey;
@@ -27,9 +28,29 @@ public class RehabHepTokenService {
     private final RSAPrivateCrtKey privateKey;
     private final RSAKey publicJwk;
     private final String issuer;
+
+    static boolean validHttpsIssuer(String value) {
+        if (value == null || value.isBlank() || value.length() > 2048) return false;
+        try {
+            URI uri = URI.create(value);
+            String path = uri.getRawPath();
+            return "https".equalsIgnoreCase(uri.getScheme())
+                    && uri.getHost() != null
+                    && uri.getRawUserInfo() == null
+                    && uri.getRawQuery() == null
+                    && uri.getRawFragment() == null
+                    && (path == null || path.isEmpty() || "/".equals(path));
+        } catch (IllegalArgumentException exception) {
+            return false;
+        }
+    }
+
     public RehabHepTokenService(
         @Value("${REHAB_HEP_JWT_PRIVATE_KEY_FILE:}") String keyPath,
-        @Value("${REHAB_HEP_JWT_ISSUER:http://127.0.0.1:48080}") String issuer) throws Exception {
+        @Value("${REHAB_HEP_JWT_ISSUER:}") String issuer) throws Exception {
+        // Enabling the bridge without an explicit issuer must fail closed.
+        // The previous silent HTTP 48080 default was an obsolete endpoint.
+        if(!validHttpsIssuer(issuer)) throw new IllegalStateException("HEP JWT issuer must be an explicit HTTPS origin");
         if(keyPath.isBlank()) throw new IllegalStateException("HEP JWT signing key path required");
         String pem=Files.readString(Path.of(keyPath));
         String base64=pem.replace("-----BEGIN PRIVATE KEY-----","")
