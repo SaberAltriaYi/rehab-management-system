@@ -64,17 +64,56 @@ export function preparePilotDraft(seed, choices) {
   }
 }
 
+/** The user approved three metrics, but did not approve a storage quota. */
+export function prepareSelectedPilotDraft(seed, choices, selected) {
+  const base = preparePilotDraft(seed, choices)
+  if (selected?.maxUsers !== 20 || selected?.maxPatients !== 400 ||
+      selected?.motionQuota !== 2000 || selected?.storageQuotaBytes != null) {
+    throw Error('CUSTOM_PILOT_DECISION_NOT_VERIFIED')
+  }
+  return {
+    ...base,
+    schema: 'rehab-owner-internal-pilot-custom-draft/1',
+    candidateName: 'rehab-internal-pilot-20u-400p-2000motion',
+    selectedQuota: {
+      maxUsers: 20, maxPatients: 400, motionQuota: 2000,
+      storageQuotaBytes: null
+    },
+    selectedQuotaApproved: {
+      maxUsers: true, maxPatients: true, motionQuota: true,
+      storageQuotaBytes: false
+    },
+    provisionalStorageBytesForSyntheticOnly: seed.storageQuotaBytes,
+    proposedFullQuotaForSyntheticOnly: {
+      maxUsers: 20, maxPatients: 400, motionQuota: 2000,
+      storageQuotaBytes: seed.storageQuotaBytes
+    },
+    productionPlanCreationAllowed: false,
+    storageRequiresOwnerDecision: true,
+    formalSigning: 'QA_ONLY_NO_DEVELOPER_ID',
+    trueOwnerMfaCompleted: false,
+    source: 'User-selected 20/400/2000; storage provisional from synthetic-beta fixture'
+  }
+}
+
 if (process.argv[1] && pathToFileURL(resolve(process.argv[1])).href === import.meta.url) {
-  if (process.argv.length !== 3 || process.argv[2] !== '--draft-only') {
-    process.stderr.write('Usage: node internal-pilot-plan-preview.mjs --draft-only\n')
+  if (process.argv.length !== 3 ||
+      !['--draft-only', '--selected-quota-draft'].includes(process.argv[2])) {
+    process.stderr.write('Usage: node internal-pilot-plan-preview.mjs --draft-only|--selected-quota-draft\n')
     process.exitCode = 2
   } else {
     try {
       const values = parseSyntheticPlanSeed(readFileSync(source, 'utf8'))
-      const draft = preparePilotDraft(values, {
+      const choices = {
         plan: 'B', rolePermissions: 'B', historicalLinks: 'A',
         rollout: 'B', clinicianSignoff: 'A'
-      })
+      }
+      const draft = process.argv[2] === '--selected-quota-draft'
+        ? prepareSelectedPilotDraft(values, choices, {
+          maxUsers: 20, maxPatients: 400, motionQuota: 2000,
+          storageQuotaBytes: null
+        })
+        : preparePilotDraft(values, choices)
       process.stdout.write(JSON.stringify(draft, null, 2) + '\n')
     } catch {
       process.stderr.write('INTERNAL_PILOT_PLAN_DRAFT_VALIDATION_FAILED\n')

@@ -59,9 +59,12 @@ class SaasTenantAccessServiceTest {
         verifyNoInteractions(jdbc);
     }
     private void plan(long limit) {
+        plan(SaasTenantAccessService.Resource.USER, limit);
+    }
+    private void plan(SaasTenantAccessService.Resource resource, long limit) {
         TransactionSynchronizationManager.setActualTransactionActive(true);
         when(jdbc.queryForList(anyString(), eq(Long.class), eq(910001L))).thenReturn(Collections.singletonList(910001L));
-        Map<String,Object> row = new HashMap<>(); row.put("max_users", limit);
+        Map<String,Object> row = new HashMap<>(); row.put(resource.limit, limit);
         when(jdbc.queryForList(anyString(), eq(910001L))).thenReturn(Collections.singletonList(row));
     }
     @Test void overQuotaNeverUpdatesUsage() {
@@ -79,5 +82,26 @@ class SaasTenantAccessServiceTest {
         when(jdbc.update(anyString(), eq(1L), eq(910001L), eq(9L))).thenReturn(1);
         assertDoesNotThrow(() -> service.reserve(SaasTenantAccessService.Resource.USER, 1));
         verify(jdbc).update(contains("WHERE tenant_id=?"), eq(1L), eq(910001L), eq(9L));
+    }
+
+    @Test void internalPilotPatientQuota400RejectsThe401stWithinTheBusinessTransaction() {
+        plan(SaasTenantAccessService.Resource.PATIENT, 400);
+        assertThrows(SaasTenantAccessService.AccessDenied.class,
+                () -> service.reserve(SaasTenantAccessService.Resource.PATIENT, 401));
+        verify(jdbc, never()).update(anyString(), anyLong(), anyLong(), anyLong());
+        when(jdbc.update(contains("SET patient_count=patient_count+?"), eq(400L),
+                eq(910001L), eq(0L))).thenReturn(1);
+        assertDoesNotThrow(() -> service.reserve(SaasTenantAccessService.Resource.PATIENT, 400));
+    }
+
+    @Test void internalPilotMotionQuota2000RejectsOverageWithoutOtherTenantSideEffects() {
+        plan(SaasTenantAccessService.Resource.MOTION, 2000);
+        assertThrows(SaasTenantAccessService.AccessDenied.class,
+                () -> service.reserve(SaasTenantAccessService.Resource.MOTION, 2001));
+        verify(jdbc, never()).update(anyString(), anyLong(), anyLong(), anyLong());
+        when(jdbc.update(contains("SET motion_count=motion_count+?"), eq(2000L),
+                eq(910001L), eq(0L))).thenReturn(1);
+        assertDoesNotThrow(() -> service.reserve(SaasTenantAccessService.Resource.MOTION, 2000));
+        verify(jdbc, never()).update(anyString(), anyLong(), eq(999002L), anyLong());
     }
 }

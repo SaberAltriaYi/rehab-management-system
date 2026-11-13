@@ -94,8 +94,10 @@ public class SaasProvisioningService {
                 create.setStatus(0);
                 create.setPackageId(request.packageId);
                 create.setExpireTime(request.expiresAt);
-                maxUsers(request.planId); // Retain validation that the selected plan is active.
-                create.setAccountCount(request.seatLimit == null ? Integer.MAX_VALUE : request.seatLimit);
+                int planMaxUsers = maxUsers(request.planId);
+                // An absent Owner seat override means the plan limit, NEVER
+                // an unbounded number of accounts.
+                create.setAccountCount(resolveSeatLimit(planMaxUsers, request.seatLimit, planMaxUsers));
                 create.setUsername(request.adminUsername);
                 create.setPassword(request.adminPassword);
                 create.setWebsites(Collections.emptyList());
@@ -137,7 +139,19 @@ public class SaasProvisioningService {
         long current = ((Number) records.get(0).get("entitlement_revision")).longValue();
         if (request.revision <= current) return response("ACTIVE", map("revision", current));
         long tenantId = ((Number) records.get(0).get("tenant_id")).longValue();
-        int seats = request.seatLimit == null ? Integer.MAX_VALUE : request.seatLimit;
+        // Resolve the plan on every entitlement change: Owner is not allowed
+        // to exceed the signed SaaS plan just by omitting its seat override.
+        List<Map<String, Object>> planRows = jdbc.queryForList(
+                "SELECT t.account_count,p.max_users FROM system_tenant t " +
+                "JOIN tenant_subscriptions s ON s.tenant_id=t.id " +
+                "JOIN saas_plans p ON p.id=s.plan_id WHERE t.id=? AND t.tenant_uuid=? " +
+                "AND t.deleted=0 AND t.registration_source='owner-control-plane' " +
+                "AND s.status IN ('active','trialing') AND p.status=1 FOR UPDATE",
+                tenantId, request.tenantUuid);
+        if (planRows.size() != 1) throw new IllegalArgumentException("主系统套餐或租户未验证");
+        Map<String, Object> plan = planRows.get(0);
+        int seats = resolveSeatLimit(((Number) plan.get("max_users")).intValue(),
+                request.seatLimit, ((Number) plan.get("account_count")).intValue());
         if (jdbc.update("UPDATE system_tenant SET expire_time=?,account_count=? WHERE id=? AND tenant_uuid=? AND deleted=0 AND registration_source='owner-control-plane'",
                 Timestamp.valueOf(expiry), seats, tenantId, request.tenantUuid) != 1) {
             throw new IllegalArgumentException("Owner 授权机构不存在或已失效");
@@ -176,6 +190,14 @@ public class SaasProvisioningService {
         List<Map<String, Object>> rows = jdbc.queryForList("SELECT max_users FROM saas_plans WHERE id=? AND status=1", planId);
         if (rows.isEmpty()) throw new IllegalArgumentException("套餐不可用");
         return ((Number) rows.get(0).get("max_users")).intValue();
+    }
+    /** Never permit an Owner entitlement to exceed its active SaaS plan. */
+    static int resolveSeatLimit(int planMaxUsers, Integer requested, int current) {
+        if (planMaxUsers < 1) throw new IllegalArgumentException("套餐用户数无效");
+        int seats = requested == null ? current : requested;
+        if (seats < 1 || seats > planMaxUsers)
+            throw new IllegalArgumentException("授权席位超出套餐上限");
+        return seats;
     }
 
     private void validate(SaasProvisioningRequest request) {
