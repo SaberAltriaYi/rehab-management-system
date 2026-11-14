@@ -41,7 +41,34 @@ export interface LicenseOverview {
   modules: string[]
   pendingReplacement: boolean
   publisherConfigured: boolean
+  /** Bundled trusted Owner HTTPS authorization base URL; never user-editable. */
+  ownerEndpointConfigured?: boolean
   localVerificationOnly: boolean
+}
+
+/** First-run registration cannot generate an orphan device identity. */
+export function licenseEnrollmentReady(license: LicenseOverview | null | undefined): boolean {
+  return !!license?.publisherConfigured && !!license.ownerEndpointConfigured
+}
+
+/** Explain intentional blocking before the person tries a dead-looking control. */
+export function licenseFirstRunGuidance(license: LicenseOverview | null | undefined): string {
+  if (!license?.publisherConfigured) {
+    return '当前安装包没有预置发行商可信公钥。请向软件所有者取得经过验证的正式签名发行包；此QA包不能自行激活。'
+  }
+  if (!license.ownerEndpointConfigured) {
+    return '当前安装包缺少可信的在线Owner授权端点。请由软件所有者提供包含授权端点的正式发行包，不要粘贴第三方链接或公钥。'
+  }
+  if (!license.tenantId) {
+    return '首先点击“首次登记安装身份”，填写工作室名称；随后提交申请，由软件所有者通过独立Owner MFA审批。'
+  }
+  if (!license.applicationId) {
+    return '安装身份已创建。点击“在线提交授权申请”，随后联系软件所有者在Owner控制台审批。'
+  }
+  if (!licenseAllowsBusiness(license)) {
+    return '申请已提交。待软件所有者通过Owner MFA批准后，点击“在线获取或续签”获取并校验签名许可。'
+  }
+  return '本机签名许可已验证。请继续确认Core服务端授权状态，再启动受保护的业务服务。'
 }
 
 export function licenseLabel(status: LicenseStatus): string {

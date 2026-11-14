@@ -9,11 +9,34 @@ import {
   licenseExpiryNotice,
   licenseNeedsOnlineRenewal,
   licenseLabel,
+  licenseEnrollmentReady,
+  licenseFirstRunGuidance,
   redactDiagnosticText,
   serviceBadgeClass
 } from './model'
 
 describe('launcher view model', () => {
+  it('keeps first-run actions blocked without bundled issuer and Owner URL, with visible guidance', () => {
+    const base = {
+      status: 'UNLICENSED' as const,
+      detail: '', tenantId: null, installationId: null,
+      organization: null, applicationId: null, expiry: null,
+      seatLimit: null, modules: [], pendingReplacement: false,
+      publisherConfigured: false, ownerEndpointConfigured: false,
+      localVerificationOnly: true
+    }
+    expect(licenseEnrollmentReady(base)).toBe(false)
+    expect(licenseFirstRunGuidance(base)).toContain('正式签名发行包')
+    expect(licenseEnrollmentReady({ ...base, publisherConfigured: true })).toBe(false)
+    expect(licenseFirstRunGuidance({ ...base, publisherConfigured: true })).toContain('授权端点')
+    const ready = { ...base, publisherConfigured: true, ownerEndpointConfigured: true }
+    expect(licenseEnrollmentReady(ready)).toBe(true)
+    expect(licenseFirstRunGuidance(ready)).toContain('首次登记安装身份')
+    expect(licenseFirstRunGuidance({ ...ready, tenantId: 'test-tenant' })).toContain('在线提交授权申请')
+    expect(licenseFirstRunGuidance({
+      ...ready, tenantId: 'test-tenant', applicationId: 'test-application'
+    })).toContain('Owner MFA')
+  })
   it('redacts credentials and mobile numbers from diagnostics', () => {
     const value = 'password=abc123 token:xyz mobile=13800138000'
     const redacted = redactDiagnosticText(value)

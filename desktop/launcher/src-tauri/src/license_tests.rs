@@ -34,6 +34,7 @@ fn fixture() -> (tempfile::TempDir, AppPaths, LicenseManager, Ed25519KeyPair) {
 #[test]
 fn actual_macos_app_bundle_resource_layout_loads_pinned_issuer() {
     let (dir, _, manager, _) = fixture();
+    assert!(manager.overview().owner_endpoint_configured);
     let root = dir.path().join("Contents/Resources");
     fs::create_dir_all(root.join("resources/license")).unwrap();
     fs::copy(dir.path().join("resources/license/trusted-issuers.json"),
@@ -44,6 +45,21 @@ fn actual_macos_app_bundle_resource_layout_loads_pinned_issuer() {
         manager.owner().unwrap().java_pinned_keyring());
     assert!(bundled.endpoint("/license/v1/applications").unwrap()
         .starts_with("https://owner.example.invalid/"));
+}
+
+#[test]
+fn a_bundled_public_issuer_without_an_https_endpoint_cannot_begin_online_enrollment() {
+    let (dir, paths, _manager, _) = fixture();
+    let file = dir.path().join("resources/license/trusted-issuers.json");
+    let mut config: serde_json::Value =
+        serde_json::from_slice(&fs::read(&file).unwrap()).unwrap();
+    config["ownerBaseUrl"] = serde_json::Value::Null;
+    fs::write(&file, serde_json::to_vec(&config).unwrap()).unwrap();
+    let manager = LicenseManager::new(&paths, &dir.path().join("resources"));
+    assert!(manager.overview().publisher_configured);
+    assert!(!manager.overview().owner_endpoint_configured);
+    assert!(manager.begin_application("合成测试工作室".into()).is_err());
+    assert!(!paths.config_dir.join("license/installation.json").exists());
 }
 
 #[test]
@@ -197,6 +213,7 @@ fn empty_bundled_trust_never_creates_a_forged_owner_identity() {
     let manager = LicenseManager::new(&paths, &dir.path().join("resources"));
     assert!(!manager.overview().publisher_configured);
     assert_eq!(manager.overview().status, "UNLICENSED");
+    assert!(!manager.overview().owner_endpoint_configured);
     assert!(manager.begin_application("未发行工作室".into()).is_err());
 }
 

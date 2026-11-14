@@ -184,6 +184,34 @@ h1 {
   font-size: 13px;
 }
 
+.license-help-toggle {
+  margin-top: 10px;
+  background: #fff;
+  color: #28584e;
+  border: 1px solid #bdd6cd;
+  font-size: 13px;
+}
+
+.license-onboarding {
+  margin-top: 12px;
+  padding: 14px 18px;
+  border: 1px solid #cbded7;
+  border-radius: 12px;
+  background: #f7faf8;
+  color: #355148;
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.license-onboarding ol {
+  margin: 0;
+  padding-left: 22px;
+}
+
+.license-onboarding p {
+  margin: 8px 0 0;
+}
+
 .license-fields {
   margin-top: 14px;
   display: grid;
