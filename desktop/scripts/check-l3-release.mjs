@@ -53,7 +53,7 @@ export function evaluateL3Release(root) {
     const url = new URL(parsed?.ownerBaseUrl)
     if (url.protocol !== 'https:' || !url.hostname || url.username || url.password ||
         url.search || url.hash || url.pathname !== '/' ||
-        /^(localhost|127\.|0\.0\.0\.0|\[::1\]|.*\.invalid|.*\.example)$/i.test(url.hostname)) {
+        /^(localhost|127\.|0\.0\.0\.0|\[::1\]|(?:.*\.)?(?:invalid|example|test|localhost))$/i.test(url.hostname)) {
       blockers.push('PUBLISHER_HTTPS_ORIGIN_MISSING')
     }
   } catch {

@@ -10,7 +10,7 @@ function fixture(callback) {
   const root = mkdtempSync(join(tmpdir(), 'rehab-l3-gate-'))
   const files = {
     'desktop/launcher/src-tauri/resources/license/trusted-issuers.json':
-      JSON.stringify({ ownerBaseUrl: 'https://licenses.publisher.test/',
+      JSON.stringify({ ownerBaseUrl: 'https://licenses.publisher.org/',
         issuers: [{ kid: 'owner-v1', publicKeyBase64url: Buffer.alloc(32, 7).toString('base64url') }] }),
     'desktop/launcher/src-tauri/Cargo.toml': '[features]\nlicense-required = []\n',
     '.github/workflows/desktop-release.yml': [
@@ -58,6 +58,14 @@ test('missing owner publisher root and URL keep real release blocked', () => {
     assert.equal(result.ready, false)
     assert.ok(result.blockers.includes('PUBLISHER_ROOTS_MISSING'))
     assert.ok(result.blockers.includes('PUBLISHER_HTTPS_ORIGIN_MISSING'))
+  })
+})
+test('reserved test domains cannot be used as formal Owner endpoints', () => {
+  fixture(({ root, put, files }) => {
+    put('desktop/launcher/src-tauri/resources/license/trusted-issuers.json',
+      files['desktop/launcher/src-tauri/resources/license/trusted-issuers.json']
+        .replace('licenses.publisher.org', 'licenses.publisher.test'))
+    assert.ok(evaluateL3Release(root).blockers.includes('PUBLISHER_HTTPS_ORIGIN_MISSING'))
   })
 })
 test('migration not integrated cannot be bypassed by adding a SQL file', () => {

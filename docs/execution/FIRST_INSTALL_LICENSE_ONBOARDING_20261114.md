@@ -45,3 +45,12 @@
 现有 QA 安装包仍没有可信公钥和 Owner 端点，无法用于正式首次授权。**修改源码并不代表已经更新了用户正在打开的 App**。真正可用的发行包仍须满足 Owner 信任配置、真实 MFA、生产 Core/HEP、安全验收与正式代码签名门禁。
 
 本轮证据：Mac1 /Users/saber/my-project/rehab/validation-evidence/qa-20261114-first-install-license-onboarding/。低于8GiB可用磁盘时不应执行新的重型 Rust/Tauri 打包，也不得擅自删除业务、历史证据或正式安装。
+
+## 方案 A：直接在现有 Mac1 执行只读发行预检（2026-11-14）
+
+- 在现有服务运行状态下，执行 `owner-core-provisioning-preflight.mjs --live` 和 `hep-release-preflight.mjs --live`：两者均返回 `ready=false`（预期阻断）；Owner→Core 机器开通未启用、机器身份未核验、真实套餐/权限套餐未验证；Core 正式环境仍为 036，HEP 正式身份和 037 链路未就绪。
+- 原 `approved-pilot-rollout-preflight.mjs --live-readonly` 只检查 `/Applications` 中 App 目录与 Info.plist 是否存在，会把尚无可信发行配置的旧 App 标为 `installedLauncherBundlePresent=true`，容易让验收者误解。
+- 已新增独立门禁 `installedLauncherTrustConfigured`：只读检查已安装 App 内**打包的**信任配置文件，要求有效的发行商公钥编码与编号、无重复编号、合法 HTTPS Owner 站点根地址；缺失、格式错误、指向本机或不可信测试域名时拒绝。既不导入公钥，也不联系 Owner 或接触签发私钥。`installedLauncherBundlePresent` 继续如实表示文件存在，不再被当作具备授权能力的证明。
+- 这只是**静态配置格式门禁**，不会证明密钥归属、Owner 站点真实可达、TLS 证书、公证签名、许可证签发或 Core 业务授权。原有 `formalInstallerGateReady`、Owner MFA、Core/HEP 身份及临床签核等仍是独立的强制门禁。当前 App 预期 `installedLauncherTrustConfigured=false`，`canScheduleFormalCutoverAfterAllGates=false`。
+- 新增安装包缺失/空信任配置/HTTP 端点/保留测试域名/无效公钥/合成合法配置测试，并同步强化 `check-l3-release.mjs` 对 `.test`、`.invalid` 等保留域名的拒绝；旧有「所有门禁通过也不能由预检工具直接升级生产」断言仍保留。`node --test desktop/scripts/*.test.mjs` 全量通过 **120/120**；语法及 `git diff --check` 通过。现有源码的 L3 发行门禁仍正确拒绝未配置公钥与地址的正式发行。全程不进行真实审批、机构创建、生产数据库升级、患者数据读取或软件安装。
+- 后续仍需软件所有者本人核验受控发行公钥与真实 HTTPS 域名，在符合发行及正式签名条件后打包；本人 Owner MFA 审批合法申请，并完成正式套餐、037/HEP 身份配置、182 项验收与 5 项临床真人签核。**不得通过直接编辑已安装 App 的 JSON、删除按钮禁用逻辑或绕过安全校验促成申请。**

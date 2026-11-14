@@ -16,6 +16,49 @@ const candidate = resolve(homedir(),
   'my-project/rehab/validation-evidence/qa-20261113-github-sync-qa-build/candidate-runtime/1.0.0')
 const source = resolve(root, 'sql/mysql/rehab-hep-core-delivery-v1.sql')
 
+// An App folder alone is not an activatable release. Check only bundled,
+// public trust metadata; never load an issuer private key or query Owner.
+export function inspectInstalledLauncherBundle(
+  resources = '/Applications/康复管理系统内部版.app/Contents/Resources',
+  infoPlist = '/Applications/康复管理系统内部版.app/Contents/Info.plist'
+) {
+  let installedLauncherBundlePresent = false
+  let installedLauncherTrustConfigured = false
+  try {
+    installedLauncherBundlePresent = lstatSync(resources).isDirectory() &&
+      lstatSync(infoPlist).isFile()
+    if (!installedLauncherBundlePresent) {
+      return { installedLauncherBundlePresent, installedLauncherTrustConfigured }
+    }
+    const path = resolve(resources, 'resources/license/trusted-issuers.json')
+    const stat = lstatSync(path)
+    if (!stat.isFile() || stat.isSymbolicLink() || stat.size > 8192) {
+      return { installedLauncherBundlePresent, installedLauncherTrustConfigured }
+    }
+    const config = JSON.parse(readFileSync(path, 'utf8'))
+    const endpoint = new URL(config.ownerBaseUrl)
+    const host = endpoint.hostname.toLowerCase()
+    const endpointValid = endpoint.protocol === 'https:' && !!host &&
+      !endpoint.username && !endpoint.password && !endpoint.search &&
+      !endpoint.hash && endpoint.pathname === '/' &&
+      !/^(localhost|127\.|0\.0\.0\.0|\[::1\]|(?:.*\.)?(?:invalid|example|test|localhost))$/i.test(host)
+    const keys = config.issuers
+    const uniqueKids = new Set()
+    const keysValid = Array.isArray(keys) && keys.length > 0 && keys.length <= 12 &&
+      keys.every(item => {
+        if (!item || typeof item.kid !== 'string' ||
+            !/^[A-Za-z0-9._-]{1,48}$/.test(item.kid) || uniqueKids.has(item.kid) ||
+            typeof item.publicKeyBase64url !== 'string' ||
+            !/^[A-Za-z0-9_-]{43}$/.test(item.publicKeyBase64url)) return false
+        uniqueKids.add(item.kid)
+        const key = Buffer.from(item.publicKeyBase64url, 'base64url')
+        return key.length === 32 && key.toString('base64url') === item.publicKeyBase64url
+      })
+    installedLauncherTrustConfigured = endpointValid && keysValid
+  } catch { /* fail closed, do not expose bundle paths or key material */ }
+  return { installedLauncherBundlePresent, installedLauncherTrustConfigured }
+}
+
 function runJson(file, args = [], permittedExitCodes = [0, 2]) {
   const result = spawnSync(process.execPath, [file, ...args], {
     cwd: root, encoding: 'utf8', timeout: 25000, maxBuffer: 128 * 1024
@@ -26,7 +69,8 @@ function runJson(file, args = [], permittedExitCodes = [0, 2]) {
 }
 
 export function evaluateRollout({ decisions, owner, hep, roles, links, mvp,
-  packageGate, sourceDirty, migrationSha256, installedLauncherBundlePresent = false }) {
+  packageGate, sourceDirty, migrationSha256, installedLauncherBundlePresent = false,
+  installedLauncherTrustConfigured = false }) {
   if (decisions?.schema !== 'rehab-owner-core-hep-decisions/1') {
     throw Error('APPROVED_DECISION_RECORD_INVALID')
   }
@@ -56,6 +100,7 @@ export function evaluateRollout({ decisions, owner, hep, roles, links, mvp,
     ownerMfaScopedProvisioningActivated: owner.ready,
     coreHepSignedIdentityLive: hep.ready,
     installedLauncherBundlePresent,
+    installedLauncherTrustConfigured,
     sourceFrozen: !sourceDirty,
     mvp182FormallyAccepted: mvp.ready && mvp.pass === 182,
     formalInstallerGateReady: packageGate.ready,
@@ -63,7 +108,7 @@ export function evaluateRollout({ decisions, owner, hep, roles, links, mvp,
   }
   const prerequisites = [
     'ownerMfaScopedProvisioningActivated', 'coreHepSignedIdentityLive',
-    'installedLauncherBundlePresent',
+    'installedLauncherBundlePresent', 'installedLauncherTrustConfigured',
     'sourceFrozen', 'mvp182FormallyAccepted', 'formalInstallerGateReady',
     'fiveClinicalReviewsActual'
   ]
@@ -99,15 +144,9 @@ export function inspectCurrentRollout() {
     cwd: root, encoding: 'utf8', timeout: 10000
   }).trim())
   const migrationSha256 = createHash('sha256').update(readFileSync(source)).digest('hex')
-  let installedLauncherBundlePresent = false
-  try {
-    const resources = '/Applications/康复管理系统内部版.app/Contents/Resources'
-    const infoPlist = '/Applications/康复管理系统内部版.app/Contents/Info.plist'
-    installedLauncherBundlePresent = lstatSync(resources).isDirectory() &&
-      lstatSync(infoPlist).isFile()
-  } catch { /* no installed app; keep the preflight fail-closed */ }
+  const launcher = inspectInstalledLauncherBundle()
   return evaluateRollout({ decisions, owner, hep, roles, links, mvp,
-    packageGate, sourceDirty, migrationSha256, installedLauncherBundlePresent })
+    packageGate, sourceDirty, migrationSha256, ...launcher })
 }
 
 if (process.argv[1] && pathToFileURL(resolve(process.argv[1])).href === import.meta.url) {
