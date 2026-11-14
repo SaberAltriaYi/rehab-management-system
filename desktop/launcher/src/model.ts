@@ -51,19 +51,40 @@ export function licenseEnrollmentReady(license: LicenseOverview | null | undefin
   return !!license?.publisherConfigured && !!license.ownerEndpointConfigured
 }
 
+/** 0 = loading; 1..5 = the next user-visible step, never an authorization decision. */
+export function licenseOnboardingStep(license: LicenseOverview | null | undefined): number {
+  if (!license) return 0
+  if (!licenseEnrollmentReady(license)) return 1
+  if (!license.tenantId || !license.installationId) return 2
+  if (!license.applicationId) return 3
+  if (!licenseAllowsBusiness(license)) return 4
+  // Only the signed local lease is known here. Core must independently authorize business use.
+  return 5
+}
+
 /** Explain intentional blocking before the person tries a dead-looking control. */
 export function licenseFirstRunGuidance(license: LicenseOverview | null | undefined): string {
-  if (!license?.publisherConfigured) {
+  if (!license) return '正在读取本机授权状态，请稍后查看首次授权步骤。'
+  if (!license.publisherConfigured) {
     return '当前安装包没有预置发行商可信公钥。请向软件所有者取得经过验证的正式签名发行包；此QA包不能自行激活。'
   }
   if (!license.ownerEndpointConfigured) {
     return '当前安装包缺少可信的在线Owner授权端点。请由软件所有者提供包含授权端点的正式发行包，不要粘贴第三方链接或公钥。'
+  }
+  if (license.tenantId && !license.installationId) {
+    return '本机安装身份信息不完整。请联系软件所有者核对，不要删除或重建已有密钥。'
   }
   if (!license.tenantId) {
     return '首先点击“首次登记安装身份”，填写工作室名称；随后提交申请，由软件所有者通过独立Owner MFA审批。'
   }
   if (!license.applicationId) {
     return '安装身份已创建。点击“在线提交授权申请”，随后联系软件所有者在Owner控制台审批。'
+  }
+  if (['SUSPENDED', 'REVOKED', 'REPLACED', 'INVALID'].includes(license.status)) {
+    return '当前许可状态不允许使用系统。请联系软件所有者核查，不要自行覆盖安装身份或绕过签名验证。'
+  }
+  if (license.status === 'EXPIRED') {
+    return '本次签名租约已到期。请联网尝试“在线获取或续签”；如合同或审批失效，请联系软件所有者。'
   }
   if (!licenseAllowsBusiness(license)) {
     return '申请已提交。待软件所有者通过Owner MFA批准后，点击“在线获取或续签”获取并校验签名许可。'

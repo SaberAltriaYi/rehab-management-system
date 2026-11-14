@@ -12,6 +12,7 @@ import {
   isValidTransferPassword,
   licenseLabel,
   licenseEnrollmentReady,
+  licenseOnboardingStep,
   licenseFirstRunGuidance,
   licenseAllowsBusiness,
   licenseExpiryNotice,
@@ -34,8 +35,8 @@ let busy = false
 let logText = ''
 let selectedImportPath = ''
 let licenseError = ''
-// The UI refreshes every five seconds. Preserve the onboarding panel state.
-let licenseOnboardingOpen = false
+// Null means auto-expand for a not-yet-licensed user; clicks override across 5s refreshes.
+let licenseOnboardingPreference: boolean | null = null
 
 function escapeHtml(value: string): string {
   return value
@@ -48,6 +49,15 @@ function escapeHtml(value: string): string {
 
 function render(): void {
   const enrollmentReady = licenseEnrollmentReady(overview.license)
+  const onboardingStep = licenseOnboardingStep(overview.license)
+  const licenseOnboardingOpen = licenseOnboardingPreference ?? (onboardingStep > 0 && onboardingStep < 5)
+  const onboardingSteps = [
+    ['获取可信安装包', '由软件所有者提供正式签名版本，预置可信发行公钥及可访问的 HTTPS Owner 授权地址。'],
+    ['登记这台设备', '填写工作室名称，在本机生成独立安装身份与私钥。私钥不得复制给软件所有者。'],
+    ['提交授权申请', '在线提交后记录申请编号；提交不等于已批准。'],
+    ['Owner 审核与领证', '所有者独立登录并完成 MFA、机构与套餐审核；批准后点击“在线获取或续签”。'],
+    ['验证后进入系统', '验证本机签名租约和 Core 服务端授权均有效，再启动业务并使用管理员账户登录。']
+  ] as const
   const serviceCards = overview.services
     .map(
       (service) => `
@@ -95,21 +105,26 @@ function render(): void {
         <p class="license-hint">${overview.releaseRequiresLicense
           ? '正式强制授权构建：业务服务还必须验证相同签名许可证；未激活不得启动。'
           : '当前为开发/兼容构建，未启用正式业务授权强制门禁；本机校验通过不代表生产服务已获准使用。'}</p>
-        ${!enrollmentReady
+        ${overview.license && !enrollmentReady
           ? '<p class="warning-text">当前安装包未配置完整可信授权渠道，不能登记或提交真实机构申请；请由软件所有者提供包含可信公钥和HTTPS授权端点的正式签名发行包。不要导入未知第三方公钥。</p>'
           : ''}
-        <p class="license-hint" role="status">${escapeHtml(licenseFirstRunGuidance(overview.license))}</p>
+        <div class="license-next-action" role="status" aria-live="polite">
+          <strong>${onboardingStep ? `当前步骤 ${onboardingStep}/5：${escapeHtml(onboardingSteps[onboardingStep - 1]?.[0] ?? '核查授权状态')}` : '正在读取授权状态'}</strong>
+          <p>${escapeHtml(licenseFirstRunGuidance(overview.license))}</p>
+        </div>
         <button type="button" class="license-help-toggle secondary" data-action="license-help"
           aria-expanded="${licenseOnboardingOpen}" aria-controls="license-onboarding-steps">
-          ${licenseOnboardingOpen ? '收起首次授权步骤' : '查看首次授权步骤（可点击）'}
+          ${licenseOnboardingOpen ? '收起首次授权步骤' : '查看首次授权步骤'}
         </button>
         ${licenseOnboardingOpen ? `<section class="license-onboarding" id="license-onboarding-steps">
-          <ol>
-            <li>工作室向软件所有者获取<strong>经过验证的正式签名发行包</strong>；包内必须预置可信Owner公钥及HTTPS授权端点。</li>
-            <li>安装后点击<strong>首次登记安装身份</strong>并填写工作室名称，启动器在本机生成独立的安装编号及私钥。</li>
-            <li>点击<strong>在线提交授权申请</strong>，保存申请编号；由软件所有者在独立Owner控制台完成真实MFA审批。</li>
-            <li>获批准后点击<strong>在线获取或续签</strong>，由启动器验证签名许可、安装实例和撤销状态。</li>
-            <li>确认Core服务端获得相同的授权后，再启动或访问正式业务服务。不能用QA包或拷贝私钥跳过审批。</li>
+          <ol class="license-step-list">
+            ${onboardingSteps.map((step, index) => {
+              const stepNumber = index + 1
+              const state = stepNumber < onboardingStep ? 'done' : stepNumber === onboardingStep ? 'current' : 'pending'
+              return `<li class="license-step--${state}" ${state === 'current' ? 'aria-current="step"' : ''}>
+                <strong>${escapeHtml(step[0])}</strong><span>${escapeHtml(step[1])}</span>
+              </li>`
+            }).join('')}
           </ol>
           <p>尚未获得发行包时，请联系软件所有者；不要提供本机私钥、Owner密码或TOTP。</p>
         </section>` : ''}
@@ -126,10 +141,10 @@ function render(): void {
         </dl>
         <div class="actions license-actions">
           <button data-action="license-begin" title="${escapeHtml(enrollmentReady ? '生成本机安装身份' : licenseFirstRunGuidance(overview.license))}" ${busy || !!overview.license?.tenantId || !enrollmentReady ? 'disabled' : ''}>首次登记安装身份</button>
-          <button data-action="license-submit" ${busy || !enrollmentReady || !overview.license?.tenantId || !!overview.license?.applicationId || !!overview.license?.pendingReplacement ? 'disabled' : ''}>在线提交授权申请</button>
-          <button data-action="license-renew" ${busy || !enrollmentReady || !overview.license?.tenantId || !overview.license.applicationId ? 'disabled' : ''}>在线获取或续签</button>
-          <button data-action="license-check" ${busy || !enrollmentReady || !overview.license?.tenantId || !overview.license.applicationId ? 'disabled' : ''}>刷新撤销状态</button>
-          <button data-action="license-import" ${busy || !overview.license?.publisherConfigured || !overview.license?.tenantId ? 'disabled' : ''}>导入离线许可证</button>
+          <button data-action="license-submit" ${busy || !enrollmentReady || !overview.license?.tenantId || !overview.license?.installationId || !!overview.license?.applicationId || !!overview.license?.pendingReplacement ? 'disabled' : ''}>在线提交授权申请</button>
+          <button data-action="license-renew" ${busy || !enrollmentReady || !overview.license?.tenantId || !overview.license?.installationId || !overview.license.applicationId ? 'disabled' : ''}>在线获取或续签</button>
+          <button data-action="license-check" ${busy || !enrollmentReady || !overview.license?.tenantId || !overview.license?.installationId || !overview.license.applicationId ? 'disabled' : ''}>刷新撤销状态</button>
+          <button data-action="license-import" ${busy || !overview.license?.publisherConfigured || !overview.license?.tenantId || !overview.license?.installationId ? 'disabled' : ''}>导入离线许可证</button>
           <button data-action="license-replace" ${busy || !!overview.license?.tenantId || !enrollmentReady ? 'disabled' : ''}>新设备换机申请</button>
         </div>
         <p class="license-hint">离线许可证必须由软件所有者签发，最长有效 72 小时。换机需要所有者人工确认，复制文件或自行重建私钥无法转移授权。</p>
@@ -342,7 +357,7 @@ function bindActions(): void {
       if (!action) return
       switch (action) {
         case 'license-help':
-          licenseOnboardingOpen = !licenseOnboardingOpen
+          licenseOnboardingPreference = !(licenseOnboardingPreference ?? (licenseOnboardingStep(overview.license) > 0 && licenseOnboardingStep(overview.license) < 5))
           render()
           break
         case 'license-begin':

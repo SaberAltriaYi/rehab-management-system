@@ -21,12 +21,12 @@ window.syntheticCalls = [];
 window.syntheticOverview = {
   appVersion:'1.0.0',dockerState:'healthy',dockerDetail:'合成 Docker',
   services:[],accessUrl:'https://127.0.0.1:8443',dataDirectory:'合成目录',
-  lastBackupAt:null,lastError:null,operation:null,ready:false,
+  lastBackupAt:null,lastError:null,operation:null,ready:true,
   license:{status:'UNLICENSED',detail:'需向软件所有者申请许可',
     tenantId:null,installationId:null,organization:null,applicationId:null,
     expiry:null,seatLimit:null,modules:[],pendingReplacement:false,
     publisherConfigured:false,ownerEndpointConfigured:false,localVerificationOnly:true},
-  releaseRequiresLicense:false
+  releaseRequiresLicense:true
 };
 window.__TAURI_INTERNALS__ = {
   invoke:async name => {
@@ -48,12 +48,16 @@ window.__TAURI_INTERNALS__ = {
  const button = action => document.querySelector('button[data-action="'+action+'"]');
  const result = {};
  try {
-   await until(() => button('license-help') && document.querySelector('[role=status]'));
+   await until(() => button('license-help') && document.querySelector('[role=status]')?.textContent.includes('正式签名发行包'));
    result.untrustedBeginDisabled=button('license-begin').disabled;
    result.untrustedSubmitDisabled=button('license-submit').disabled;
    result.untrustedOfflineImportDisabled=button('license-import').disabled;
    result.helpEnabled=!button('license-help').disabled;
    result.visibleReason=document.querySelector('[role=status]').textContent.includes('正式签名发行包');
+   result.autoExpanded=!!document.querySelector('#license-onboarding-steps');
+   result.firstStepHighlighted=document.querySelector('[aria-current=step]')?.textContent.includes('获取可信安装包')===true;
+   button('license-help').click();
+   result.manualCloseWorks=!document.querySelector('#license-onboarding-steps');
    button('license-help').click();
    result.helpClicked=!!document.querySelector('#license-onboarding-steps');
    result.stepsVisible=document.querySelectorAll('#license-onboarding-steps li').length===5;
@@ -63,17 +67,30 @@ window.__TAURI_INTERNALS__ = {
    window.syntheticOverview.license.ownerEndpointConfigured=true;
    await until(() => !button('license-begin').disabled);
    result.trustedBeginEnabled=true;
+   result.secondStepHighlighted=document.querySelector('[aria-current=step]')?.textContent.includes('登记这台设备')===true;
    result.trustedSubmitStillDisabled=button('license-submit').disabled;
    button('license-begin').click();
    result.beginDialogActuallyOpens=document.querySelector('#license-begin-dialog').open;
    document.querySelector('#license-begin-dialog').close();
    window.syntheticOverview.license.tenantId='synthetic-tenant';
+   await delay(100);
+   result.missingDeviceIdentityStillBlocksSubmit=button('license-submit').disabled;
+   window.syntheticOverview.license.installationId='synthetic-install';
    await until(() => !button('license-submit').disabled);
    result.enrolledSubmitEnabled=true;
+   result.thirdStepHighlighted=document.querySelector('[aria-current=step]')?.textContent.includes('提交授权申请')===true;
    result.renewDisabledBeforeSubmit=button('license-renew').disabled;
    window.syntheticOverview.license.applicationId='synthetic-application';
    await until(() => !button('license-renew').disabled);
    result.submittedRenewEnabled=true;
+   result.fourthStepHighlighted=document.querySelector('[aria-current=step]')?.textContent.includes('Owner 审核')===true;
+   window.syntheticOverview.license.status='REVOKED';
+   await until(() => document.querySelector('[role=status]')?.textContent.includes('不允许使用'));
+   result.revokedExplainedNotActivated=button('open').disabled;
+   window.syntheticOverview.license.status='ACTIVE';
+   await until(() => document.querySelector('[role=status]')?.textContent.includes('Core服务端授权状态'));
+   result.fifthStepRequiresCore=document.querySelector('[aria-current=step]')?.textContent.includes('验证后进入系统')===true;
+   result.activeAllowsLocalOpen=button('open').disabled===false;
    result.noMutatingTauriIPC=window.syntheticCalls.every(name =>
      name==='get_overview'||name==='get_settings');
  } catch(error) {result.error=String(error)}
@@ -81,8 +98,8 @@ window.__TAURI_INTERNALS__ = {
 })();
 </script></body></html>`
 
-test('Chrome: first-run help clicks, survives refresh, registration only when trusted issuer and HTTPS Owner exist',
-  { skip: !existsSync(chrome), timeout: 40_000 }, async () => {
+test('Chrome: first-run help auto-opens, survives refresh, registration only when trusted issuer and HTTPS Owner exist',
+  { skip: !existsSync(chrome), timeout: 70_000 }, async () => {
     const tmp = mkdtempSync(join(tmpdir(), 'rehab-first-install-synthetic-'))
     const bundle = join(tmp, 'bundle')
     await build({
@@ -148,7 +165,7 @@ test('Chrome: first-run help clicks, survives refresh, registration only when tr
         return msg.result?.result?.value
       }
       let output
-      for(let i=0;i<220;i++){
+      for(let i=0;i<600;i++){
         const value=await evaluate('document.body?.dataset?.launcherOnboardingTest')
         if(value){output=JSON.parse(value);break}
         await sleep(100)
