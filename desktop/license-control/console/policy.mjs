@@ -1,5 +1,23 @@
 // Browser-only input normalization. Server performs authoritative validation.
 export const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
+
+// Owner API submittedAt is milliseconds since Unix epoch; Beijing is UTC+8
+// year-round. Do not invent a submission date when legacy data lacks one.
+export function formatOwnerSubmissionTime(submittedAt) {
+  if (!Number.isSafeInteger(submittedAt) || submittedAt <= 0) return '日期未记录'
+  const date = new Date(submittedAt + 8 * 60 * 60 * 1000)
+  if (!Number.isFinite(date.getTime())) return '日期未记录'
+  return date.toISOString().slice(0, 19).replace('T', ' ')
+}
+
+export function sortOwnerApplicationsNewestFirst(applications) {
+  return [...applications].sort((a, b) => {
+    const timeA = Number.isSafeInteger(a?.submittedAt) ? a.submittedAt : -1
+    const timeB = Number.isSafeInteger(b?.submittedAt) ? b.submittedAt : -1
+    return timeB - timeA || String(b?.id ?? '').localeCompare(String(a?.id ?? ''))
+  })
+}
+
 export function parsePolicy({ expiry, seats, unlimited, installations, modules, mainSystem }, nowMs = Date.now()) {
   const expiresAtMs = Date.parse(expiry)
   if (!Number.isSafeInteger(expiresAtMs) || expiresAtMs <= nowMs ||

@@ -1,10 +1,29 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { approvedProvisionState, parsePolicy, requireUuid, redactAuditItem } from './policy.mjs'
+import { approvedProvisionState, formatOwnerSubmissionTime, parsePolicy, requireUuid,
+  redactAuditItem, sortOwnerApplicationsNewestFirst } from './policy.mjs'
 
 const NOW = Date.parse('2026-10-10T04:00:00Z')
 const EXP = '2026-12-31T23:00:00+08:00'
 const BASE = { expiry: EXP, seats: '5', unlimited: false, installations: '2', modules: 'report,rehab' }
+test('owner application dates render in explicit Beijing time and missing dates remain unknown', () => {
+  assert.equal(formatOwnerSubmissionTime(Date.parse('2026-10-21T05:07:50Z')),
+    '2026-10-21 13:07:50')
+  assert.equal(formatOwnerSubmissionTime(undefined), '日期未记录')
+  assert.equal(formatOwnerSubmissionTime(null), '日期未记录')
+  assert.equal(formatOwnerSubmissionTime('1792559270012'), '日期未记录')
+  assert.equal(formatOwnerSubmissionTime(Number.MAX_VALUE), '日期未记录')
+})
+test('owner application display sorts newest first without mutating API response', () => {
+  const source = [
+    { id: 'older', submittedAt: 1792559270012 },
+    { id: 'unknown' },
+    { id: 'newer', submittedAt: 1792812000000 }
+  ]
+  assert.deepEqual(sortOwnerApplicationsNewestFirst(source).map(app => app.id),
+    ['newer', 'older', 'unknown'])
+  assert.deepEqual(source.map(app => app.id), ['older', 'unknown', 'newer'])
+})
 test('staff limits come only from explicit signed owner approval policy', () => {
   assert.deepEqual(parsePolicy(BASE, NOW), {
     expiresAtMs: Date.parse(EXP), seatLimit: 5, maxInstallations: 2, modules: ['rehab', 'report']

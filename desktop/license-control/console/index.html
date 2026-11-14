@@ -56,8 +56,9 @@
       </form>
     </section>
     <section class="panel">
-      <div class="section-heading"><h2>待审批工作室</h2><span id="application-count" aria-live="polite">—</span></div>
-      <div class="table-scroll"><table><thead><tr><th>工作室</th><th>租户 / 设备编号</th><th>申请状态</th><th>操作</th></tr></thead><tbody id="applications"></tbody></table></div>
+      <div class="section-heading"><h2>待审批工作室与历史申请</h2><span id="application-count" aria-live="polite">—</span></div>
+      <p class="hint">按提交时间从新到旧排列，时间统一为北京时间（UTC+08:00）。提交较新不代表机构身份已核实，批准前仍需核对申请资料。</p>
+      <div class="table-scroll"><table><thead><tr><th>工作室</th><th>提交时间（北京时间）</th><th>租户 / 设备编号</th><th>申请状态</th><th>操作</th></tr></thead><tbody id="applications"></tbody></table></div>
       <p class="hint">审批只签发软件许可；不授予所有者查看任何康复病历的权限。待审核申请可通过独立“删除”操作移除（需要 Owner MFA 和删除理由）；已批准或被驳回的记录不可删除。操作保留不可篡改审计。</p>
       <p id="pending-action-result" class="selection-status" role="status" aria-live="polite">删除只适用于尚未批准的申请，不会修改已批准的许可证。</p>
     </section>

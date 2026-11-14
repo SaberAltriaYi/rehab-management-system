@@ -131,6 +131,13 @@ try {
   if (!await ready(() => $('feedback').textContent.includes('合法的小写 UUID'))) throw Error('missing tenant hint')
   result.tenantHint = true
   const rows = [...$('applications').children]
+  result.submittedTimeColumn = [...document.querySelectorAll('#applications')].length === 1 &&
+    document.querySelector('th:nth-child(2)')?.textContent.includes('提交时间')
+  result.newestFirst = rows[0].textContent.includes('模拟已批准机构') &&
+    rows[1].textContent.includes('模拟待审核机构')
+  result.beijingTimestamp = rows[1].children[1].textContent.includes('2026-10-21 13:07:50')
+  result.missingTimestampExplained = rows[2].children[1].textContent.includes('日期未记录')
+  result.pendingCount = $('application-count').textContent.includes('待审核 1 条 / 共 3 条')
   const pending = rows.find(row => row.textContent.includes('模拟待审核机构'))
   const approved = rows.find(row => row.textContent.includes('模拟已批准机构'))
   const revoked = rows.find(row => row.textContent.includes('模拟已撤销机构'))
@@ -199,9 +206,11 @@ test('Chrome synthetic actions show guidance and load approved tenant without pr
           adminRecoveryEnabled: true, provisioningConfigured: true, activationEmailConfigured: false,
           applications: [
             { id: appIdPending, tenantId: uuidPending, installationId: installUuid,
-              organization: '模拟待审核机构', status: 'PENDING', provisioningStatus: 'NOT_CONFIGURED' },
+              organization: '模拟待审核机构', status: 'PENDING', provisioningStatus: 'NOT_CONFIGURED',
+              submittedAt: Date.parse('2026-10-21T05:07:50Z') },
             { id: appIdApproved, tenantId: uuidApproved, installationId: installUuid,
-              organization: '模拟已批准机构', status: 'APPROVED', provisioningStatus: 'FAILED' },
+              organization: '模拟已批准机构', status: 'APPROVED', provisioningStatus: 'FAILED',
+              submittedAt: Date.parse('2026-10-24T09:54:17Z') },
             { id: appIdRevoked, tenantId: uuidRevoked, installationId: installUuid,
               organization: '模拟已撤销机构', status: 'APPROVED', provisioningStatus: 'FAILED' }
           ]
@@ -235,6 +244,8 @@ test('Chrome synthetic actions show guidance and load approved tenant without pr
       assert.equal(state.error, undefined, JSON.stringify(state))
       for (const key of ['initialApproveEnabled', 'initialTenantPolicyEnabled',
         'approvalHint', 'tenantHint', 'pendingSelected', 'maintainLoaded',
+        'submittedTimeColumn', 'newestFirst', 'beijingTimestamp',
+        'missingTimestampExplained', 'pendingCount',
         'provisionPanelVisible', 'provisionButtonEnabled',
         'pendingDeleteAvailable','approvedDeleteAbsent','revokedPolicyNotice',
         'revokedProvisionNotice','revokedPolicyClickFeedback','revokedProvisionClickFeedback']) {

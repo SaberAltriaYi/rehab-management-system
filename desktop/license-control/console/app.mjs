@@ -1,4 +1,5 @@
-import { approvedProvisionState, parsePolicy, requireUuid, redactAuditItem } from './policy.mjs'
+import { approvedProvisionState, formatOwnerSubmissionTime, parsePolicy, requireUuid,
+  redactAuditItem, sortOwnerApplicationsNewestFirst } from './policy.mjs'
 
 // Dedicated owner application: NO localStorage, sessionStorage, cookies or
 // reuse of the clinic's Vue admin bearer. Every owner API call is server MFA.
@@ -361,12 +362,13 @@ async function refreshApplications({ announce = true } = {}) {
   $('core-recovery-status').textContent = recoveryWindowEnabled
     ? '本机恢复维护窗口已开放。仍须在本机工具生成挑战码，再完成 Owner MFA 签发。'
     : '当前本机密码恢复维护窗口未开启或已到期。请先通过受控运维流程重新开通；这里不能绕过 MFA 或直接修改密码。'
-  const applications = result.applications || []
+  const applications = sortOwnerApplicationsNewestFirst(result.applications || [])
   currentApplications = applications
   setWorkflowStatus(result.provisioningConfigured, result.activationEmailConfigured)
   const body = $('applications')
   body.replaceChildren()
-  $('application-count').textContent = applications.length + ' 条申请'
+  $('application-count').textContent = '待审核 ' + applications.filter(app =>
+    ['PENDING', 'NEEDS_INFO'].includes(app.status)).length + ' 条 / 共 ' + applications.length + ' 条'
   selected = selected && applications.some(x => x.id === selected.id && ['PENDING', 'NEEDS_INFO'].includes(x.status))
     ? applications.find(x => x.id === selected.id) : null
   selectedTenant = selectedTenant && applications.some(x => x.tenantId === selectedTenant.tenantId && x.status === 'APPROVED')
@@ -376,6 +378,9 @@ async function refreshApplications({ announce = true } = {}) {
     const row = node('tr')
     if (selected?.id === app.id || selectedTenant?.tenantId === app.tenantId) row.className = 'selected'
     const name = node('td', app.organization)
+    const submitted = node('td')
+    submitted.append(node('div', formatOwnerSubmissionTime(app.submittedAt)),
+      node('small', '申请编号：' + app.id, 'muted'))
     const ids = node('td')
     ids.append(node('small', app.tenantId), node('div', app.installationId))
     if (app.contactName || app.contactPhone || app.contactEmail) {
@@ -495,7 +500,7 @@ async function refreshApplications({ announce = true } = {}) {
       }))
       actions.append(email)
     }
-    row.append(name, ids, status, actions)
+    row.append(name, submitted, ids, status, actions)
     body.append(row)
   }
   $('approval-action-guide').textContent = selected
