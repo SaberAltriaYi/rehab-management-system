@@ -1,0 +1,115 @@
+// Read-only, fail-closed check for the user-designated synthetic-only "test"
+// institution. Never approves a license, alters production SQL or uses an
+// Owner session / TOTP. Output contains only booleans and symbolic blockers.
+import { execFileSync } from 'node:child_process'
+import { readFileSync } from 'node:fs'
+import { homedir } from 'node:os'
+import { resolve } from 'node:path'
+import { pathToFileURL } from 'node:url'
+import { inspectLocalProvisioning } from './owner-core-provisioning-preflight.mjs'
+
+const OWNER_DB = resolve(homedir(), 'my-project/rehab-runtime/owner-local/owner.sqlite')
+const OWNER_ENV = resolve(homedir(), 'my-project/rehab-runtime/owner-local/owner.env')
+const PILOT_QUOTAS = Object.freeze({
+  users: 20, patients: 400, assessments: 2000, storageBytes: 5368709120
+})
+
+function positiveId(value) {
+  return typeof value === 'string' && /^[1-9][0-9]{0,17}$/.test(value)
+    ? value : null
+}
+
+function privateEnv(contents) {
+  const values = {}
+  for (const line of contents.split(/\r?\n/)) {
+    const match = /^\s*(?:export\s+)?(REHAB_MAIN_PROVISIONING_(?:PLAN|PACKAGE)_ID)=(.*)$/.exec(line)
+    if (match) values[match[1]] = match[2].trim().replace(/^['"]|['"]$/g, '')
+  }
+  return values
+}
+
+export function evaluateInternalPilotReadiness({ applicants, planMatches, packageMatches, ownerCore }) {
+  const uniqueApplicant = Array.isArray(applicants) && applicants.length === 1 ? applicants[0] : null
+  let modules = []
+  try {
+    modules = JSON.parse(uniqueApplicant?.modules_json)
+  } catch { /* invalid license modules must fail closed */ }
+  const checks = {
+    exactlyOneDesignatedApplication: Boolean(uniqueApplicant),
+    ownerApplicationApproved: uniqueApplicant?.status === 'APPROVED',
+    ownerLicenseActive: uniqueApplicant?.license_status === 'ACTIVE',
+    ownerLicenseIncludesRehab: Array.isArray(modules) && modules.includes('rehab'),
+    ownerLicenseSeatLimit20: uniqueApplicant?.seat_limit === PILOT_QUOTAS.users,
+    noPreviousCoreTenantBinding: uniqueApplicant?.main_tenant_id === null,
+    ownerCoreProvisioningNotYetAttempted: uniqueApplicant?.provisioning_status === 'NOT_CONFIGURED',
+    effectiveCorePilotQuotaVerified: planMatches === 1,
+    effectiveCorePermissionPackageVerified: packageMatches === 1,
+    ownerCoreMachineChannelReady: ownerCore?.ready === true
+  }
+  return {
+    schema: 'rehab-internal-pilot-live-readonly/1',
+    permittedDataScope: 'SYNTHETIC_ONLY',
+    actualPatientDataUseVerifiedByThisTool: false,
+    expectedQuotas: PILOT_QUOTAS,
+    technicalPrerequisitesReady: Object.values(checks).every(Boolean),
+    productionWriteAuthorizedByThisTool: false,
+    formalClinicalReleaseAuthorizedByThisTool: false,
+    checks,
+    blockers: Object.entries(checks).filter(([, ok]) => !ok).map(([key]) => key)
+  }
+}
+
+export async function inspectInternalPilotLive() {
+  const raw = execFileSync('/usr/bin/sqlite3', [
+    '-readonly', '-json', OWNER_DB,
+    `SELECT a.status,a.provisioning_status,a.main_tenant_id,
+      e.status AS license_status,e.seat_limit,e.modules_json
+     FROM applications a LEFT JOIN entitlements e ON e.tenant_uuid=a.tenant_uuid
+     WHERE a.organization='test' AND a.submitted_at>=1794585600000
+       AND a.submitted_at<1794672000000 LIMIT 2;`
+  ], { encoding: 'utf8', timeout: 8000, maxBuffer: 8192 })
+  const applicants = raw.trim() ? JSON.parse(raw) : []
+  const owner = privateEnv(readFileSync(OWNER_ENV, 'utf8'))
+  const plan = positiveId(owner.REHAB_MAIN_PROVISIONING_PLAN_ID)
+  const pkg = positiveId(owner.REHAB_MAIN_PROVISIONING_PACKAGE_ID)
+  let planMatches = 0
+  let packageMatches = 0
+  if (plan && pkg) {
+    const sql = `SELECT
+      (SELECT COUNT(*) FROM saas_plans WHERE id=${plan} AND status=1
+        AND max_users=20 AND max_patients=400 AND motion_quota=2000
+        AND storage_quota=5368709120),
+      (SELECT COUNT(*) FROM system_tenant_package WHERE id=${pkg}
+        AND status=0 AND deleted=0);`
+    const output = execFileSync('docker', [
+      'exec', 'rehab-studio-internal-mysql-1', 'mysql',
+      '--defaults-extra-file=/run/rehab-secrets/mysql-client.cnf',
+      '--batch', '--skip-column-names', 'ruoyi-vue-pro', '--execute', sql
+    ], { encoding: 'utf8', timeout: 12000, maxBuffer: 128 })
+    const counts = output.trim().split(/\s+/).map(Number)
+    if (counts.length !== 2 || counts.some(n => !Number.isSafeInteger(n))) {
+      throw Error('INVALID_CORE_PLAN_METADATA')
+    }
+    ;[planMatches, packageMatches] = counts
+  }
+  return evaluateInternalPilotReadiness({
+    applicants, planMatches, packageMatches, ownerCore: await inspectLocalProvisioning()
+  })
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+  if (process.argv.length !== 3 || process.argv[2] !== '--live-readonly') {
+    process.stderr.write('Usage: node owner-internal-pilot-readiness.mjs --live-readonly\n')
+    process.exitCode = 2
+  } else {
+    try {
+      const report = await inspectInternalPilotLive()
+      process.stdout.write(JSON.stringify(report, null, 2) + '\n')
+      if (!report.technicalPrerequisitesReady) process.exitCode = 2
+    } catch {
+      // Do not spill stdout, stderr or database errors containing IDs or keys.
+      process.stderr.write('Internal pilot read-only preflight failed closed\n')
+      process.exitCode = 2
+    }
+  }
+}
