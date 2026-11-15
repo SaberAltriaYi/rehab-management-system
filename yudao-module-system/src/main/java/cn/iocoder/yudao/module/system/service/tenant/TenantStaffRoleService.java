@@ -1,6 +1,7 @@
 package cn.iocoder.yudao.module.system.service.tenant;
 
 import cn.iocoder.yudao.framework.common.enums.CommonStatusEnum;
+import cn.iocoder.yudao.framework.common.exception.ServiceException;
 import cn.iocoder.yudao.framework.tenant.core.context.TenantContextHolder;
 import cn.iocoder.yudao.framework.security.core.util.SecurityFrameworkUtils;
 import cn.iocoder.yudao.module.system.dal.dataobject.permission.RoleDO;
@@ -24,6 +25,10 @@ import java.util.Set;
 import static cn.iocoder.yudao.module.system.enums.LogRecordConstants.SYSTEM_USER_ASSIGN_REHAB_ROLE_SUB_TYPE;
 import static cn.iocoder.yudao.module.system.enums.LogRecordConstants.SYSTEM_USER_ASSIGN_REHAB_ROLE_SUCCESS;
 import static cn.iocoder.yudao.module.system.enums.LogRecordConstants.SYSTEM_USER_TYPE;
+import static cn.iocoder.yudao.framework.common.exception.enums.GlobalErrorCodeConstants.FORBIDDEN;
+import static cn.iocoder.yudao.module.system.enums.ErrorCodeConstants.TENANT_NOT_EXISTS;
+import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionUtil.exception;
+import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionUtil.invalidParamException;
 
 /**
  * Narrow tenant-admin operation for assigning the prebuilt therapist template.
@@ -51,23 +56,32 @@ public class TenantStaffRoleService {
         Long operatorUserId = SecurityFrameworkUtils.getLoginUserId();
         if (TenantContextHolder.isIgnore() || operatorUserId == null
                 || !permissionService.hasAnyRoles(operatorUserId, RoleCodeEnum.TENANT_ADMIN.getCode())) {
-            throw new IllegalArgumentException("仅机构管理员可以分配机构员工角色");
+            throw exception(FORBIDDEN);
         }
-        if (userId == null || userId <= 0 || userId.equals(operatorUserId)) {
-            throw new IllegalArgumentException("不能为当前登录账号分配员工角色");
+        if (userId == null || userId <= 0) {
+            throw invalidParamException("员工用户编号无效");
+        }
+        if (userId.equals(operatorUserId)) {
+            throw exception(FORBIDDEN);
         }
         if (!TenantRolePermissionTemplate.isTenantAdminAssignableStaffRole(roleCode)) {
-            throw new IllegalArgumentException("机构管理员目前仅可分配康复治疗师；临床审核人须经独立资质核验和授权");
+            throw invalidParamException("机构管理员仅可分配康复治疗师角色");
         }
 
         TenantDO tenant = tenantService.getTenant(tenantId);
-        if (tenant == null || userId.equals(tenant.getContactUserId())) {
-            throw new IllegalArgumentException("不能修改机构主管理员的角色");
+        if (tenant == null) {
+            throw new ServiceException(TENANT_NOT_EXISTS);
+        }
+        if (userId.equals(tenant.getContactUserId())) {
+            throw exception(FORBIDDEN);
         }
         AdminUserDO user = userService.getUser(userId);
-        if (user == null || !tenantId.equals(user.getTenantId())
-                || !CommonStatusEnum.ENABLE.getStatus().equals(user.getStatus())) {
-            throw new IllegalArgumentException("目标员工不存在、已停用或不属于当前机构");
+        if (user == null || !CommonStatusEnum.ENABLE.getStatus().equals(user.getStatus())) {
+            throw invalidParamException("目标员工不存在或已停用");
+        }
+        if (!tenantId.equals(user.getTenantId())) {
+            // Do not reveal whether a user ID belongs to another tenant.
+            throw exception(FORBIDDEN);
         }
 
         Set<Long> currentRoleIds = permissionService.getUserRoleIdListByUserId(userId);
@@ -80,7 +94,7 @@ public class TenantStaffRoleService {
                 || !tenantId.equals(role.getTenantId())
                 || !TenantRolePermissionTemplate.isTenantAdminAssignableStaffRole(role.getCode())
                 || !RoleTypeEnum.SYSTEM.getType().equals(role.getType()))) {
-            throw new IllegalArgumentException("目标员工已有非标准角色，需由系统拥有者单独处理");
+            throw exception(FORBIDDEN);
         }
 
         List<RoleDO> targetRoles = roleService.getRoleList().stream()

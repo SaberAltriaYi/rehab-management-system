@@ -1,6 +1,7 @@
 package cn.iocoder.yudao.module.system.service.tenant;
 
 import cn.iocoder.yudao.framework.common.enums.CommonStatusEnum;
+import cn.iocoder.yudao.framework.common.exception.ServiceException;
 import cn.iocoder.yudao.framework.security.core.util.SecurityFrameworkUtils;
 import cn.iocoder.yudao.framework.tenant.core.context.TenantContextHolder;
 import cn.iocoder.yudao.module.system.dal.dataobject.permission.RoleDO;
@@ -22,8 +23,11 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.util.Arrays;
 import java.util.Collections;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.*;
+import static cn.iocoder.yudao.framework.common.exception.enums.GlobalErrorCodeConstants.BAD_REQUEST;
+import static cn.iocoder.yudao.framework.common.exception.enums.GlobalErrorCodeConstants.FORBIDDEN;
 
 @ExtendWith(MockitoExtension.class)
 class TenantStaffRoleServiceTest {
@@ -72,13 +76,13 @@ class TenantStaffRoleServiceTest {
     void cannotAssignTenantAdminOrPlatformRoleThroughStaffEndpoint() {
         try (MockedStatic<SecurityFrameworkUtils> security = mockStatic(SecurityFrameworkUtils.class)) {
             prepareAdminContext(security);
-            assertThrows(IllegalArgumentException.class,
+            assertErrorCode(BAD_REQUEST.getCode(),
                     () -> service.assignRole(20L, RoleCodeEnum.TENANT_ADMIN.getCode()));
-            assertThrows(IllegalArgumentException.class,
+            assertErrorCode(BAD_REQUEST.getCode(),
                     () -> service.assignRole(20L, RoleCodeEnum.SUPER_ADMIN.getCode()));
-            assertThrows(IllegalArgumentException.class,
+            assertErrorCode(BAD_REQUEST.getCode(),
                     () -> service.assignRole(20L, RoleCodeEnum.REHAB_CLINICAL_REVIEWER.getCode()));
-            assertThrows(IllegalArgumentException.class,
+            assertErrorCode(BAD_REQUEST.getCode(),
                     () -> service.assignRole(20L, RoleCodeEnum.REHAB_THERAPIST.getCode()));
             verifyNoInteractions(tenantService, userService, roleService);
             verify(permissionService, never()).assignUserRole(anyLong(), anySet());
@@ -91,7 +95,7 @@ class TenantStaffRoleServiceTest {
         try (MockedStatic<SecurityFrameworkUtils> security = mockStatic(SecurityFrameworkUtils.class)) {
             security.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(11L);
             when(permissionService.hasAnyRoles(11L, RoleCodeEnum.TENANT_ADMIN.getCode())).thenReturn(false);
-            assertThrows(IllegalArgumentException.class,
+            assertErrorCode(FORBIDDEN.getCode(),
                     () -> service.assignRole(20L, RoleCodeEnum.TENANT_REHAB_THERAPIST.getCode()));
             verifyNoInteractions(tenantService, userService, roleService);
         }
@@ -101,12 +105,12 @@ class TenantStaffRoleServiceTest {
     void cannotAssignSelfOrInstitutionOwner() {
         try (MockedStatic<SecurityFrameworkUtils> security = mockStatic(SecurityFrameworkUtils.class)) {
             prepareAdminContext(security);
-            assertThrows(IllegalArgumentException.class,
+            assertErrorCode(FORBIDDEN.getCode(),
                     () -> service.assignRole(10L, RoleCodeEnum.TENANT_REHAB_THERAPIST.getCode()));
             TenantDO tenant = new TenantDO();
             tenant.setContactUserId(20L);
             when(tenantService.getTenant(100L)).thenReturn(tenant);
-            assertThrows(IllegalArgumentException.class,
+            assertErrorCode(FORBIDDEN.getCode(),
                     () -> service.assignRole(20L, RoleCodeEnum.TENANT_REHAB_THERAPIST.getCode()));
             verifyNoInteractions(userService, roleService);
         }
@@ -124,7 +128,7 @@ class TenantStaffRoleServiceTest {
             foreignUser.setTenantId(200L);
             foreignUser.setStatus(CommonStatusEnum.ENABLE.getStatus());
             when(userService.getUser(20L)).thenReturn(foreignUser);
-            assertThrows(IllegalArgumentException.class,
+            assertErrorCode(FORBIDDEN.getCode(),
                     () -> service.assignRole(20L, RoleCodeEnum.TENANT_REHAB_THERAPIST.getCode()));
 
             AdminUserDO localUser = new AdminUserDO();
@@ -135,7 +139,7 @@ class TenantStaffRoleServiceTest {
             when(permissionService.getUserRoleIdListByUserId(21L)).thenReturn(Collections.singleton(401L));
             RoleDO adminRole = role(401L, 100L, RoleCodeEnum.TENANT_ADMIN.getCode());
             when(roleService.getRoleList(Collections.singleton(401L))).thenReturn(Collections.singletonList(adminRole));
-            assertThrows(IllegalArgumentException.class,
+            assertErrorCode(FORBIDDEN.getCode(),
                     () -> service.assignRole(21L, RoleCodeEnum.TENANT_REHAB_THERAPIST.getCode()));
             verify(permissionService, never()).assignUserRole(anyLong(), anySet());
         }
@@ -156,7 +160,7 @@ class TenantStaffRoleServiceTest {
             when(permissionService.getUserRoleIdListByUserId(21L)).thenReturn(Collections.singleton(402L));
             when(roleService.getRoleList(Collections.singleton(402L)))
                     .thenReturn(Collections.singletonList(role(402L, 200L, RoleCodeEnum.TENANT_REHAB_THERAPIST.getCode())));
-            assertThrows(IllegalArgumentException.class,
+            assertErrorCode(FORBIDDEN.getCode(),
                     () -> service.assignRole(21L, RoleCodeEnum.TENANT_REHAB_THERAPIST.getCode()));
             verify(roleService, never()).getRoleList();
             verify(permissionService, never()).assignUserRole(anyLong(), anySet());
@@ -184,6 +188,47 @@ class TenantStaffRoleServiceTest {
                     () -> service.assignRole(21L, RoleCodeEnum.TENANT_REHAB_THERAPIST.getCode()));
             verify(permissionService, never()).assignUserRole(anyLong(), anySet());
         }
+    }
+
+    @Test
+    void invalidTargetIdsUseBadRequestAndNeverReachRoleMutation() {
+        try (MockedStatic<SecurityFrameworkUtils> security = mockStatic(SecurityFrameworkUtils.class)) {
+            prepareAdminContext(security);
+            assertErrorCode(BAD_REQUEST.getCode(),
+                    () -> service.assignRole(null, RoleCodeEnum.TENANT_REHAB_THERAPIST.getCode()));
+            assertErrorCode(BAD_REQUEST.getCode(),
+                    () -> service.assignRole(0L, RoleCodeEnum.TENANT_REHAB_THERAPIST.getCode()));
+            assertErrorCode(BAD_REQUEST.getCode(),
+                    () -> service.assignRole(-1L, RoleCodeEnum.TENANT_REHAB_THERAPIST.getCode()));
+            verifyNoInteractions(tenantService, userService, roleService);
+            verify(permissionService, never()).assignUserRole(anyLong(), anySet());
+        }
+    }
+
+    @Test
+    void disabledOrMissingTargetUsesBadRequestWithoutRoleMutation() {
+        try (MockedStatic<SecurityFrameworkUtils> security = mockStatic(SecurityFrameworkUtils.class)) {
+            prepareAdminContext(security);
+            TenantDO tenant = new TenantDO();
+            tenant.setContactUserId(10L);
+            when(tenantService.getTenant(100L)).thenReturn(tenant);
+            assertErrorCode(BAD_REQUEST.getCode(),
+                    () -> service.assignRole(20L, RoleCodeEnum.TENANT_REHAB_THERAPIST.getCode()));
+
+            AdminUserDO disabled = new AdminUserDO();
+            disabled.setId(21L);
+            disabled.setTenantId(100L);
+            disabled.setStatus(CommonStatusEnum.DISABLE.getStatus());
+            when(userService.getUser(21L)).thenReturn(disabled);
+            assertErrorCode(BAD_REQUEST.getCode(),
+                    () -> service.assignRole(21L, RoleCodeEnum.TENANT_REHAB_THERAPIST.getCode()));
+            verify(permissionService, never()).assignUserRole(anyLong(), anySet());
+        }
+    }
+
+    private static void assertErrorCode(Integer expectedCode, org.junit.jupiter.api.function.Executable action) {
+        ServiceException exception = assertThrows(ServiceException.class, action);
+        assertEquals(expectedCode, exception.getCode());
     }
 
     private void prepareAdminContext(MockedStatic<SecurityFrameworkUtils> security) {
