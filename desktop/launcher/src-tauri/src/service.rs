@@ -4,8 +4,10 @@ use crate::config::{
 };
 use crate::admin_recovery::{new_device_challenge, redeem_owner_approval};
 use crate::docker::{
-    context_for, detect_docker, read_service_states, redact_sensitive, run_compose,
-    wait_for_healthy_default, DockerContext,
+    check_local_pinned_core_image, context_for, detect_docker,
+    read_service_states, redact_sensitive, reject_unpinned_core_downgrade,
+    reload_nginx_after_pinned_core_start, run_compose,
+    verify_running_core_candidate, wait_for_healthy_default, DockerContext,
 };
 use crate::error::{LauncherError, LauncherResult};
 use crate::license::{LicenseManager, LicenseOverview};
@@ -217,18 +219,26 @@ impl LauncherService {
         self.configure_license_environment()?;
         self.install_runtime()?;
         let context = self.docker_context()?;
+        // The installed runtime still bundles the older Java JAR. Never let
+        // an ordinary Start rebuild over a newer D1 Core image. An explicitly
+        // staged source-pinned override uses an immutable, already-local image.
+        reject_unpinned_core_downgrade(self.runner.as_ref(), &context)?;
+        let pinned_core = check_local_pinned_core_image(self.runner.as_ref(), &context)?;
         let current = read_service_states(self.runner.as_ref(), &context).unwrap_or_default();
         if current.iter().all(|service| service.state == "stopped") {
             let settings = self.settings()?;
             check_port_available(&settings.bind_address, settings.http_port)?;
             check_port_available(&settings.bind_address, settings.https_port)?;
         }
-        run_compose(
-            self.runner.as_ref(),
-            &context,
-            &["up", "--detach", "--build"],
-        )?;
+        let start_args: &[&str] = if pinned_core {
+            &["up", "--detach", "--no-build", "--pull", "never"]
+        } else {
+            &["up", "--detach", "--build"]
+        };
+        run_compose(self.runner.as_ref(), &context, start_args)?;
         wait_for_healthy_default(self.runner.as_ref(), &context)?;
+        verify_running_core_candidate(self.runner.as_ref(), &context)?;
+        reload_nginx_after_pinned_core_start(self.runner.as_ref(), &context)?;
         // 已有数据卷（旧版本安装或旧版本迁移包）在这里补齐 020+ 增量迁移；全新安装为空操作。
         self.upgrade_database(&context)?;
         Ok(self.overview())
@@ -258,8 +268,12 @@ impl LauncherService {
                 manager.prepare_runtime_handoff()?;
             }
             let context = self.docker_context()?;
+            reject_unpinned_core_downgrade(self.runner.as_ref(), &context)?;
+            check_local_pinned_core_image(self.runner.as_ref(), &context)?;
             run_compose(self.runner.as_ref(), &context, &["restart"])?;
             wait_for_healthy_default(self.runner.as_ref(), &context)?;
+            verify_running_core_candidate(self.runner.as_ref(), &context)?;
+            reload_nginx_after_pinned_core_start(self.runner.as_ref(), &context)?;
             Ok(self.overview())
         })();
         let result = self.finish(result);
