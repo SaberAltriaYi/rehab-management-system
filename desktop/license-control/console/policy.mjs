@@ -42,6 +42,43 @@ export function parsePolicy({ expiry, seats, unlimited, installations, modules, 
     expiresAtMs, seatLimit, maxInstallations: Number(installations), modules: list.sort()
   })
 }
+// Maintenance must always use the effective signed policy, never new-tenant defaults.
+export function policyFromExistingTenant(tenant, seatLimit = tenant?.seatLimit) {
+  if (!tenant || !Array.isArray(tenant.modules) ||
+      !Number.isSafeInteger(Date.parse(tenant.expiresAt)) ||
+      !Number.isSafeInteger(tenant.maxInstallations) ||
+      (seatLimit !== null && (!Number.isSafeInteger(seatLimit) || seatLimit < 1 || seatLimit > 2147483647))) {
+    throw Error('已批准租户策略无效，请刷新后重试')
+  }
+  return Object.freeze({
+    expiresAtMs: Date.parse(tenant.expiresAt), seatLimit,
+    maxInstallations: tenant.maxInstallations,
+    modules: [...tenant.modules].sort()
+  })
+}
+
+export function diffSignedPolicy(tenant, policy) {
+  const original = policyFromExistingTenant(tenant)
+  const time = n => new Date(n).toLocaleString('zh-CN', {
+    timeZone: 'Asia/Shanghai', hour12: false
+  }) + '（北京时间）'
+  const seats = n => n === null ? '无限' : String(n)
+  return [
+    ['员工席位', seats(original.seatLimit), seats(policy.seatLimit)],
+    ['到期时间', time(original.expiresAtMs), time(policy.expiresAtMs)],
+    ['最大部署实例', String(original.maxInstallations), String(policy.maxInstallations)],
+    ['授权模块', original.modules.join(', '), [...policy.modules].sort().join(', ')]
+  ].filter(([, before, after]) => before !== after)
+    .map(([label, before, after]) => `${label}：${before} → ${after}`)
+}
+
+export function onlySeatLimitPolicy(tenant, seats) {
+  if (!/^[1-9]\d{0,9}$/.test(String(seats))) {
+    throw Error('仅调整席位要求填写 1–2147483647 的整数')
+  }
+  return policyFromExistingTenant(tenant, Number(seats))
+}
+
 export function requireUuid(value) {
   if (!UUID.test(value ?? '')) throw Error('请输入合法的小写 UUID')
   return value

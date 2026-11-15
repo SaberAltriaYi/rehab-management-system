@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { approvedProvisionState, formatOwnerSubmissionTime, parsePolicy, requireUuid,
+import { approvedProvisionState, diffSignedPolicy, formatOwnerSubmissionTime,
+  onlySeatLimitPolicy, parsePolicy, policyFromExistingTenant, requireUuid,
   redactAuditItem, sortOwnerApplicationsNewestFirst } from './policy.mjs'
 
 const NOW = Date.parse('2026-10-10T04:00:00Z')
@@ -29,6 +30,32 @@ test('staff limits come only from explicit signed owner approval policy', () => 
     expiresAtMs: Date.parse(EXP), seatLimit: 5, maxInstallations: 2, modules: ['rehab', 'report']
   })
   assert.equal(parsePolicy({ ...BASE, unlimited: true }, NOW).seatLimit, null)
+})
+test('seat-only change keeps all other actual Owner contract fields unchanged', () => {
+  const tenant = { expiresAt: '2028-01-01T09:56:00.000Z', seatLimit: null,
+    maxInstallations: 1, modules: ['report', 'rehab', 'motion'] }
+  const actual = onlySeatLimitPolicy(tenant, '20')
+  assert.deepEqual(actual, { expiresAtMs: Date.parse(tenant.expiresAt),
+    seatLimit: 20, maxInstallations: 1, modules: ['motion', 'rehab', 'report'] })
+  assert.deepEqual(diffSignedPolicy(tenant, actual), ['员工席位：无限 → 20'])
+  assert.equal(tenant.seatLimit, null)
+  assert.equal(policyFromExistingTenant(tenant).seatLimit, null)
+})
+test('change preview exposes expiry and instance changes instead of silently submitting', () => {
+  const tenant = { expiresAt: '2027-11-14T09:56:00.000Z', seatLimit: null,
+    maxInstallations: 2, modules: ['rehab', 'motion', 'report'] }
+  const result = diffSignedPolicy(tenant, { expiresAtMs: Date.parse('2028-01-01T09:56:00Z'),
+    seatLimit: null, maxInstallations: 1, modules: ['rehab', 'motion', 'report'] })
+  assert.equal(result.length, 2)
+  assert.match(result.join('\n'), /到期时间/)
+  assert.match(result.join('\n'), /最大部署实例：2 → 1/)
+})
+test('seat-only action rejects empty, unlimited and invalid seat limits', () => {
+  const tenant = { expiresAt: '2028-01-01T09:56:00Z', seatLimit: null,
+    maxInstallations: 1, modules: ['rehab'] }
+  for (const seats of ['', '0', '-1', '1.5', '999999999999', null, undefined]) {
+    assert.throws(() => onlySeatLimitPolicy(tenant, seats))
+  }
 })
 test('main-system checkbox maps exclusively to the signed rehab permission', () => {
   assert.deepEqual(parsePolicy({ ...BASE, modules: 'motion,report', mainSystem: true }, NOW).modules,

@@ -69,8 +69,9 @@
         <button id="use-default-policy" type="button" class="outline">填入标准策略（可修改）</button>
         <form id="policy-form">
           <label>到期日期 <input name="expiry" type="datetime-local" required /></label>
-          <label>员工席位数 <input name="seats" type="number" min="1" max="2147483647" value="6" required /></label>
-          <label class="check"><input name="unlimited" type="checkbox" checked/> 许可证明确签署无限员工席位（默认；定额合同可取消勾选）</label>
+          <label>员工席位数 <input name="seats" type="number" min="1" max="2147483647" placeholder="先取消无限再填写席位" aria-describedby="seat-mode-status" required /></label>
+          <label class="check"><input name="unlimited" type="checkbox" checked/> 许可证明确签署无限员工席位（默认；定额合同必须取消勾选）</label>
+          <p id="seat-mode-status" class="hint" role="status">当前选择无限席位，数字输入不参与许可证签发。</p>
           <label>最大部署实例数 <input name="installations" type="number" min="1" max="100000" value="1" required /></label>
           <label class="check"><input name="mainSystem" type="checkbox" checked/> <strong>授权主系统（Rehab Core）</strong></label>
           <p class="hint">勾选后，许可证包含 rehab 主系统权限；只有主系统接口已配置、管理员已开通且状态为 ACTIVE，机构才可以登录。取消勾选不会创建主系统账号。</p>
@@ -96,6 +97,13 @@
           <p id="tenant-action-guide" class="selection-status" role="status">先从上方已批准申请点击“维护”，或填入租户 UUID 后点击“查询当前许可”。续期、暂停、恢复及开通属于不同操作。</p>
           <button type="button" id="update-policy">按左侧策略续期 / 扩容</button>
           <p id="tenant-policy-result" class="selection-status" role="status" aria-live="polite">续期和扩容要求许可证状态为 ACTIVE；永久撤销的许可证不能恢复。</p>
+          <section class="provision-panel">
+            <h3>仅调整员工席位（推荐）</h3>
+            <p class="hint">专用于已批准租户。这里直接读取当前许可证的到期时间、安装实例和授权模块，<strong>不会使用左侧的标准策略字段</strong>。提交前显示变更预览，仍需要 Owner MFA。</p>
+            <label>调整后的员工席位数 <input name="seatOnly" type="number" min="1" max="2147483647" placeholder="例如 20" /></label>
+            <button type="button" id="update-seats-only">只修改员工席位（需 MFA）</button>
+            <p id="seat-only-result" class="selection-status" role="status" aria-live="polite">先选择已批准租户的“维护”，填写新的席位数。</p>
+          </section>
           <section id="approved-provision-panel" class="provision-panel" hidden>
             <h3>已批准机构 · 主系统开通</h3>
             <p class="hint">仅对已完成审批的机构执行主系统开通；不需要再次点击批准，也不会由续期按钮自动创建账号。</p>

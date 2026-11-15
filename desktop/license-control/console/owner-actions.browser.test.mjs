@@ -151,6 +151,45 @@ try {
   clickNamed(approved, '维护')
   if (!await ready(() => $('tenant-status').textContent.includes('状态：ACTIVE'))) throw Error('maintenance status not loaded')
   result.maintainLoaded = $('tenant-action-guide').textContent.includes('已启用')
+  result.unlimitedDisablesNumericSeats = $('policy-form').elements.namedItem('seats').disabled === true &&
+    $('seat-mode-status').textContent.includes('无限')
+  $('policy-form').elements.namedItem('unlimited').checked = false
+  $('policy-form').elements.namedItem('unlimited').dispatchEvent(new Event('change', { bubbles: true }))
+  result.uncheckingUnlimitedEnablesNumbers = !$('policy-form').elements.namedItem('seats').disabled
+  $('policy-form').elements.namedItem('unlimited').checked = true
+  $('policy-form').elements.namedItem('unlimited').dispatchEvent(new Event('change', { bubbles: true }))
+  $('use-default-policy').click()
+  if (!await ready(() => $('feedback').textContent.includes('不能用新申请的标准策略覆盖'))) {
+    throw Error('loaded approved tenant could be overwritten with new-application defaults')
+  }
+  result.defaultPolicyBlockedDuringMaintenance = true
+  if (!await ready(() => $('owner-content').getAttribute('aria-busy') === 'false')) {
+    throw Error('default-policy guard busy')
+  }
+  let confirmation = ''
+  window.confirm = message => { confirmation = message; return true }
+  $('tenant-form').elements.namedItem('seatOnly').value = '20'
+  $('update-seats-only').click()
+  if (!await ready(() => $('tenant-status').textContent.includes('席位：20'))) {
+    throw Error('synthetic seat-only update did not return 20 effective seats')
+  }
+  result.seatOnlyUpdated = $('seat-only-result').textContent.includes('员工席位 20')
+  result.seatOnlyShowsChangePreview = confirmation.includes('无限 → 20') &&
+    confirmation.includes('到期时间、部署实例及授权模块维持')
+  result.seatOnlyAfterReloadPreservedOtherFields =
+    $('tenant-status').textContent.includes('部署实例：3') &&
+    $('tenant-status').textContent.includes('2027-11-12T00:00:00.000Z')
+  if (!await ready(() => $('owner-content').getAttribute('aria-busy') === 'false')) {
+    throw Error('seat-only action busy')
+  }
+  $('update-policy').click()
+  if (!await ready(() => $('tenant-policy-result').textContent.includes('完全一致'))) {
+    throw Error('no-change policy submission not blocked')
+  }
+  result.duplicatePolicyUpdateBlocked = true
+  if (!await ready(() => $('owner-content').getAttribute('aria-busy') === 'false')) {
+    throw Error('duplicate-policy guard busy')
+  }
   result.provisionPanelVisible = !$('approved-provision-panel').hidden
   result.provisionButtonEnabled = !$('provision-approved').disabled
   if (!result.provisionPanelVisible) throw Error('approved retry panel hidden')
@@ -177,7 +216,9 @@ test('Chrome synthetic actions show guidance and load approved tenant without pr
   { skip: !existsSync(chrome), timeout: 45_000 }, async () => {
     const dir = mkdtempSync(join(tmpdir(), 'rehab-owner-ui-synthetic-'))
     let disallowedMutations = 0
-    const server = createServer((req, res) => {
+    let approvedSeats = null
+    let authorizedSyntheticSeatUpdates = 0
+    const server = createServer(async (req, res) => {
       const path = String(req.url || '')
       if (path === '/owner/console') {
         const source = readFileSync(new URL('./index.html', import.meta.url), 'utf8')
@@ -223,8 +264,27 @@ test('Chrome synthetic actions show guidance and load approved tenant without pr
       }
       if (req.method === 'GET' && path === '/owner/v1/tenants/' + uuidApproved) {
         res.end(JSON.stringify({ tenant: { tenantId: uuidApproved, status: 'ACTIVE',
-          seatLimit: null, maxInstallations: 3, revocationEpoch: 0,
+          seatLimit: approvedSeats, maxInstallations: 3,
+          revocationEpoch: approvedSeats === null ? 0 : 1,
           expiresAt: '2027-11-12T00:00:00.000Z', modules: ['rehab', 'motion'] } }))
+        return
+      }
+      if (req.method === 'POST' && path === '/owner/v1/tenants/' + uuidApproved + '/policy') {
+        const chunks = []
+        for await (const chunk of req) chunks.push(chunk)
+        const submitted = JSON.parse(Buffer.concat(chunks).toString('utf8'))
+        const policy = submitted.policy
+        if (policy?.seatLimit !== 20 || policy.maxInstallations !== 3 ||
+            policy.expiresAtMs !== Date.parse('2027-11-12T00:00:00.000Z') ||
+            JSON.stringify(policy.modules) !== '["motion","rehab"]') {
+          disallowedMutations++
+          res.statusCode = 400
+          res.end(JSON.stringify({ error: 'SYNTHETIC_CONTRACT_DRIFT' }))
+          return
+        }
+        approvedSeats = 20
+        authorizedSyntheticSeatUpdates++
+        res.end(JSON.stringify({ coreSyncStatus: 'NOT_REQUIRED' }))
         return
       }
       if (req.method === 'GET' && path === '/owner/v1/tenants/' + uuidRevoked) {
@@ -246,12 +306,18 @@ test('Chrome synthetic actions show guidance and load approved tenant without pr
         'approvalHint', 'tenantHint', 'pendingSelected', 'maintainLoaded',
         'submittedTimeColumn', 'newestFirst', 'beijingTimestamp',
         'missingTimestampExplained', 'pendingCount',
+        'unlimitedDisablesNumericSeats', 'uncheckingUnlimitedEnablesNumbers',
+        'defaultPolicyBlockedDuringMaintenance', 'seatOnlyUpdated',
+        'seatOnlyShowsChangePreview', 'seatOnlyAfterReloadPreservedOtherFields',
+        'duplicatePolicyUpdateBlocked',
         'provisionPanelVisible', 'provisionButtonEnabled',
         'pendingDeleteAvailable','approvedDeleteAbsent','revokedPolicyNotice',
         'revokedProvisionNotice','revokedPolicyClickFeedback','revokedProvisionClickFeedback']) {
         assert.equal(state[key], true, key + ': ' + JSON.stringify(state))
       }
       assert.equal(disallowedMutations, 0, 'Synthetic browser must not approve/change a tenant')
+      assert.equal(authorizedSyntheticSeatUpdates, 1,
+        'Synthetic browser should submit exactly one scoped seat-only change')
     } finally {
       await new Promise(resolve => server.close(resolve))
       rmSync(dir, { recursive: true, force: true })

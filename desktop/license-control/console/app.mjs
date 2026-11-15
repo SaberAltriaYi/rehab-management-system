@@ -1,4 +1,5 @@
-import { approvedProvisionState, formatOwnerSubmissionTime, parsePolicy, requireUuid,
+import { approvedProvisionState, diffSignedPolicy, formatOwnerSubmissionTime,
+  onlySeatLimitPolicy, parsePolicy, policyFromExistingTenant, requireUuid,
   redactAuditItem, sortOwnerApplicationsNewestFirst } from './policy.mjs'
 
 // Dedicated owner application: NO localStorage, sessionStorage, cookies or
@@ -139,12 +140,22 @@ function localDateTimeValue(value) {
     `T${pad(date.getHours())}:${pad(date.getMinutes())}`
 }
 
+function syncSeatMode() {
+  const form = $('policy-form')
+  const unlimited = form.elements.namedItem('unlimited').checked
+  form.elements.namedItem('seats').disabled = unlimited
+  $('seat-mode-status').textContent = unlimited
+    ? '当前有效策略为无限员工席位；数字输入已禁用。需要定额席位时请先取消“无限”勾选。'
+    : '当前为定额员工席位；请填写实际需要的正整数，提交前会列出条款差异。'
+}
 function fillDefaultPolicy() {
+  if (selectedTenant) throw Error('已载入正式租户，不能用新申请的标准策略覆盖已有合同。请使用右侧“仅调整员工席位”，或编辑并核对差异。')
   const form = $('policy-form')
   const expiry = new Date(Date.now() + 365 * 86400000)
   form.elements.namedItem('expiry').value = localDateTimeValue(expiry)
-  form.elements.namedItem('seats').value = '6'
+  form.elements.namedItem('seats').value = ''
   form.elements.namedItem('unlimited').checked = true
+  syncSeatMode()
   form.elements.namedItem('installations').value = '1'
   form.elements.namedItem('mainSystem').checked = true
   form.elements.namedItem('modules').value = 'motion,report'
@@ -159,7 +170,8 @@ function fillPolicyFromTenant(tenant) {
   const form = $('policy-form')
   form.elements.namedItem('expiry').value = localDateTimeValue(tenant.expiresAt)
   form.elements.namedItem('unlimited').checked = tenant.seatLimit === null
-  form.elements.namedItem('seats').value = tenant.seatLimit === null ? '6' : String(tenant.seatLimit)
+  form.elements.namedItem('seats').value = tenant.seatLimit === null ? '' : String(tenant.seatLimit)
+  syncSeatMode()
   form.elements.namedItem('installations').value = String(tenant.maxInstallations)
   form.elements.namedItem('mainSystem').checked = tenant.modules.includes('rehab')
   form.elements.namedItem('modules').value = tenant.modules.filter(m => m !== 'rehab').join(',')
@@ -329,6 +341,7 @@ async function loadTenantStatus(id, { updatePolicy = true } = {}) {
     return null
   }
   selectedTenant = tenant
+  $('tenant-form').elements.namedItem('seatOnly').value = ''
   $('tenant-status').textContent = '状态：' + tenant.status + ' · 席位：' +
     (tenant.seatLimit === null ? '无限' : tenant.seatLimit) +
     ' · 部署实例：' + tenant.maxInstallations +
@@ -638,6 +651,8 @@ $('use-default-policy').addEventListener('click', () => void handle(async () => 
   refreshMainSystemOption()
   setSelectionStatus('已填入标准策略。选择待审核申请后再点击批准。', 'ready')
 }))
+$('policy-form').elements.namedItem('unlimited').addEventListener('change', syncSeatMode)
+syncSeatMode()
 $('policy-form').elements.namedItem('mainSystem').addEventListener('change', refreshMainSystemOption)
 $('approve').addEventListener('click', () => void handle(async () => {
   if (!selected) {
@@ -690,27 +705,75 @@ $('tenant-form').addEventListener('submit', event => {
 })
 $('provision-approved').addEventListener('click', () => void handle(() =>
   tenantActionWithFeedback('approved-provision-result', openApprovedMainSystem)))
+
+async function confirmUnchangedTenant(id) {
+  const current = selectedTenant
+  const loaded = (await api('/owner/v1/tenants/' + id)).tenant
+  if (!current || !loaded || loaded.status !== 'ACTIVE' ||
+      loaded.revocationEpoch !== current.revocationEpoch ||
+      diffSignedPolicy(current, policyFromExistingTenant(loaded)).length) {
+    throw Error('许可证已被其他操作更新。未提交任何变更，请点击“维护”重新载入最新状态。')
+  }
+  return loaded
+}
+
+async function finishPolicyUpdate(id, policy, result, messageId) {
+  const saved = await loadTenantStatus(id)
+  await refreshApplications({ announce: false })
+  await refreshAudit()
+  if (!saved || diffSignedPolicy(saved, policy).length) {
+    throw Error('Owner 已接受变更，但回读条款不匹配。请停止重复提交并核对审计。')
+  }
+  const message = 'Owner 许可证已回读验证：员工席位 ' +
+    (saved.seatLimit === null ? '无限' : saved.seatLimit) + '，部署实例 ' +
+    saved.maxInstallations + '。旧租约已失效；Core 同步：' + result.coreSyncStatus +
+    '（不代表主系统已开通）。'
+  inlineResult(messageId, message)
+  feedback(message)
+}
+
+$('update-seats-only').addEventListener('click', () => void handle(() =>
+  tenantActionWithFeedback('seat-only-result', async () => {
+    const id = requireLoadedTenant('policy')
+    const requested = $('tenant-form').elements.namedItem('seatOnly').value.trim()
+    const before = selectedTenant
+    const policy = onlySeatLimitPolicy(before, requested)
+    const changes = diffSignedPolicy(before, policy)
+    if (changes.length !== 1 || !changes[0].startsWith('员工席位：')) {
+      throw Error('席位值未发生变化，未提交许可证更新。')
+    }
+    let result
+    const confirmed = await strongOperation(async () => {
+      const fresh = await confirmUnchangedTenant(id)
+      const next = onlySeatLimitPolicy(fresh, requested)
+      result = await api('/owner/v1/tenants/' + id + '/policy', {
+        method: 'POST', body: { policy: next,
+          reason: '仅调整员工席位，原到期时间、实例数和授权模块保持不变。' }
+      })
+    }, '只修改员工席位：\n' + changes.join('\n') +
+      '\n到期时间、部署实例及授权模块维持当前许可证原值')
+    if (!confirmed) return
+    await finishPolicyUpdate(id, policy, result, 'seat-only-result')
+  })))
+
 $('update-policy').addEventListener('click', () => void handle(() =>
   tenantActionWithFeedback('tenant-policy-result', async () => {
   const id = requireLoadedTenant('policy')
   const policy = policyFromForm()
   const reason = String(formData('policy-form').reason || '').trim()
   if (reason.length < 5) throw Error('续期或扩容需要填写至少五个字符的变更理由')
+  const changes = diffSignedPolicy(selectedTenant, policy)
+  if (changes.length === 0) throw Error('左侧策略与当前许可证完全一致，未提交重复更新。')
   let result
   const confirmed = await strongOperation(async () => {
+    await confirmUnchangedTenant(id)
     result = await api('/owner/v1/tenants/' + id + '/policy', {
       method: 'POST', body: { policy, reason }
     })
-  }, '更新此租户的合同、席位、实例和模块范围')
+  }, '更新以下许可证条款：\n' + changes.join('\n') +
+    '\n请确认所有字段均为你希望的变更')
   if (!confirmed) return
-  await loadTenantStatus(id)
-  await refreshApplications({ announce: false })
-  await refreshAudit()
-  feedback('续期 / 扩容的 Owner 许可证已保存，旧租约已失效。' +
-    (result.coreSyncStatus === 'PENDING' ? ' 主系统正在异步同步，请刷新并确认状态。' :
-      result.coreSyncStatus === 'NOT_CONFIGURED' ? ' 主系统尚未同步，请勿将其视为已生效。' :
-        ' 主系统无需额外同步或尚未开通。'))
-  inlineResult('tenant-policy-result', 'Owner 许可证策略已更新。Core 授权同步状态：' + result.coreSyncStatus + '。')
+  await finishPolicyUpdate(id, policy, result, 'tenant-policy-result')
 })))
 for (const [id, status] of [['suspend', 'SUSPENDED'], ['resume', 'ACTIVE'], ['revoke', 'REVOKED']]) {
   $(id).addEventListener('click', () => void handle(async () => {
