@@ -1,14 +1,14 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { evaluateInternalPilotReadiness,
-  PILOT_READONLY_MENU_IDS } from './owner-internal-pilot-readiness.mjs'
+  PILOT_READONLY_MENU_IDS, PILOT_CORE_IMAGE_ID } from './owner-internal-pilot-readiness.mjs'
 
 const license = {
   status: 'APPROVED', provisioning_status: 'NOT_CONFIGURED', main_tenant_id: null,
   license_status: 'ACTIVE', seat_limit: 20, modules_json: '["rehab","motion","report"]'
 }
 const verified = { applicants: [license], planMatches: 1, packageMatches: 1,
-  permissionMatches: 1, ownerCore: { ready: true } }
+  permissionMatches: 1, coreImageVerified: true, ownerCore: { ready: true } }
 
 test('matching synthetic-only pilot reports technical readiness without authorizing writes', () => {
   const result = evaluateInternalPilotReadiness(verified)
@@ -63,6 +63,16 @@ test('incorrect Core quota, package or machine identity cannot produce ready', (
 test('three-menu pilot is navigation + motion page + query only', () => {
   assert.deepEqual(PILOT_READONLY_MENU_IDS, [9000, 9700, 9710])
   assert.equal(Object.isFrozen(PILOT_READONLY_MENU_IDS), true)
+})
+
+test('runtime image attest fail-closes against Launcher rebuilding the older Core', () => {
+  assert.match(PILOT_CORE_IMAGE_ID, /^sha256:[0-9a-f]{64}$/)
+  for (const bad of [false, undefined, null, 'rehab-c2-not-deployed:f3570d7b6db4']) {
+    const report = evaluateInternalPilotReadiness({ ...verified, coreImageVerified: bad })
+    assert.equal(report.checks.coreRuntimeCandidateImageVerified, false)
+    assert.equal(report.technicalPrerequisitesReady, false)
+    assert.ok(report.blockers.includes('coreRuntimeCandidateImageVerified'))
+  }
 })
 
 test('broad or incomplete package fails exact minimal pilot-scope preflight', () => {

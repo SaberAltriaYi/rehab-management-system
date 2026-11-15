@@ -16,6 +16,10 @@ const PILOT_QUOTAS = Object.freeze({
 // QA-only first-login scope: rehab navigation, motion page, and motion query.
 // No patient write, assessment sign-off, staff management, HEP or other menus.
 export const PILOT_READONLY_MENU_IDS = Object.freeze([9000, 9700, 9710])
+// Exact QA candidate verified by synthetic HTTP E2E. Launcher Start can rebuild
+// its older bundled image: compare the running immutable ID, never its tag.
+export const PILOT_CORE_IMAGE_ID =
+  'sha256:b0f26de5e12d6cddd8a5fd2a0b1e7e000af6aa6e6f207da05c5ab0b798fca660'
 
 function positiveId(value) {
   return typeof value === 'string' && /^[1-9][0-9]{0,17}$/.test(value)
@@ -32,7 +36,7 @@ function privateEnv(contents) {
 }
 
 export function evaluateInternalPilotReadiness({ applicants, planMatches, packageMatches,
-  permissionMatches, ownerCore }) {
+  permissionMatches, coreImageVerified, ownerCore }) {
   const uniqueApplicant = Array.isArray(applicants) && applicants.length === 1 ? applicants[0] : null
   let modules = []
   try {
@@ -51,6 +55,7 @@ export function evaluateInternalPilotReadiness({ applicants, planMatches, packag
     // Require the exact three-menu QA scope; a broad pre-existing package is
     // not an implicit authorization to grant other system or clinical menus.
     corePermissionPackageHasExactPilotScope: permissionMatches === 1,
+    coreRuntimeCandidateImageVerified: coreImageVerified === true,
     ownerCoreMachineChannelReady: ownerCore?.ready === true
   }
   return {
@@ -82,6 +87,13 @@ export async function inspectInternalPilotLive() {
   let planMatches = 0
   let packageMatches = 0
   let permissionMatches = 0
+  let coreImageVerified = false
+  try {
+    const activeImage = execFileSync('docker', [
+      'inspect', 'rehab-studio-internal-server-1', '--format', '{{.Image}}'
+    ], { encoding: 'utf8', timeout: 8000, maxBuffer: 512 }).trim()
+    coreImageVerified = activeImage === PILOT_CORE_IMAGE_ID
+  } catch { /* fail closed if a running candidate cannot be attested */ }
   if (plan && pkg) {
     const sql = `SELECT
       (SELECT COUNT(*) FROM saas_plans WHERE id=${plan} AND status=1
@@ -112,7 +124,7 @@ export async function inspectInternalPilotLive() {
     ;[planMatches, packageMatches, permissionMatches] = counts
   }
   return evaluateInternalPilotReadiness({
-    applicants, planMatches, packageMatches, permissionMatches,
+    applicants, planMatches, packageMatches, permissionMatches, coreImageVerified,
     ownerCore: await inspectLocalProvisioning()
   })
 }

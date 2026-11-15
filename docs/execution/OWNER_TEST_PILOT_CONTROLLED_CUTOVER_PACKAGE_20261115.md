@@ -76,3 +76,11 @@ bash desktop/scripts/hep-037-approved-grants-isolated.sh --synthetic-only
 正式 P0 三项阻断仍为 `effectiveCorePilotQuotaVerified`、`corePermissionPackageHasExactPilotScope` 和 `ownerCoreMachineChannelReady`；即使三项最终通过，真实临床/HEP/正式 Apple 公证仍另有 182 项、5 份人工审核、签名证书等门禁。不要声称本受控变更包本身允许正式临床发行。
 
 **推荐下一独立审批：D1 现有 Core 服务受控替换准备/维护窗口**，先固定新鲜备份与完整回滚证据；是否允许真正替换现网服务、以及后续 D2/D3/D4/D5 的生产写入必须按各阶段另行批准。当前阶段保持正式系统不变。
+
+---
+
+## 2026-11-15 D1 实际执行补充（覆盖上文 D1 待执行状态）
+
+用户后续独立选择 `A` 批准 D1；已完成新鲜加密备份及独立恢复，并在原有 MySQL/Redis/Nginx 保持原容器的条件下，只将运行的 Core `server` 从旧镜像切换到固定 SHA-256 的 C2 QA 候选，Spring Boot 健康及 HTTPS API 通过；DB 仍 036/36，正式 SaaS 计划/开户记录 0/0，Owner 开关关闭。本次**没有实施 D2/D3/D4/D5/037**。
+
+**重要限制**：Mac 现有 Launcher `start_inner` 仍用旧捆绑资源 `up --build`，未来点击其“启动”可能重建旧 Core；本次仅是运行容器 D1 QA 更新，并未完成 Launcher 发行版的持久性升级。只读试点预检现已额外核查真实候选镜像 ID，镜像回退时会 fail-closed。完整实际结果及私有回滚说明见 [D1 执行与验收](OWNER_CORE_D1_LIVE_BACKEND_CUTOVER_20261115.md)。
