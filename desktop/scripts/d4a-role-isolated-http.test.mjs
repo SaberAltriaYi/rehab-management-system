@@ -17,6 +17,17 @@ test('D4-A HTTP fixture has explicit synthetic-only scope gate before any Docker
   assert.doesNotMatch(code, /'--publish'|'--volume'|'--privileged'|'--network','host'/)
 })
 
+test('D4-A HTTP fixture asserts exact 400/403 business codes and no role mutation', () => {
+  const code = readFileSync(source, 'utf8')
+  assert.match(code, /tenant-admin-reviewer-role-request-400',business_code\(st,body,400\)/)
+  assert.match(code, /tenant-admin-cross-tenant-user-403',business_code\(st,body,403\)/)
+  assert.match(code, /tenant-admin-self-role-change-403',business_code\(st,body,403\)/)
+  assert.match(code, /therapist-cannot-assign-staff-role-403',business_code\(st,body,403\)/)
+  assert.match(code, /tenant-admin-invalid-target-id-400',business_code\(st,body,400\)/)
+  assert.match(code, /cross-tenant-target-role-unchanged/)
+  assert.match(code, /admin-self-role-unchanged/)
+})
+
 for (const args of [[], ['--help'], ['--live'], ['--synthetic-only', '--live']]) {
   test(`D4-A rejected invocation ${args.length ? args.join(' ') : '(empty)'}`, () => {
     const result = spawnSync('python3', ['-B', source, ...args], {

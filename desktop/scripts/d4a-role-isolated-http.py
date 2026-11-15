@@ -17,14 +17,14 @@ import time
 import uuid
 
 ROOT = Path(__file__).resolve().parents[2]
-EVIDENCE = ROOT.parent / 'validation-evidence' / 'qa-20261116-d4a-http-e2e'
+EVIDENCE = ROOT.parent / 'validation-evidence' / 'qa-20261116-d4a-role-error-e2e'
 BOOTSTRAP = ROOT / 'desktop/runtime/1.0.0/sql/desktop-bootstrap.sql'
 V3 = ROOT / 'sql/mysql/rehab-saas-provisioning-v3.sql'
 V4 = ROOT / 'sql/mysql/rehab-saas-entitlement-sync-v4.sql'
-IMAGE = 'rehab-d4a-synthetic:79cf161e4b'
-EXPECTED_IMAGE = 'sha256:cefbe6846abd086e88c0f0ad2889b037ee5137c142e813f3b2c1dd01229553c7'
-EXPECTED_JAR = '0c5e46d00ec844d75ccb3ea5132b43442899bf2d5c99fe2ab27b03cbd4cbeebe'
-SOURCE_SHA = '79cf161e4b6e8e8eab5e8567fa353f2187286f09'
+IMAGE = 'rehab-d4a-role-errors:8e070f4254'
+EXPECTED_IMAGE = 'sha256:f840797d88ed003562891fdb6e0ee04a314af3af99d0375939168300b92d147b'
+EXPECTED_JAR = '9d7a8d300d43d8a2f0ca73b15a572d0d708bf51021d93a3223c27891ff713d22'
+SOURCE_SHA = '8e070f4254a905752014f513c9d17cf085e8287f'
 LIVE_CONTAINERS = ('rehab-studio-internal-server-1', 'rehab-studio-internal-mysql-1')
 DB = 'ruoyi-vue-pro'
 tag = secrets.token_hex(5)
@@ -116,6 +116,10 @@ def success(status,body):
 
 def denied(status,body):
     return status in (401,403) or (isinstance(body,dict) and body.get('code') in (401,403))
+
+
+def business_code(status,body,expected):
+    return status==200 and isinstance(body,dict) and body.get('code')==expected
 
 
 def business_denied(status,body):
@@ -326,15 +330,28 @@ def run():
     check('other-tenant-admin-can-assign-own-therapist',success(st,body),detail(st,body))
     st,body=request(role_path,method='POST',tenant=a,bearer=access_a,
                     payload={'userId':reviewer_a_id,'roleCode':'tenant_rehab_clinical_reviewer'})
-    check('tenant-admin-cannot-self-grant-clinical-reviewer',not success(st,body),detail(st,body))
+    check('tenant-admin-reviewer-role-request-400',business_code(st,body,400),detail(st,body))
     st,body=request(role_path,method='POST',tenant=a,bearer=access_a,
                     payload={'userId':therapist_b_id,'roleCode':'tenant_rehab_therapist'})
-    check('tenant-admin-cannot-assign-foreign-tenant-user',not success(st,body),detail(st,body))
+    check('tenant-admin-cross-tenant-user-403',business_code(st,body,403),detail(st,body))
     st,body=request(role_path,method='POST',tenant=a,bearer=access_a,
                     payload={'userId':admin_a_id,'roleCode':'tenant_rehab_therapist'})
-    check('tenant-admin-cannot-change-own-role',not success(st,body),detail(st,body))
+    check('tenant-admin-self-role-change-403',business_code(st,body,403),detail(st,body))
+    st,body=request(role_path,method='POST',tenant=a,bearer=access_a,
+                    payload={'userId':0,'roleCode':'tenant_rehab_therapist'})
+    check('tenant-admin-invalid-target-id-400',business_code(st,body,400),detail(st,body))
+    st,body=request(role_path,method='POST',tenant=a,bearer=access_a,
+                    payload={'userId':999999,'roleCode':'tenant_rehab_therapist'})
+    check('tenant-admin-invisible-target-user-403',business_code(st,body,403),detail(st,body))
     check('unauthorized-reviewer-not-assigned',sql("SELECT COUNT(*) FROM system_user_role WHERE user_id="+
           str(reviewer_a_id)+" AND tenant_id="+str(a)+" AND deleted=b'0'")=='0')
+    check('cross-tenant-target-role-unchanged',sql("SELECT COUNT(*) FROM system_user_role ur JOIN system_role r ON r.id=ur.role_id "
+          "WHERE ur.user_id="+str(therapist_b_id)+" AND ur.tenant_id="+str(b)+" AND r.code='tenant_rehab_therapist' "
+          "AND ur.deleted=b'0'")=='1' and sql("SELECT COUNT(*) FROM system_user_role WHERE user_id="+
+          str(therapist_b_id)+" AND tenant_id="+str(a)+" AND deleted=b'0'")=='0')
+    check('admin-self-role-unchanged',sql("SELECT COUNT(*) FROM system_user_role ur JOIN system_role r ON r.id=ur.role_id "
+          "WHERE ur.user_id="+str(admin_a_id)+" AND ur.tenant_id="+str(a)+" AND r.code='tenant_admin' "
+          "AND ur.deleted=b'0'")=='1')
 
     # Only a synthetic DBA fixture assigns reviewer after mimicking a separate
     # qualification approval. This does NOT test real credential verification.
@@ -358,10 +375,10 @@ def run():
 
     st,body=request(role_path,method='POST',tenant=a,bearer=access_ta,
                     payload={'userId':reviewer_a_id,'roleCode':'tenant_rehab_therapist'})
-    check('therapist-cannot-assign-staff-role',denied(st,body),detail(st,body))
+    check('therapist-cannot-assign-staff-role-403',business_code(st,body,403),detail(st,body))
     st,body=request(role_path,method='POST',tenant=b,bearer=access_a,
                     payload={'userId':therapist_b_id,'roleCode':'tenant_rehab_therapist'})
-    check('forged-tenant-header-on-role-assignment-denied',denied(st,body),detail(st,body))
+    check('forged-tenant-header-on-role-assignment-403',business_code(st,body,403),detail(st,body))
 
     stage_seed_patients(a,b,therapist_a_id)
     patient_page='/admin-api/rehab/patient/page?pageNo=1&pageSize=20'

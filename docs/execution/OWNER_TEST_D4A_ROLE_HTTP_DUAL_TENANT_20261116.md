@@ -110,3 +110,7 @@ node --test desktop/scripts/d4a-role-isolated-http.test.mjs
 - 上一阶段角色权限交付：`docs/execution/OWNER_TEST_D4_ROLE_PERMISSION_SEPARATION_20261115.md`。
 
 **验收结论：D4-A 新权限版本真实 HTTP 双租户验收 PASS，可进入下一阶段安全准备；不构成生产启用授权。**
+
+## 2026-11-16 岗位权限错误码修复补充
+
+随后针对本报告中记录的“部分越权岗位操作返回业务码 500”限制完成了修复。最终规则为：非法请求参数使用业务码 400；跨机构、本人改岗、非管理员调用及租户不可见用户统一使用 403；内置模板缺失/重复仍保留 500。修复后 system 模块全量 618 项（0 失败、0 错误、9 项跳过）、桌面脚本 139/139，以及新版本双租户 HTTP 两次各 90/90 通过。完整根因、响应语义、源码/JAR/镜像 SHA 和正式环境未变更证据见 [D4-A 岗位权限错误码修复与双租户 HTTP 回归](OWNER_TEST_D4A_ROLE_ERROR_MAPPING_20261116.md)。
