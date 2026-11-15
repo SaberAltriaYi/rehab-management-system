@@ -103,6 +103,7 @@ node --test desktop/scripts/d4a-role-isolated-http.test.mjs
 ## 8. 证据位置
 
 - 私有 QA JSON：`/Users/saber/my-project/rehab/validation-evidence/qa-20261116-d4a-http-e2e/d4a-role-http-result-c90945c0c1.json`，**86/86 PASS**。
+- **提交后独立复跑**：在测试脚本已提交为 GitHub 提交 `b72ab3b18dd04da21761a5cffc58be252d535c84` 后，再完整执行一次实际 HTTP/SQL 链路，得到 `d4a-role-http-result-7624c326c1.json`，**再次 86/86 PASS**，0 失败；两次测试均使用各自随机网络、合成账号和 tmpfs 数据库，结束后临时容器与网络均为 0。复跑后再次只读确认正式 Owner/Core、计划 2、套餐 113 仍未变化。
 - 脚本源码：`desktop/scripts/d4a-role-isolated-http.py`。
 - 安全门禁测试：`desktop/scripts/d4a-role-isolated-http.test.mjs`。
 - 构建执行日志（仅本机）：`/private/tmp/rehab-d4a-httpe2e-server-build.log`、`/private/tmp/rehab-d4a-image-build.log`；HTTP 运行摘要 `/private/tmp/rehab-d4a-httpe2e-first.log`。
