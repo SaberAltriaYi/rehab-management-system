@@ -18,6 +18,7 @@ export function evaluateProvisioningReadiness(value) {
   if (!value.ownerConfigured) blockers.push('OWNER_PROVISIONING_CONFIG_INCOMPLETE')
   if (!value.targetMatchesCurrentCore) blockers.push('OWNER_TARGET_NOT_CURRENT_CORE_HTTPS')
   if (!value.targetReachable) blockers.push('OWNER_TARGET_UNREACHABLE')
+  if (!value.ownerToCoreTlsTrusted) blockers.push('OWNER_TO_CORE_TLS_NOT_TRUSTED')
   if (!value.coreProvisioningEnabled) blockers.push('CORE_PROVISIONING_DISABLED_OR_UNVERIFIED')
   if (!value.coreTokenMatched) blockers.push('OWNER_CORE_MACHINE_TOKEN_NOT_VERIFIED')
   if (!value.schemaV3Ready) blockers.push('SAAS_PROVISIONING_V3_SCHEMA_MISSING')
@@ -30,6 +31,7 @@ export function evaluateProvisioningReadiness(value) {
     // names, data rows, account IDs, environment variables or passwords.
     checks: Object.fromEntries(Object.entries(value).filter(([key]) => [
       'ownerConfigured', 'ownerFeatureEnabled', 'targetMatchesCurrentCore', 'targetReachable',
+      'ownerToCoreTlsTrusted',
       'coreProvisioningEnabled', 'coreTokenMatched',
       'schemaV3Ready', 'schemaV4Ready', 'livePlanPackageVerified'
     ].includes(key)))
@@ -66,9 +68,13 @@ function dockerCoreEnv() {
   }))
 }
 
-function dbMetadata(planId, packageId) {
+export function provisioningMetadataSql(planId, packageId) {
+  if (!Number.isSafeInteger(planId) || planId <= 0 ||
+      !Number.isSafeInteger(packageId) || packageId <= 0) {
+    throw Error('INVALID_PROVISIONING_METADATA_IDS')
+  }
   // Never query a patient, any tenant row, credentials or clinical data.
-  const sql = [
+  return [
     "SELECT",
     "(SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='system_tenant' AND column_name='tenant_uuid'),",
     "(SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name='saas_provisioning_requests'),",
@@ -76,8 +82,14 @@ function dbMetadata(planId, packageId) {
     "(SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name='saas_plans'),",
     "(SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name='system_tenant_package'),",
     "(SELECT COUNT(*) FROM saas_plans WHERE id=" + planId + ' AND status=1),',
-    "(SELECT COUNT(*) FROM system_tenant_package WHERE id=" + packageId + ' AND deleted=0);'
+    // TenantService.validTenantPackage rejects disabled packages. An existing
+    // inactive package cannot make the machine preflight green.
+    "(SELECT COUNT(*) FROM system_tenant_package WHERE id=" + packageId + ' AND status=0 AND deleted=0);'
   ].join(' ')
+}
+
+function dbMetadata(planId, packageId) {
+  const sql = provisioningMetadataSql(planId, packageId)
   const result = execFileSync('docker', [
     'exec', 'rehab-studio-internal-mysql-1', 'mysql',
     '--defaults-extra-file=/run/rehab-secrets/mysql-client.cnf',
@@ -116,6 +128,18 @@ function probeLocalTcp(target) {
   })
 }
 
+async function probeNodeTlsToCurrentCore(target, expected) {
+  // Probe only the exact loopback Core login page; no machine token or
+  // patient data, no redirect, no certificate-validation bypass.
+  if (target !== expected || !/^https:\/\/127\.0\.0\.1:[0-9]+$/.test(target)) return false
+  try {
+    const response = await fetch(target + '/login', {
+      method: 'GET', redirect: 'error', signal: AbortSignal.timeout(3500)
+    })
+    return response.status === 200
+  } catch { return false }
+}
+
 export async function inspectLocalProvisioning({
   ownerEnv = defaultOwnerEnv, coreSettings = defaultCoreSettings
 } = {}) {
@@ -138,6 +162,7 @@ export async function inspectLocalProvisioning({
     ownerConfigured,
     targetMatchesCurrentCore: target === expected,
     targetReachable: await probeLocalTcp(target),
+    ownerToCoreTlsTrusted: await probeNodeTlsToCurrentCore(target, expected),
     coreProvisioningEnabled: container.YUDAO_PROVISIONING_ENABLED === 'true',
     coreTokenMatched: equalSecret(owner.REHAB_MAIN_PROVISIONING_TOKEN, container.YUDAO_PROVISIONING_TOKEN),
     schemaV3Ready: counts[0] === 1 && counts[1] === 1,

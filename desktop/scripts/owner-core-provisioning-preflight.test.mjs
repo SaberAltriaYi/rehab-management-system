@@ -1,12 +1,13 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { evaluateProvisioningReadiness } from './owner-core-provisioning-preflight.mjs'
+import { evaluateProvisioningReadiness, provisioningMetadataSql } from './owner-core-provisioning-preflight.mjs'
 
 const pass = {
   ownerFeatureEnabled: true,
   ownerConfigured: true,
   targetMatchesCurrentCore: true,
   targetReachable: true,
+  ownerToCoreTlsTrusted: true,
   coreProvisioningEnabled: true,
   coreTokenMatched: true,
   schemaV3Ready: true,
@@ -46,4 +47,24 @@ test('no endpoint, token, tenant name or any credential enters the preflight res
   for (const word of ['synthetic', 'ownerToken', 'tenantName', 'url']) {
     assert.ok(!serialized.includes(word), word)
   }
+})
+
+test('Core provisioning preflight requires an active plan AND an enabled package', () => {
+  const sql = provisioningMetadataSql(2, 113)
+  assert.match(sql, /saas_plans WHERE id=2 AND status=1/)
+  assert.match(sql, /system_tenant_package WHERE id=113 AND status=0 AND deleted=0/)
+  assert.ok(!sql.includes('rehab_patient'))
+  for (const invalid of [0, -1, Number.NaN, 1.2, Number.MAX_SAFE_INTEGER + 1, '2']) {
+    assert.throws(() => provisioningMetadataSql(invalid, 113), /INVALID_PROVISIONING_METADATA_IDS/)
+    assert.throws(() => provisioningMetadataSql(2, invalid), /INVALID_PROVISIONING_METADATA_IDS/)
+  }
+})
+
+test('TCP reachability without Node TLS certificate trust remains NO-GO', () => {
+  const result = evaluateProvisioningReadiness({
+    ...pass, targetReachable: true, ownerToCoreTlsTrusted: false
+  })
+  assert.equal(result.ready, false)
+  assert.deepEqual(result.blockers, ['OWNER_TO_CORE_TLS_NOT_TRUSTED'])
+  assert.equal(result.checks.ownerToCoreTlsTrusted, false)
 })
