@@ -14,14 +14,21 @@ def rehab_child_paths(text):
 
 
 class InternalRoutesTest(unittest.TestCase):
-    def test_saas_routes_are_gated_and_present_in_both_tables(self):
+    def test_saas_registration_redirect_and_platform_are_consistent(self):
         for name in ['remaining.ts', 'remaining.internal.ts']:
             text = (APP / 'router/modules' / name).read_text()
             self.assertIn("VITE_SAAS_ENABLE === 'true'", text)
             self.assertIn("path: '/saas/register'", text)
             self.assertIn("path: '/saas/platform'", text)
-            self.assertIn("@/views/saas/Register.vue", text)
+            # Institution registration was deliberately consolidated into the
+            # login page. Do not regress to the obsolete standalone component.
+            self.assertIn("redirect: '/login?mode=register'", text)
+            self.assertNotIn("@/views/saas/Register.vue", text)
             self.assertIn("@/views/saas/Platform.vue", text)
+        login = (APP / 'views/Login/Login.vue').read_text()
+        self.assertIn("currentRoute.value.query.mode === 'register'", login)
+        self.assertIn("registrationKind === 'organization'", login)
+        self.assertIn('申请机构账号', login)
 
     def test_router_uses_internal_route_table(self):
         self.assertIn("from './modules/remaining.internal'", (APP / 'router/index.ts').read_text())

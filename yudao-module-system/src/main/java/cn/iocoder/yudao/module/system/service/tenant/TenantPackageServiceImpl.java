@@ -18,6 +18,7 @@ import org.springframework.validation.annotation.Validated;
 
 import javax.annotation.Resource;
 import java.util.List;
+import java.util.Objects;
 
 import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static cn.iocoder.yudao.module.system.enums.ErrorCodeConstants.*;
@@ -59,8 +60,12 @@ public class TenantPackageServiceImpl implements TenantPackageService {
         // 更新
         TenantPackageDO updateObj = BeanUtils.toBean(updateReqVO, TenantPackageDO.class);
         tenantPackageMapper.updateById(updateObj);
-        // 如果菜单发生变化，则修改每个租户的菜单
-        if (!CollUtil.isEqualList(tenantPackage.getMenuIds(), updateReqVO.getMenuIds())) {
+        // Re-apply tenant role templates when either the feature ceiling or
+        // package availability changes. This also initializes templates for
+        // existing tenants when a previously disabled package is activated.
+        boolean menuChanged = !CollUtil.isEqualList(tenantPackage.getMenuIds(), updateReqVO.getMenuIds());
+        boolean statusChanged = !Objects.equals(tenantPackage.getStatus(), updateReqVO.getStatus());
+        if (menuChanged || statusChanged) {
             List<TenantDO> tenants = tenantService.getTenantListByPackageId(tenantPackage.getId());
             tenants.forEach(tenant -> tenantService.updateTenantRoleMenu(tenant.getId(), updateReqVO.getMenuIds()));
         }

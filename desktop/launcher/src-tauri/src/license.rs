@@ -262,6 +262,8 @@ pub struct LicenseOverview {
     pub modules: Vec<String>,
     pub pending_replacement: bool,
     pub publisher_configured: bool,
+    /** True only when the bundled issuer also declares a verified HTTPS endpoint. */
+    pub owner_endpoint_configured: bool,
     pub local_verification_only: bool,
 }
 #[derive(Debug, Serialize, Deserialize)]
@@ -352,12 +354,15 @@ impl LicenseManager {
     }
     pub fn overview(&self) -> LicenseOverview {
         let publisher_configured = self.owner.as_ref().is_some_and(TrustedOwner::publisher_ready);
+        let owner_endpoint_configured = publisher_configured
+            && self.owner.as_ref().is_some_and(|owner| owner.endpoint.is_some());
         let mut result = LicenseOverview {
             status: "UNLICENSED".into(), detail: "需向软件所有者申请许可".into(),
             tenant_id: None, installation_id: None, organization: None,
             application_id: None, expiry: None, entitlement_expiry: None,
             seat_limit: None, modules: vec![],
-            pending_replacement: false, publisher_configured, local_verification_only: true,
+            pending_replacement: false, publisher_configured, owner_endpoint_configured,
+            local_verification_only: true,
         };
         let id = match self.identity() { Ok(id) => id, Err(_) => return result };
         result.tenant_id = Some(id.tenant_id.clone());
@@ -368,6 +373,8 @@ impl LicenseManager {
         result.status = "PENDING".into();
         result.detail = if id.replacement_of.is_some() {
             "等待软件所有者审核换机请求".into()
+        } else if id.application_id.is_none() {
+            "本机身份已创建，尚未在线提交授权申请".into()
         } else { "等待软件所有者审核申请".into() };
         if let Ok(record) = self.record() {
             if let Some(token) = &record.token {

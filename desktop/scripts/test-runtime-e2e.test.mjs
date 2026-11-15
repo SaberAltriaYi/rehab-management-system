@@ -9,6 +9,17 @@ import { test } from 'node:test'
 import { fileURLToPath } from 'node:url'
 
 const script = join(dirname(fileURLToPath(import.meta.url)), 'test-runtime-e2e.sh')
+const ephemeralScript = join(dirname(fileURLToPath(import.meta.url)), 'test-runtime-e2e-ephemeral.sh')
+
+test('browser E2E rejects missing evidence directory before starting Docker or creating volumes', () => {
+  const result = spawnSync('bash', [ephemeralScript, '/synthetic/missing-runtime', '--upgrade-browser-smoke'], {
+    encoding: 'utf8', timeout: 10000,
+    env: { ...process.env, REHAB_BROWSER_EVIDENCE_DIR: '' }
+  })
+  assert.equal(result.status, 2)
+  assert.match(result.stderr, /requires an absolute REHAB_BROWSER_EVIDENCE_DIR/)
+  assert.doesNotMatch(result.stderr + result.stdout, /docker compose|Starting isolated/)
+})
 
 test('E2E volume collision fails without Compose down or any volume removal', () => {
   const root = mkdtempSync(join(tmpdir(), 'rehab-e2e-volume-test-'))

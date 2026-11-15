@@ -9,6 +9,7 @@ import cn.iocoder.yudao.framework.common.exception.ServiceException;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.collection.CollectionUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
+import cn.iocoder.yudao.framework.tenant.core.context.TenantContextHolder;
 import cn.iocoder.yudao.module.crm.controller.admin.business.vo.business.CrmBusinessTransferReqVO;
 import cn.iocoder.yudao.module.crm.controller.admin.contact.vo.CrmContactTransferReqVO;
 import cn.iocoder.yudao.module.crm.controller.admin.contract.vo.contract.CrmContractTransferReqVO;
@@ -28,6 +29,7 @@ import cn.iocoder.yudao.module.crm.service.business.CrmBusinessService;
 import cn.iocoder.yudao.module.crm.service.contact.CrmContactService;
 import cn.iocoder.yudao.module.crm.service.contract.CrmContractService;
 import cn.iocoder.yudao.module.crm.service.customer.bo.CrmCustomerCreateReqBO;
+import cn.iocoder.yudao.module.crm.service.department.CrmDepartmentService;
 import cn.iocoder.yudao.module.crm.service.permission.CrmPermissionService;
 import cn.iocoder.yudao.module.crm.service.permission.bo.CrmPermissionCreateReqBO;
 import cn.iocoder.yudao.module.crm.service.permission.bo.CrmPermissionTransferReqBO;
@@ -39,6 +41,7 @@ import com.mzt.logapi.starter.annotation.LogRecord;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.validation.annotation.Validated;
 
@@ -86,6 +89,10 @@ public class CrmCustomerServiceImpl implements CrmCustomerService {
 
     @Resource
     private AdminUserApi adminUserApi;
+    @Resource
+    private CrmDepartmentService departmentService;
+    @Resource
+    private JdbcTemplate jdbcTemplate;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -103,6 +110,7 @@ public class CrmCustomerServiceImpl implements CrmCustomerService {
         // 3. 创建数据权限
         permissionService.createPermission(new CrmPermissionCreateReqBO().setBizType(CrmBizTypeEnum.CRM_CUSTOMER.getType())
                 .setBizId(customer.getId()).setUserId(userId).setLevel(CrmPermissionLevelEnum.OWNER.getLevel())); // 设置当前操作的人为负责人
+        departmentService.registerCreatedCustomer(customer.getId(), userId);
 
         // 4. 记录操作日志上下文
         LogRecordContext.putVariable("customer", customer);
@@ -206,6 +214,8 @@ public class CrmCustomerServiceImpl implements CrmCustomerService {
     public void transferCustomer(CrmCustomerTransferReqVO reqVO, Long userId) {
         // 1.1 校验客户是否存在
         CrmCustomerDO customer = validateCustomerExists(reqVO.getId());
+        // 归属部门只允许通过待接收转接变更，防止旧版“转移负责人”绕过部门隔离。
+        departmentService.assertLegacyOwnerTransferWithinDepartment(reqVO.getId(), reqVO.getNewOwnerUserId());
         // 1.2 校验拥有客户是否到达上限
         validateCustomerExceedOwnerLimit(reqVO.getNewOwnerUserId(), 1);
         // 2.1 数据权限转移
@@ -284,6 +294,7 @@ public class CrmCustomerServiceImpl implements CrmCustomerService {
         // 2. 创建数据权限
         permissionService.createPermission(new CrmPermissionCreateReqBO().setBizType(CrmBizTypeEnum.CRM_CUSTOMER.getType())
                 .setBizId(customer.getId()).setUserId(userId).setLevel(CrmPermissionLevelEnum.OWNER.getLevel())); // 设置当前操作的人为负责人
+        departmentService.registerCreatedCustomer(customer.getId(), userId);
 
         // 3. 记录操作日志上下文
         LogRecordContext.putVariable("customer", customer);
@@ -321,6 +332,7 @@ public class CrmCustomerServiceImpl implements CrmCustomerService {
                 if (importReqVO.getOwnerUserId() != null) {
                     permissionService.createPermission(new CrmPermissionCreateReqBO().setBizType(CrmBizTypeEnum.CRM_CUSTOMER.getType())
                             .setBizId(customer.getId()).setUserId(importReqVO.getOwnerUserId()).setLevel(CrmPermissionLevelEnum.OWNER.getLevel()));
+                    departmentService.registerCreatedCustomer(customer.getId(), importReqVO.getOwnerUserId());
                 }
                 // 1.3 记录操作日志
                 getSelf().importCustomerLog(customer, false);
@@ -400,6 +412,8 @@ public class CrmCustomerServiceImpl implements CrmCustomerService {
             validateCustomerIsLocked(customer, false);
             // 校验成交状态
             validateCustomerDeal(customer);
+            // 公海领取和分配也不得绕过部门间的双向转接。
+            departmentService.assertLegacyOwnerTransferWithinDepartment(customer.getId(), ownerUserId);
         });
         // 1.4  校验负责人是否到达上限
         validateCustomerExceedOwnerLimit(ownerUserId, customers.size());
@@ -419,6 +433,12 @@ public class CrmCustomerServiceImpl implements CrmCustomerService {
         customerMapper.updateBatch(updateCustomers);
         // 2.3 创建负责人数据权限
         permissionService.createPermissionBatch(createPermissions);
+        for (CrmCustomerDO customer : customers) {
+            departmentService.registerCreatedCustomer(customer.getId(), ownerUserId);
+            jdbcTemplate.update("INSERT INTO crm_customer_pool_event "
+                            + "(tenant_id,customer_id,owner_user_id,event_type) VALUES (?,?,?,'TAKE')",
+                    TenantContextHolder.getRequiredTenantId(), customer.getId(), ownerUserId);
+        }
         // TODO @芋艿：要不要处理关联的联系人？？？
 
         // 3. 记录操作日志
@@ -467,6 +487,9 @@ public class CrmCustomerServiceImpl implements CrmCustomerService {
         // 注意：需要放在 contactService 后面，不然【客户】数据权限已经被删除，无法操作！
         permissionService.deletePermission(CrmBizTypeEnum.CRM_CUSTOMER.getType(), customer.getId(),
                 CrmPermissionLevelEnum.OWNER.getLevel());
+        jdbcTemplate.update("INSERT INTO crm_customer_pool_event "
+                        + "(tenant_id,customer_id,owner_user_id,event_type) VALUES (?,?,?,'PUT')",
+                TenantContextHolder.getRequiredTenantId(), customer.getId(), customer.getOwnerUserId());
     }
 
     @LogRecord(type = CRM_CUSTOMER_TYPE, subType = CRM_CUSTOMER_RECEIVE_SUB_TYPE, bizNo = "{{#customer.id}}",

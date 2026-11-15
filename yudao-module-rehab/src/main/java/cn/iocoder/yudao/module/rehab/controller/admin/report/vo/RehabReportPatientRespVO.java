@@ -11,6 +11,7 @@ import java.time.LocalDateTime;
 @Schema(description = "管理后台 - 报告中心患者汇总 Response VO")
 @Data
 public class RehabReportPatientRespVO {
+    private String dataOrigin;
 
     @Schema(description = "患者编号", requiredMode = Schema.RequiredMode.REQUIRED)
     private Long patientId;

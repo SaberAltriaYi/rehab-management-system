@@ -15,6 +15,7 @@ public class AppAdminPatientMiniRespVO {
 
     @Schema(description = "患者编号字符串", example = "PAT202603100001")
     private String patientNo;
+    private String dataOrigin;
 
     @Schema(description = "姓名", example = "张三")
     private String name;

@@ -86,9 +86,30 @@ if [ "$MODE" = "verify-files" ]; then
   exit 0
 fi
 
-[ -f "$ENV_FILE" ] || fail "缺少部署环境文件：$ENV_FILE"
+NATIVE_CLIENT=${REHAB_NATIVE_MYSQL_CLIENT_FILE:-}
+if [ -n "$NATIVE_CLIENT" ]; then
+  [ -f "$NATIVE_CLIENT" ] && [ ! -L "$NATIVE_CLIENT" ] || fail "原生数据库客户端配置必须为普通文件"
+  python3 - "$NATIVE_CLIENT" <<'PY'
+import os, stat, sys
+p = os.stat(sys.argv[1])
+if p.st_uid != os.getuid() or stat.S_IMODE(p.st_mode) != 0o600:
+    sys.exit('FAIL: 原生数据库客户端配置必须属于当前用户且权限为 600')
+PY
+  NATIVE_DATABASE=${REHAB_NATIVE_MYSQL_DATABASE:-}
+  case "$NATIVE_DATABASE" in ''|*[!a-zA-Z0-9_-]*) fail "必须指定合法的原生数据库名称" ;; esac
+  NATIVE_PORT=${REHAB_NATIVE_MYSQL_PORT:-3306}
+  case "$NATIVE_PORT" in ''|*[!0-9]*) fail "原生数据库端口非法" ;; esac
+  [ "$NATIVE_PORT" -ge 1 ] && [ "$NATIVE_PORT" -le 65535 ] || fail "原生数据库端口非法"
+else
+  [ -f "$ENV_FILE" ] || fail "缺少部署环境文件：$ENV_FILE"
+fi
 
 run_sql() {
+  if [ -n "$NATIVE_CLIENT" ]; then
+    mysql --defaults-extra-file="$NATIVE_CLIENT" --protocol=TCP --host=127.0.0.1 \
+      --port="$NATIVE_PORT" --database="$NATIVE_DATABASE" --batch --raw --skip-column-names
+    return
+  fi
   docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" exec -T mysql \
     sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysql -uroot "$MYSQL_DATABASE" --batch --raw --skip-column-names'
 }

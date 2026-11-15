@@ -108,7 +108,18 @@ public class RehabDailyCheckinServiceImpl implements RehabDailyCheckinService {
             throw exception(CHECKIN_TASK_EXECUTION_EMPTY);
         }
 
-        Set<Long> taskIds = reqVO.getTaskExecutions().stream().map(RehabTaskExecutionItemVO::getTaskId).collect(Collectors.toSet());
+        // One execution per task in this submission. Reject duplicates instead
+        // of silently dropping evidence or counting it twice in progress/risk.
+        Set<Long> taskIds = new HashSet<>();
+        for (RehabTaskExecutionItemVO item : reqVO.getTaskExecutions()) {
+            if (item == null || item.getTaskId() == null || item.getTaskId() <= 0
+                    || !RehabPlanConstants.COMPLETION_STATUS_LIST.contains(item.getCompletionStatus())) {
+                throw exception(CHECKIN_TASK_EXECUTION_INVALID);
+            }
+            if (!taskIds.add(item.getTaskId())) {
+                throw exception(CHECKIN_TASK_EXECUTION_DUPLICATE);
+            }
+        }
         List<RehabExerciseTaskDO> tasks = taskMapper.selectListByIds(taskIds);
         Map<Long, RehabExerciseTaskDO> taskMap = tasks.stream().collect(Collectors.toMap(RehabExerciseTaskDO::getId, item -> item, (a, b) -> a));
         for (RehabTaskExecutionItemVO item : reqVO.getTaskExecutions()) {

@@ -23,7 +23,7 @@ public class SaasTenantAccessService {
         Long tenantId = currentTenant();
         // JdbcTemplate bypasses MyBatis tenant interception: every tenant query is explicitly scoped.
         List<Map<String, Object>> rows = jdbc.queryForList(
-                "SELECT s.tenant_id,s.plan_id,p.max_users,p.max_patients,p.motion_quota,p.storage_quota "
+                "SELECT s.tenant_id,s.plan_id,CASE WHEN t.registration_source='owner-control-plane' THEN t.account_count ELSE p.max_users END AS max_users,p.max_patients,p.motion_quota,p.storage_quota "
                 + "FROM tenant_subscriptions s JOIN system_tenant t ON t.id=s.tenant_id "
                 + "JOIN saas_plans p ON p.id=s.plan_id WHERE s.tenant_id=? "
                 + "AND t.deleted=0 AND t.status=0 AND t.registration_status='active' "

@@ -46,11 +46,15 @@ const parseURL = (
   return { basePath, paramsObject }
 }
 
+const isOwnerPortal = import.meta.env.VITE_PORTAL_MODE === 'owner'
+const isOwnerRoute = (path: string) => path === '/owner' || path.startsWith('/owner/')
+
 // 路由不重定向白名单
 const whiteList = [
   '/saas/register',
   '/saas/join',
   '/login',
+  ...(isOwnerPortal ? ['/owner/login'] : []),
   '/social-login',
   '/auth-redirect',
   '/bind',
@@ -62,6 +66,14 @@ const whiteList = [
 router.beforeEach(async (to, from, next) => {
   start()
   loadStart()
+  if (isOwnerPortal && !isOwnerRoute(to.path)) {
+    next('/owner/login')
+    return
+  }
+  if (!isOwnerPortal && isOwnerRoute(to.path)) {
+    next('/login')
+    return
+  }
   if (getAccessToken()) {
     if (to.path === '/login') {
       next({ path: '/' })
@@ -97,7 +109,8 @@ router.beforeEach(async (to, from, next) => {
     if (whiteList.indexOf(to.path) !== -1) {
       next()
     } else {
-      next(`/login?redirect=${to.fullPath}`) // 否则全部重定向到登录页
+      const loginPath = to.path.startsWith('/owner') ? '/owner/login' : '/login'
+      next(`${loginPath}?redirect=${encodeURIComponent(to.fullPath)}`) // 否则重定向到对应登录入口
     }
   }
 })

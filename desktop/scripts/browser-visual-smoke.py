@@ -300,12 +300,14 @@ async def main():
                             "动作评估 #990101", f"motion-detail-{label}",
                             width, height, width < 600))
                     clicked = await client.js("""(() => {
-                      const btn=[...document.querySelectorAll('button')]
-                        .find(el=>el.innerText?.includes('查看审核'));
-                      if (!btn) return false; btn.click(); return true;
+                      const buttons=[...document.querySelectorAll('.head-actions button')];
+                      const btn=buttons.find(el=>
+                        /^(进入审核|查看审核)$/.test(el.innerText?.trim()||''));
+                      if (!btn) return {clicked:false, labels:buttons.map(el=>el.innerText?.trim())};
+                      btn.click(); return {clicked:true, label:btn.innerText?.trim()};
                     })()""")
-                    if not clicked:
-                        raise RuntimeError("Mobile review entrypoint missing")
+                    if not clicked.get("clicked"):
+                        raise RuntimeError(f"Mobile review entrypoint missing: {clicked}")
                     await asyncio.sleep(1)
                     active = await client.js("""(() => [...document.querySelectorAll('.el-tabs__item.is-active')]
                       .some(el=>el.innerText?.includes('审核与签署')))()""")
@@ -313,6 +315,67 @@ async def main():
                         raise RuntimeError("Review tab did not activate after Chrome click")
                     await client.capture(DEST / "motion-review-mobile.png")
                     print("PASS: real Chrome mobile review entrypoint interactive")
+                    # The clinical assessment form has more fields than the
+                    # motion detail; verify responsive base inputs separately.
+                    for width, height, label in [(768, 1024, 'tablet'), (390, 844, 'mobile')]:
+                        checks.append(await check_view(
+                            client, "/rehab/assessment/create",
+                            "请选择评估类型以加载对应评估表单",
+                            f"assessment-create-{label}", width, height, width < 600))
+                        layout = await client.js("""(() => {
+                          const form=document.querySelector('.el-form');
+                          const first=form?.querySelector('.el-row');
+                          const columns=[...(first?.children||[])].filter(x=>x.classList.contains('el-col'));
+                          const patient=form?.querySelector('.el-form-item');
+                          const label=patient?.querySelector('.el-form-item__label');
+                          const field=patient?.querySelector('.el-form-item__content');
+                          return {
+                            columns:columns.length,
+                            minColumnWidth:Math.round(Math.min(...columns.map(c=>c.getBoundingClientRect().width))),
+                            labelBottom:label?.getBoundingClientRect().bottom||0,
+                            inputTop:field?.getBoundingClientRect().top||0,
+                            draftButton:[...form?.querySelectorAll('button')||[]]
+                              .some(b=>(b.innerText||'').includes('保存草稿'))
+                          }
+                        })()""")
+                        if (not layout['draftButton'] or layout['columns'] < 2 or
+                            (width < 600 and (layout['minColumnWidth'] < 220 or
+                             layout['labelBottom'] > layout['inputTop'] + 3))):
+                            raise RuntimeError(f"Assessment form responsive layout failed: {label}, {layout}")
+                    print('PASS: real Chrome assessment base form on tablet and mobile')
+                    # HEP menu rows in migration 037 are not the same as a
+                    # successfully rendered authorized route. Verify the
+                    # synthetic administrator's actual desktop/mobile UI,
+                    # without issuing or signing any clinical prescription.
+                    for width, height, label in [
+                        (1440, 900, 'desktop'),
+                        (390, 844, 'mobile'),
+                    ]:
+                        checks.append(await check_view(
+                            client, "/rehab/hep/console",
+                            "HEP 家庭康复 · 一体化工作台",
+                            f"hep-console-admin-{label}",
+                            width, height, width < 600))
+                        access = await client.js("""(() => ({
+                          unauthorized:document.body.innerText.includes('当前账号未获得 HEP 权限'),
+                          backendHttpError:(document.body.innerText.match(/HTTP\\s*(404|503)\\b/i)||[])[1]||null,
+                          tabs:[...document.querySelectorAll('.el-tabs__item')]
+                            .filter(el=>el.getBoundingClientRect().width>0)
+                            .map(el=>el.innerText.trim()).filter(Boolean),
+                          hasRefresh:[...document.querySelectorAll('button')]
+                            .some(el=>el.innerText?.includes('刷新'))
+                        }))()""")
+                        if (access['unauthorized'] or not access['tabs'] or
+                                not access['hasRefresh']):
+                            raise RuntimeError(f"Synthetic Core admin HEP route missing permitted tabs: {access}")
+                        # Route visibility and API availability are separate
+                        # acceptance gates. In this isolated test the bridge
+                        # intentionally remains disabled, so a 404/503 must
+                        # not be silently counted as an operational HEP API.
+                        checks[-1]['hepBackendVerified'] = False
+                        checks[-1]['observedBackendHttpError'] = access['backendHttpError']
+                    print('PASS: authorized synthetic Core 037 HEP route and tabs rendered on desktop/mobile')
+                    print('NOTE: HEP API backend is not enabled in this isolated fixture; no positive Core–HEP data flow claimed')
                 result = {"chromeVersion": "154", "origin": "synthetic-localhost-only",
                           "realBrowser": True, "humanVisualSignoff": False,
                           "views": checks}

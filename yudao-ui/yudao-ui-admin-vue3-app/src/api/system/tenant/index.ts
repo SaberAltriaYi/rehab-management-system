@@ -16,6 +16,15 @@ export interface TenantVO {
   createTime: Date
 }
 
+export interface TenantOwnerOverviewVO {
+  totalTenants: number
+  activeTenants: number
+  disabledTenants: number
+  expiredTenants: number
+  expiringWithin30Days: number
+  totalAccountQuota: number
+}
+
 export interface TenantPageReqVO extends PageParam {
   name?: string
   contactName?: string
@@ -30,6 +39,11 @@ export interface TenantExportReqVO {
   contactMobile?: string
   status?: number
   createTime?: Date[]
+}
+
+// 查询系统拥有者租户总览
+export const getTenantOwnerOverview = () => {
+  return request.get({ url: '/system/tenant/owner/overview' })
 }
 
 // 查询租户列表

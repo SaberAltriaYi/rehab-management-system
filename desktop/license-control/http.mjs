@@ -2,20 +2,26 @@
 // Does NOT proxy any patient or clinic application data.
 import http from 'node:http'
 import https from 'node:https'
+import { randomBytes } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { LicensingServiceError } from './service.mjs'
 
 const BODY_LIMIT = 16 * 1024
 const limiter = new Map()
+const recoveryChallenges = new Map()
 const PRIVATE_ENDPOINT = /^\/owner\/v1\//
-const PUBLIC_PREFIX = /^\/license\/v1\//
+const PUBLIC_PREFIX = /^(\/license\/v1|\/public\/v1)\//
 // No authentication state, secrets or clinical records in these immutable
 // browser assets. Owner data APIs continue to require MFA bearer on every call.
 const CONSOLE_ASSETS = Object.freeze({
   '/owner/console': ['index.html', 'text/html; charset=utf-8'],
   '/owner/console/app.mjs': ['app.mjs', 'text/javascript; charset=utf-8'],
   '/owner/console/policy.mjs': ['policy.mjs', 'text/javascript; charset=utf-8'],
-  '/owner/console/styles.css': ['styles.css', 'text/css; charset=utf-8']
+  '/owner/console/styles.css': ['styles.css', 'text/css; charset=utf-8'],
+  '/owner/recovery': ['recovery.html', 'text/html; charset=utf-8'],
+  '/owner/recovery.mjs': ['recovery.mjs', 'text/javascript; charset=utf-8'],
+  '/owner/register': ['register.html', 'text/html; charset=utf-8'],
+  '/owner/register.mjs': ['register.mjs', 'text/javascript; charset=utf-8']
 })
 function writeConsoleAsset(res, path) {
   const [file, type] = CONSOLE_ASSETS[path]
@@ -41,7 +47,8 @@ function restricted(ip, path, nowMs) {
   if (nowMs > v.until) { v.count = 0; v.until = nowMs + 60_000 }
   ++v.count
   limiter.set(key, v)
-  return v.count > (path.includes('/login') ? 12 : 60)
+  return v.count > (path.includes('/login') || path.includes('/mfa/recover') ||
+    path.includes('/core-admin-recovery/') ? 12 : 60)
 }
 function writeJson(res, status, value) {
   res.writeHead(status, {
@@ -97,38 +104,92 @@ function policy(body) {
 }
 const loopback = ip => ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(ip)
 
+// If the local operator arrived through an unsupported hostname or a stale
+// forwarded address, redirect the LOGIN DOCUMENT to the configured canonical
+// HTTPS origin before the password/TOTP form is ever displayed.
+// This is only a document navigation. Owner APIs still reject other Origins.
+export function canonicalOwnerPageRedirect(path, host, permittedOrigins, hasTls) {
+  if (!hasTls || !permittedOrigins?.length ||
+      !['/owner/console', '/owner/register', '/owner/recovery'].includes(path) ||
+      typeof host !== 'string') return null
+  const allowedHosts = permittedOrigins.map(origin => new URL(origin).host)
+  if (allowedHosts.includes(host)) return null
+  return new URL(path, permittedOrigins[0]).toString()
+}
+
+
 export function createOwnerControlServer(service, {
   tlsOptions,
   allowInsecureLoopbackForTests = false,
-  permittedBrowserOrigin = null
+  permittedBrowserOrigin = null,
+  adminRecoveryEnabled = false,
+  adminRecoveryUntilMs
 } = {}) {
   if (!tlsOptions && !allowInsecureLoopbackForTests) {
     throw new Error('Owner control API requires TLS by default')
   }
-  if (permittedBrowserOrigin !== null &&
-    (typeof permittedBrowserOrigin !== 'string' ||
-    !permittedBrowserOrigin.startsWith('https://'))) {
-    throw new Error('Browser origin must be an explicit HTTPS origin')
+  const permittedOrigins = permittedBrowserOrigin === null ? null :
+    Array.isArray(permittedBrowserOrigin) ? permittedBrowserOrigin : [permittedBrowserOrigin]
+  if (permittedOrigins !== null &&
+    (permittedOrigins.length < 1 ||
+    permittedOrigins.some(origin => {
+      if (typeof origin !== 'string') return true
+      try {
+        const value = new URL(origin)
+        return value.protocol !== 'https:' || value.origin !== origin ||
+          Boolean(value.username || value.password)
+      } catch { return true }
+    }))) {
+    throw new Error('Browser origin must be an exact HTTPS origin')
   }
   const handle = async (req, res) => {
     const nowMs = Date.now()
+    // Production recovery grants expire even while launchd stays running.
+    // Synthetic HTTP tests can omit the window for deterministic fixtures.
+    const adminRecoveryOpen = adminRecoveryEnabled && (
+      (allowInsecureLoopbackForTests && !tlsOptions && adminRecoveryUntilMs === undefined) ||
+      (Number.isSafeInteger(adminRecoveryUntilMs) && nowMs < adminRecoveryUntilMs)
+    )
     const path = req.url
     try {
       if (typeof path !== 'string' || path.length > 256 ||
         path.includes('?') || path.includes('#') ||
         !(PRIVATE_ENDPOINT.test(path) || PUBLIC_PREFIX.test(path) ||
+          path === '/' || path === '/owner' || path === '/owner/login' ||
           path === '/health' || Object.hasOwn(CONSOLE_ASSETS, path))) {
         return writeJson(res, 404, { error: 'NOT_FOUND' })
       }
       if (!tlsOptions && !loopback(req.socket.remoteAddress)) {
         return writeJson(res, 403, { error: 'TLS_REQUIRED' })
       }
-      if (req.headers.origin && req.headers.origin !== permittedBrowserOrigin) {
+      if (req.headers.origin && !permittedOrigins?.includes(req.headers.origin)) {
         return writeJson(res, 403, { error: 'CROSS_ORIGIN_FORBIDDEN' })
       }
       if (req.method === 'OPTIONS') return writeJson(res, 405, { error: 'NOT_ALLOWED' })
+      const canonicalPage = req.method === 'GET' && loopback(req.socket.remoteAddress)
+        ? canonicalOwnerPageRedirect(path, req.headers.host, permittedOrigins, Boolean(tlsOptions))
+        : null
+      if (canonicalPage) {
+        res.writeHead(302, {
+          Location: canonicalPage,
+          'Cache-Control': 'no-store',
+          'Referrer-Policy': 'no-referrer',
+          'X-Content-Type-Options': 'nosniff'
+        })
+        return res.end()
+      }
       if (restricted(req.socket.remoteAddress, path, nowMs)) {
         return writeJson(res, 429, { error: 'RATE_LIMITED' })
+      }
+      if (path === '/' || path === '/owner' || path === '/owner/login') {
+        if (req.method !== 'GET') return writeJson(res, 405, { error: 'NOT_ALLOWED' })
+        res.writeHead(302, {
+          Location: '/owner/console',
+          'Cache-Control': 'no-store',
+          'Referrer-Policy': 'no-referrer',
+          'X-Content-Type-Options': 'nosniff'
+        })
+        return res.end()
       }
       if (Object.hasOwn(CONSOLE_ASSETS, path)) {
         if (req.method !== 'GET') return writeJson(res, 405, { error: 'NOT_ALLOWED' })
@@ -139,6 +200,11 @@ export function createOwnerControlServer(service, {
       }
       if (path === '/license/v1/issuers' && req.method === 'GET') {
         return writeJson(res, 200, { issuers: service.trustedIssuerKeys() })
+      }
+      if (path === '/public/v1/applications' && req.method === 'POST') {
+        const b = await readJson(req)
+        fieldsOnly(b, ['organization', 'contactName', 'contactPhone', 'contactEmail', 'region', 'note'])
+        return writeJson(res, 201, service.submitPublicApplication({ ...b, nowMs }))
       }
       if (path === '/license/v1/applications' && req.method === 'POST') {
         const b = await readJson(req)
@@ -165,6 +231,44 @@ export function createOwnerControlServer(service, {
         fieldsOnly(b, ['username', 'password', 'totp'])
         return writeJson(res, 200, await service.login({ ...b, nowMs }))
       }
+      if (path === '/owner/v1/mfa/recovery/challenge' && req.method === 'GET') {
+        if (!loopback(req.socket.remoteAddress)) return writeJson(res, 403, { error: 'LOOPBACK_REQUIRED' })
+        for (const [challenge, item] of recoveryChallenges) {
+          if (item.expiresAt <= nowMs) recoveryChallenges.delete(challenge)
+        }
+        const challenge = randomBytes(32).toString('base64url')
+        recoveryChallenges.set(challenge, {
+          expiresAt: nowMs + 5 * 60_000, ip: req.socket.remoteAddress
+        })
+        return writeJson(res, 200, {
+          challenge, expiresAt: new Date(nowMs + 5 * 60_000).toISOString()
+        })
+      }
+      if (path === '/owner/v1/mfa/recover' && req.method === 'POST') {
+        if (!loopback(req.socket.remoteAddress)) return writeJson(res, 403, { error: 'LOOPBACK_REQUIRED' })
+        const b = await readJson(req)
+        fieldsOnly(b, ['challenge', 'username', 'password', 'confirmation'])
+        const pending = recoveryChallenges.get(b.challenge)
+        recoveryChallenges.delete(b.challenge)
+        if (!pending || pending.expiresAt <= nowMs || pending.ip !== req.socket.remoteAddress) {
+          throw new LicensingServiceError('INVALID_RECOVERY_CHALLENGE')
+        }
+        return writeJson(res, 200, await service.recoverMfa({ ...b, nowMs }))
+      }
+      // Loopback launcher redemption: a single-use, challenge-bound approval.
+      // Refuse browser requests even from the legitimate Owner origin.
+      if (path === '/owner/v1/core-admin-recovery/redeem' && req.method === 'POST') {
+        if (!adminRecoveryOpen) return writeJson(res, 404, { error: 'NOT_FOUND' })
+        if (!loopback(req.socket.remoteAddress) || req.headers.origin) {
+          return writeJson(res, 403, { error: 'LOCAL_LAUNCHER_ONLY' })
+        }
+        const b = await readJson(req)
+        fieldsOnly(b, ['authorizationCode', 'deviceChallenge'])
+        return writeJson(res, 200, service.redeemCoreAdminRecovery({ ...b, nowMs }))
+      }
+      if (path === '/owner/v1/core-admin-recovery/authorize' && !adminRecoveryOpen) {
+        return writeJson(res, 404, { error: 'NOT_FOUND' })
+      }
       // Every owner operation must carry an MFA-authenticated bearer session.
       // Never accept owner flag, role or TOTP bypass from user-supplied JSON.
       if (!PRIVATE_ENDPOINT.test(path)) return writeJson(res, 404, { error: 'NOT_FOUND' })
@@ -179,8 +283,22 @@ export function createOwnerControlServer(service, {
         fieldsOnly(b, ['totp'])
         return writeJson(res, 200, service.stepUp({ token, totp: b.totp, nowMs }))
       }
+      if (path === '/owner/v1/core-admin-recovery/authorize' && req.method === 'POST') {
+        if (!adminRecoveryOpen) return writeJson(res, 404, { error: 'NOT_FOUND' })
+        if (!loopback(req.socket.remoteAddress)) return writeJson(res, 403, { error: 'LOOPBACK_REQUIRED' })
+        const b = await readJson(req)
+        fieldsOnly(b, ['deviceChallenge', 'confirmation'])
+        return writeJson(res, 200, service.authorizeCoreAdminRecovery({ token, ...b, nowMs }))
+      }
       if (path === '/owner/v1/applications' && req.method === 'GET') {
-        return writeJson(res, 200, { applications: service.applicationList({ token, nowMs }) })
+        return writeJson(res, 200, {
+          applications: service.applicationList({ token, nowMs }),
+          adminRecoveryEnabled: adminRecoveryOpen,
+          // This is only a capability flag. Never expose the provisioning URL,
+          // token or plan/package identifiers to the browser.
+          provisioningConfigured: service.provisioningConfigured(),
+          activationEmailConfigured: service.activationEmailConfigured()
+        })
       }
       if (path === '/owner/v1/signing-keys/rotate' && req.method === 'POST') {
         const b = await readJson(req)
@@ -202,14 +320,37 @@ export function createOwnerControlServer(service, {
           token, kid: compromised[1], nowMs
         }))
       }
-      const application = /^\/owner\/v1\/applications\/([0-9a-f-]{36})\/(approve|reject)$/.exec(path)
+      const application = /^\/owner\/v1\/applications\/([0-9a-f-]{36})\/(approve|reject|request-info)$/.exec(path)
+      const pendingDelete = /^\/owner\/v1\/applications\/([0-9a-f-]{36})\/delete$/.exec(path)
+      if (pendingDelete && req.method === 'POST') {
+        const b = await readJson(req)
+        fieldsOnly(b, ['reason'])
+        return writeJson(res, 200, service.deletePendingApplication({
+          token, applicationId: pendingDelete[1], reason: b.reason, nowMs
+        }))
+      }
       if (application && req.method === 'POST') {
         const b = await readJson(req)
-        fieldsOnly(b, ['reason', 'policy'])
+        fieldsOnly(b, application[2] === 'approve' ? ['reason', 'policy', 'credentials'] : ['reason'])
         return writeJson(res, 200, service.decideApplication({
           token, applicationId: application[1],
-          decision: application[2] === 'approve' ? 'APPROVED' : 'REJECTED',
-          reason: b.reason, policy: application[2] === 'approve' ? policy(b) : null, nowMs
+          decision: application[2] === 'approve' ? 'APPROVED' : application[2] === 'reject' ? 'REJECTED' : 'NEEDS_INFO',
+          reason: b.reason, policy: application[2] === 'approve' ? policy(b) : null,
+          credentials: application[2] === 'approve' ? b.credentials : null, nowMs
+        }))
+      }
+      const retry = /^\/owner\/v1\/applications\/([0-9a-f-]{36})\/retry-provision$/.exec(path)
+      if (retry && req.method === 'POST') {
+        const b = await readJson(req)
+        fieldsOnly(b, ['credentials'])
+        return writeJson(res, 200, service.retryProvision({ token, applicationId: retry[1], credentials: b.credentials, nowMs }))
+      }
+      const activationNotice = /^\/owner\/v1\/applications\/([0-9a-f-]{36})\/send-activation-email$/.exec(path)
+      if (activationNotice && req.method === 'POST') {
+        const b = await readJson(req)
+        fieldsOnly(b, [])
+        return writeJson(res, 200, await service.sendActivationMail({
+          token, applicationId: activationNotice[1], nowMs
         }))
       }
       const status = /^\/owner\/v1\/tenants\/([0-9a-f-]{36})$/.exec(path)
@@ -219,9 +360,9 @@ export function createOwnerControlServer(service, {
       const change = /^\/owner\/v1\/tenants\/([0-9a-f-]{36})\/(policy|status)$/.exec(path)
       if (change && req.method === 'POST') {
         const b = await readJson(req)
-        fieldsOnly(b, change[2] === 'policy' ? ['policy'] : ['status'])
+        fieldsOnly(b, change[2] === 'policy' ? ['policy', 'reason'] : ['status'])
         return writeJson(res, 200, change[2] === 'policy'
-          ? service.updateEntitlement({ token, tenantId: change[1], policy: policy(b), nowMs })
+          ? service.updateEntitlement({ token, tenantId: change[1], policy: policy(b), reason: b.reason, nowMs })
           : service.setTenantStatus({ token, tenantId: change[1], status: b.status, nowMs }))
       }
       if (path === '/owner/v1/installations/replace' && req.method === 'POST') {
@@ -248,7 +389,8 @@ export function createOwnerControlServer(service, {
       const status = code === 'OWNER_UNAUTHORIZED' || code === 'INVALID_OWNER_CREDENTIALS' ||
         code === 'OWNER_STEP_UP_REQUIRED' ? 401
         : code === 'OWNER_ALREADY_PROVISIONED' || code === 'APPLICATION_ALREADY_EXISTS' ||
-          code === 'APPLICATION_NOT_PENDING' || code === 'TENANT_NOT_APPROVED' ||
+          code === 'APPLICATION_NOT_PENDING' || code === 'APPLICATION_HAS_LICENSE' ||
+          code === 'TENANT_NOT_APPROVED' ||
           code === 'CHALLENGE_CAPACITY_EXHAUSTED' || code === 'TENANT_NOT_ACTIVE' ? 409
           : code === 'INTERNAL_ERROR' ? 500 : 400
       // Never serialize exception details, bearer tokens or request bodies.

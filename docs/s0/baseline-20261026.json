@@ -1,0 +1,439 @@
+{
+  "schemaVersion": 1,
+  "capturedAt": "2026-10-26T12:47:36.160846+00:00",
+  "purpose": "S0 implementation input baseline, not a release approval or a final delivery commit",
+  "rootLabel": "my-project",
+  "workspaceReadmeSha256": "6c4176ff4347963dce1453c3c197733fdb28756c41fe904a7c77bba1220c0bfc",
+  "assets": [
+    {
+      "id": "core",
+      "path": "rehab/rehab-management-system",
+      "class": "active_business_source",
+      "decision": "keep",
+      "purpose": "机构业务、患者/疗程、现场评估与正式归档主入口",
+      "git": true,
+      "exists": true,
+      "sourceVersion": {
+        "state": "git",
+        "commit": "df4cf2763203f5433b83b5609b718cdad6e03375",
+        "branch": "feature/reporter-engine-assessment-20261013",
+        "trackedWorktreeDirty": false,
+        "untrackedFiles": "not_collected_to_avoid_exporting_private_names"
+      },
+      "anchors": {
+        "pom.xml": "8f547ee95ec4490b9fc84d440c636b5b3097d4d2bc30d87fe4f0220efcaf2a72",
+        "yudao-server/pom.xml": "e386a50a7a57402ab60b765567f46c7e811e025dadcab66e715fca8ae596fd54",
+        "deploy/internal/migrations.manifest": "e27cf2327ef98b049401e85fab9c3c7ff178137c688e5eed4c639f4b72d1c3fd",
+        "deploy/internal/docker-compose.yml": "162c0a4525fe02e1d6bedb63a347855d1876d5bc904d91c0fe5a288dc6718cc1",
+        "yudao-ui/yudao-ui-admin-vue3-app/package.json": "d99432be9fce1297d55ef79351cf2777be37218c0f29ae7f1573a77f57287a53",
+        "desktop/launcher/package.json": "789de0062d92c2632cba7585d6ec48e5b381b02ed7888f86b3a04f1d8292544b"
+      }
+    },
+    {
+      "id": "reporter",
+      "path": "rehab/services/rehab-reporter",
+      "class": "active_business_source",
+      "decision": "keep",
+      "purpose": "独立评估/报告工作区唯一新业务开发入口；旧服务兼容维护",
+      "git": true,
+      "exists": true,
+      "sourceVersion": {
+        "state": "git",
+        "commit": "e7525201e6246dc583f12eecef41fd9af8af3db8",
+        "branch": "main",
+        "trackedWorktreeDirty": false,
+        "untrackedFiles": "not_collected_to_avoid_exporting_private_names"
+      },
+      "anchors": {
+        "AGENTS.md": "2381abef33d346d4c6d072c7bcadab44cda3691f1b5ac6b423b1a7280b360cf3",
+        "requirements.txt": "a38dbed3fe1b6a92a5fb5cec8bea11d776d179635837745416a3ec52c1f94529",
+        "requirements-motion.txt": "4eaf75ab4e968366a9d914fba640de001ae1a264d9d0745c5921d1944ff1b269",
+        "rehab_reporter/assessment_workspace/motion.py": "18b40b98e1384268f8e6f20df6757367785011634ee0b35a25090a458b895b9e",
+        "rehab_reporter/assessment_workspace/core_bridge.py": "89327a2de271bf4c081d5adaa07ed0990a4f218e7f1b1b79593970b0c4179dc8"
+      }
+    },
+    {
+      "id": "hep",
+      "path": "hep-home-training-platform",
+      "class": "active_business_source",
+      "decision": "keep",
+      "purpose": "HEP 后端、动作内容及患者执行端；机构/治疗师壳不重复扩建",
+      "git": true,
+      "exists": true,
+      "sourceVersion": {
+        "state": "git",
+        "commit": "5f42356dafbe795d88cbac2e391defc3c485bf7f",
+        "branch": "main",
+        "trackedWorktreeDirty": false,
+        "untrackedFiles": "not_collected_to_avoid_exporting_private_names"
+      },
+      "anchors": {
+        "backend/pom.xml": "25df503f8eb6eccc85d52443622ce29b4afe19fd307bb7075c1ab60752533ed5",
+        "db/migrations/V001__hep_core.sql": "684f3da4e8dc2cd85d9c77f72875de816330d5bb181618ca19d66c309c0a2260",
+        "uniapp-patient/package.json": "7b349af5f8f06b1c3983598b6f72cff8e3a6cbf6ad763b89f6a258144bb11f4c",
+        "uniapp-patient/src/App.vue": "7501303f0732077f2486a061ea5b5d58c56ebfb5479f559b389058f0cad24d21",
+        "uniapp-patient/src/lib/api.ts": "9984beaaa80e4378322781b38c87e0b1dd0b36dd11a046d23eecbf3593eee8db"
+      }
+    },
+    {
+      "id": "research-engine",
+      "path": "rehab/services/rehab-biomechanics-engine",
+      "class": "research_source",
+      "decision": "keep_research",
+      "purpose": "研究算法与合同来源，不冒充已临床验收的生产引擎",
+      "git": true,
+      "exists": true,
+      "sourceVersion": {
+        "state": "git",
+        "commit": "bf7393b7696ea5625197f7c1aa26c86b8c995755",
+        "branch": "feature/research-loopback-demo-reviewed-20261013",
+        "trackedWorktreeDirty": false,
+        "untrackedFiles": "not_collected_to_avoid_exporting_private_names"
+      }
+    },
+    {
+      "id": "unversioned-engine-copy",
+      "path": "rehab-biomechanics-engine",
+      "class": "divergence_review",
+      "decision": "preserve_pending_provenance",
+      "purpose": "同名但非已证明重复；先做源码摘要差异登记，禁止直接删除",
+      "git": false,
+      "exists": true
+    },
+    {
+      "id": "core-motion-worktree",
+      "path": "rehab/worktrees/motion-assessment",
+      "class": "historical_worktree",
+      "decision": "preserve_pending_owner_review",
+      "purpose": "旧主系统工作树，不作为本版主入口",
+      "git": true,
+      "exists": true,
+      "sourceVersion": {
+        "state": "git",
+        "commit": "2609840042f76383b69d02f6999909760f5ac169",
+        "branch": "DETACHED",
+        "trackedWorktreeDirty": false,
+        "untrackedFiles": "not_collected_to_avoid_exporting_private_names"
+      }
+    },
+    {
+      "id": "core-license-worktree",
+      "path": "rehab/worktrees/l7-motion-license-integration-20261010",
+      "class": "historical_worktree",
+      "decision": "preserve_pending_owner_review",
+      "purpose": "许可集成历史状态，先保留恢复能力",
+      "git": true,
+      "exists": true,
+      "sourceVersion": {
+        "state": "git",
+        "commit": "dcfe0e06041fc1328e54ef4b35026cae81dfdf5f",
+        "branch": "DETACHED",
+        "trackedWorktreeDirty": false,
+        "untrackedFiles": "not_collected_to_avoid_exporting_private_names"
+      }
+    },
+    {
+      "id": "saas-worktree",
+      "path": "rehab/worktrees/saas-platform-v2",
+      "class": "deferred_product_worktree",
+      "decision": "preserve_not_first_release",
+      "purpose": "SaaS 开发线，不能与内部版自动合并部署",
+      "git": true,
+      "exists": true,
+      "sourceVersion": {
+        "state": "git",
+        "commit": "c45d5d17d4acb02978463665f53ce9aa7798684a",
+        "branch": "codex/20261013-saas-install-hardening",
+        "trackedWorktreeDirty": false,
+        "untrackedFiles": "not_collected_to_avoid_exporting_private_names"
+      }
+    },
+    {
+      "id": "engine-motion-worktree",
+      "path": "rehab/worktrees/engine-motion-assessment",
+      "class": "research_worktree",
+      "decision": "preserve_pending_comparison",
+      "purpose": "研究/报告集成来源，未确认合并等同性",
+      "git": true,
+      "exists": true,
+      "sourceVersion": {
+        "state": "git",
+        "commit": "9e431f443e75f5ae058025f478e1cf5cd542c7e8",
+        "branch": "feature/reporter-integration-20261013",
+        "trackedWorktreeDirty": false,
+        "untrackedFiles": "not_collected_to_avoid_exporting_private_names"
+      }
+    },
+    {
+      "id": "engine-suite-worktree",
+      "path": "rehab/worktrees/engine-unified-suite",
+      "class": "research_worktree",
+      "decision": "preserve_pending_comparison",
+      "purpose": "另一研究分支，记录而不切换",
+      "git": true,
+      "exists": true,
+      "sourceVersion": {
+        "state": "git",
+        "commit": "03f6eda4d0496a37edc8714ae9a072be900cbfc7",
+        "branch": "main",
+        "trackedWorktreeDirty": false,
+        "untrackedFiles": "not_collected_to_avoid_exporting_private_names"
+      }
+    },
+    {
+      "id": "synthetic-one",
+      "path": "rehab/services/saas-synthetic-20261013-9864e56ffa",
+      "class": "historical_rehearsal",
+      "decision": "preserve_pending_cleanup_review",
+      "purpose": "历史合成演练目录，不作为交付来源",
+      "git": false,
+      "exists": true
+    },
+    {
+      "id": "synthetic-two",
+      "path": "rehab/services/saas-synthetic-20261013-a385b8b92a",
+      "class": "historical_rehearsal",
+      "decision": "preserve_pending_cleanup_review",
+      "purpose": "历史合成演练目录，不自动运行",
+      "git": false,
+      "exists": true
+    },
+    {
+      "id": "synthetic-unified",
+      "path": "rehab/services/saas-unified-synthetic-bf90e30-20261013",
+      "class": "historical_rehearsal",
+      "decision": "preserve_pending_cleanup_review",
+      "purpose": "历史合成演练目录，不自动运行",
+      "git": false,
+      "exists": true
+    },
+    {
+      "id": "runtime",
+      "path": "rehab-runtime",
+      "class": "private_runtime",
+      "decision": "preserve_in_place",
+      "purpose": "目录只登记；另行校验已明确固定的后端JAR，不读取env/业务库/媒体/日志/备份",
+      "git": false,
+      "exists": true
+    },
+    {
+      "id": "archive",
+      "path": "archives",
+      "class": "private_archive",
+      "decision": "preserve_in_place",
+      "purpose": "历史归档及可能含秘密的运维备份；不扫描内容",
+      "git": false,
+      "exists": true
+    },
+    {
+      "id": "release-artifacts",
+      "path": "rehab/releases",
+      "class": "release_archive",
+      "decision": "preserve_in_place",
+      "purpose": "历史发布材料，不依据文件存在认定当前已发布",
+      "git": false,
+      "exists": true
+    },
+    {
+      "id": "qa-evidence",
+      "path": "rehab/validation-evidence",
+      "class": "private_evidence",
+      "decision": "preserve_in_place",
+      "purpose": "历史验收材料，可能含敏感数据，不扫描内容",
+      "git": false,
+      "exists": true
+    },
+    {
+      "id": "rehab-data",
+      "path": "rehab/data",
+      "class": "private_data",
+      "decision": "preserve_in_place",
+      "purpose": "业务/历史数据目录，不扫描内容",
+      "git": false,
+      "exists": true
+    },
+    {
+      "id": "rehab-artifacts",
+      "path": "rehab/artifacts",
+      "class": "generated_artifacts",
+      "decision": "preserve_pending_provenance",
+      "purpose": "已有产物，不直接作为源码或发布版本",
+      "git": false,
+      "exists": true
+    },
+    {
+      "id": "dev-bridge",
+      "path": "shuncode-bridge-auto-resume",
+      "class": "development_tool",
+      "decision": "keep_outside_clinical_runtime",
+      "purpose": "开发恢复工具，不成为临床部署必需依赖",
+      "git": true,
+      "exists": true,
+      "sourceVersion": {
+        "state": "not_git"
+      }
+    }
+  ],
+  "engineComparison": {
+    "scope": "README/pyproject/lock/license plus source/test/schema text files only; not whole-directory equivalence",
+    "leftFiles": 60,
+    "rightFiles": 126,
+    "same": 51,
+    "different": 8,
+    "leftOnly": [
+      "tests/test_local_demo.py"
+    ],
+    "rightOnly": [
+      "src/rehab_biomechanics/motion/__init__.py",
+      "src/rehab_biomechanics/motion/analysis.py",
+      "src/rehab_biomechanics/motion/bundle.py",
+      "src/rehab_biomechanics/motion/constants.py",
+      "src/rehab_biomechanics/motion/kinematics.py",
+      "src/rehab_biomechanics/motion/metrics.py",
+      "src/rehab_biomechanics/motion/phases.py",
+      "src/rehab_biomechanics/motion/pipeline.py",
+      "src/rehab_biomechanics/motion/protocols/__init__.py",
+      "src/rehab_biomechanics/motion/protocols/fms_v0_2.json",
+      "src/rehab_biomechanics/motion/protocols/nasm_ces_v0_2.json",
+      "src/rehab_biomechanics/motion/protocols/tuck_jump_items.json",
+      "src/rehab_biomechanics/motion/quality.py",
+      "src/rehab_biomechanics/motion/scoring/__init__.py",
+      "src/rehab_biomechanics/motion/scoring/common.py",
+      "src/rehab_biomechanics/motion/scoring/fms.py",
+      "src/rehab_biomechanics/motion/scoring/less.py",
+      "src/rehab_biomechanics/motion/scoring/nasm.py",
+      "src/rehab_biomechanics/motion/scoring/tuck_jump.py",
+      "src/rehab_biomechanics/motion/scoring/ybt.py",
+      "src/rehab_biomechanics/motion/service.py",
+      "src/rehab_biomechanics/motion/signal.py",
+      "src/rehab_biomechanics/motion/tests_registry.py",
+      "src/rehab_biomechanics/reporter/config.py",
+      "src/rehab_biomechanics/reporter/engines/__init__.py",
+      "src/rehab_biomechanics/reporter/engines/dynamic_analysis_engine.py",
+      "src/rehab_biomechanics/reporter/engines/evidence_fusion_engine.py",
+      "src/rehab_biomechanics/reporter/engines/opencap_analysis_engine.py",
+      "src/rehab_biomechanics/reporter/engines/prescription_engine.py",
+      "src/rehab_biomechanics/reporter/engines/quality_engine.py",
+      "src/rehab_biomechanics/reporter/engines/report_narrative_engine.py",
+      "src/rehab_biomechanics/reporter/engines/risk_engine.py",
+      "src/rehab_biomechanics/reporter/engines/static_analysis_engine.py",
+      "src/rehab_biomechanics/reporter/exporters/__init__.py",
+      "src/rehab_biomechanics/reporter/exporters/docx_exporter.py",
+      "src/rehab_biomechanics/reporter/exporters/html_exporter.py",
+      "src/rehab_biomechanics/reporter/exporters/json_exporter.py",
+      "src/rehab_biomechanics/reporter/exporters/pdf_exporter.py",
+      "src/rehab_biomechanics/reporter/ingestion/__init__.py",
+      "src/rehab_biomechanics/reporter/ingestion/case_manager.py",
+      "src/rehab_biomechanics/reporter/ingestion/file_store.py",
+      "src/rehab_biomechanics/reporter/ingestion/validators.py",
+      "src/rehab_biomechanics/reporter/parsers/__init__.py",
+      "src/rehab_biomechanics/reporter/parsers/body_comp_parser.py",
+      "src/rehab_biomechanics/reporter/parsers/common.py",
+      "src/rehab_biomechanics/reporter/parsers/fms_parser.py",
+      "src/rehab_biomechanics/reporter/parsers/metadata_parser.py",
+      "src/rehab_biomechanics/reporter/parsers/nasm_parser.py",
+      "src/rehab_biomechanics/reporter/parsers/opencap_parser.py",
+      "src/rehab_biomechanics/reporter/parsers/sfma_parser.py",
+      "src/rehab_biomechanics/reporter/parsers/static_image_parser.py",
+      "src/rehab_biomechanics/reporter/parsers/static_pdf_parser.py",
+      "src/rehab_biomechanics/reporter/parsers/ybt_parser.py",
+      "src/rehab_biomechanics/reporter/schemas/__init__.py",
+      "src/rehab_biomechanics/reporter/schemas/models.py",
+      "src/rehab_biomechanics/reporter/schemas/tracking.py",
+      "src/rehab_biomechanics/reporter/schemas/workbench.py",
+      "src/rehab_biomechanics/reporter/services/__init__.py",
+      "src/rehab_biomechanics/reporter/services/case_service.py",
+      "src/rehab_biomechanics/reporter/services/tracking_service.py",
+      "src/rehab_biomechanics/reporting.py",
+      "tests/motion_synth.py",
+      "tests/test_motion_engine.py",
+      "tests/test_motion_real_sample.py",
+      "tests/test_motion_scoring.py",
+      "tests/test_motion_service.py",
+      "tests/test_reporting.py"
+    ],
+    "changed": [
+      {
+        "path": "README.md",
+        "leftSha256": "27905a6c9b76e4c102cc611379581f6bbc7845c3dabb7d0da1f73ebf83565d52",
+        "rightSha256": "7810faf8bfd4657b34d60bdf3c7d8e2f07c612abf4d00b50beda24d91e979722"
+      },
+      {
+        "path": "pyproject.toml",
+        "leftSha256": "599650d1fba2c56894721454a39c4dfca61583a6e5792833a8caf4837e667128",
+        "rightSha256": "341e802209f92721fa3af1831674bc448bf76a442d94cb337ef082e021d6f14a"
+      },
+      {
+        "path": "src/rehab_biomechanics/adapters/opencap/client.py",
+        "leftSha256": "6f4a121d1ffa2362814e123d189d3a8bee39b2b987e40e8e94ee6160d5f691f2",
+        "rightSha256": "332c29ab065fd383435a6a6af4814db63517d17d48c1452350e3b3f728be3401"
+      },
+      {
+        "path": "src/rehab_biomechanics/io/osim.py",
+        "leftSha256": "92c7774fd0ac6579722c43a8d7c0a6aad8310d3beac1b6182e5f78f9f6d45733",
+        "rightSha256": "19d3766cb42324c1d3bdd0c14f5334f692441f8ec821d2b56fccaeb64937461d"
+      },
+      {
+        "path": "src/rehab_biomechanics/web/__main__.py",
+        "leftSha256": "4b11d13b44f29d0c393625d40b5bd23c8ebffdcc3e6de2ecb20c5133d8f3edd4",
+        "rightSha256": "14fdab6d6ae604a410e7bcb444c5d888f7df0767a616517330ecf38173cf29ad"
+      },
+      {
+        "path": "src/rehab_biomechanics/web/app.py",
+        "leftSha256": "84f24f451827f5fd4018b40a1e1e0be9397e26452b1428964c4c9c0a37a6a325",
+        "rightSha256": "1db4e0f50317040c992eff8d85edcd24dd53ce8606e27edd23704cf794ccb85c"
+      },
+      {
+        "path": "tests/test_adapters.py",
+        "leftSha256": "ca5022cb94322f8ae89e662dd0b6d204ac727029f7c644ff498d4c8301dc7156",
+        "rightSha256": "88f24d9bd1b874502e5cb565cb4fcf2859751fc1023af7e7f32a460e8320c7b2"
+      },
+      {
+        "path": "uv.lock",
+        "leftSha256": "c1c5117455e3605afd4e16183191e92cdad546b2b59548950b629fd4fe69ca49",
+        "rightSha256": "c580d51f253af55d0bb58895418c7015c8f929cbe542bf8a3f58fa276537dc7b"
+      }
+    ],
+    "decision": "preserve_both_pending_provenance_and_license_review"
+  },
+  "coreArtifact": {
+    "state": "known_immutable_artifact",
+    "path": "rehab-runtime/core-local/releases/20261026-motion-v1/yudao-server.jar",
+    "sha256": "0851832d7f7d8dec976eec55a9b04b1926e6b3e929fd204cd5a4224fc3c2b0ce",
+    "modules": [
+      "yudao-module-infra",
+      "yudao-module-member",
+      "yudao-module-rehab",
+      "yudao-module-system"
+    ],
+    "activeProcess": "not_verified_by_this_read_only_tool"
+  },
+  "loopbackProbes": {
+    "core-health": {
+      "httpStatus": 200,
+      "health": "UP"
+    },
+    "hep-health": {
+      "httpStatus": 200,
+      "health": "UP"
+    },
+    "motion-login": {
+      "httpStatus": 200
+    },
+    "motion-unauthenticated": {
+      "httpStatus": 401
+    },
+    "core-web": {
+      "httpStatus": 200
+    },
+    "hep-patient-web": {
+      "httpStatus": 200
+    }
+  },
+  "notInspected": [
+    "runtime env/secrets/databases/media/backups",
+    "archive/evidence/data contents",
+    "unregistered directories",
+    "remote GitHub state or external accounts"
+  ]
+}

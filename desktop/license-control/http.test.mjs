@@ -9,7 +9,7 @@ import https from 'node:https'
 import { OwnerLicenseStore } from './store.mjs'
 import { OwnerLicensingService } from './service.mjs'
 import { SecretVault, totpAt } from './security.mjs'
-import { createOwnerControlServer } from './http.mjs'
+import { createOwnerControlServer, canonicalOwnerPageRedirect } from './http.mjs'
 import { enrollmentMessage, renewalMessage } from '../scripts/tenant-license-owner-core.mjs'
 import { verifyTenantLicenseLease } from '../scripts/tenant-license-lease.mjs'
 
@@ -52,7 +52,34 @@ async function api(path, { method = 'GET', body, token, headers = {} } = {}) {
   })
   return { status: res.status, body: await res.json(), headers: res.headers }
 }
+test('unexpected owner login host navigates to exact HTTPS allowlisted origin', () => {
+  const origins = ['https://127.0.0.1:9444', 'https://localhost:9444']
+  for (const path of ['/owner/console', '/owner/register', '/owner/recovery']) {
+    assert.equal(canonicalOwnerPageRedirect(path, 'localhost:9444', origins, true), null)
+    assert.equal(canonicalOwnerPageRedirect(path, '127.0.0.1:9444', origins, true), null)
+    assert.equal(canonicalOwnerPageRedirect(path, 'example.test:9444', origins, true),
+      'https://127.0.0.1:9444' + path)
+    assert.equal(canonicalOwnerPageRedirect(path, '127.0.0.1:9445', origins, true),
+      'https://127.0.0.1:9444' + path)
+  }
+  assert.equal(canonicalOwnerPageRedirect('/owner/v1/login', 'example.test:9444', origins, true), null)
+  assert.equal(canonicalOwnerPageRedirect('/owner/console', 'example.test:9444', origins, false), null)
+  assert.throws(() => createOwnerControlServer({}, {
+    allowInsecureLoopbackForTests: true,
+    permittedBrowserOrigin: 'https://owner.example.test/unexpected-path'
+  }), /exact HTTPS origin/)
+})
+
 test('owner console assets are same-origin, CSP-hardened and contain no secrets', async () => {
+  const root = await fetch(url + '/', { redirect: 'manual' })
+  assert.equal(root.status, 302)
+  assert.equal(root.headers.get('location'), '/owner/console')
+  for (const oldPath of ['/owner', '/owner/login']) {
+    const oldLogin = await fetch(url + oldPath, { redirect: 'manual' })
+    assert.equal(oldLogin.status, 302)
+    assert.equal(oldLogin.headers.get('location'), '/owner/console')
+    assert.equal(oldLogin.headers.get('cache-control'), 'no-store')
+  }
   const html = await fetch(url + '/owner/console')
   assert.equal(html.status, 200)
   assert.match(html.headers.get('content-security-policy'), /default-src 'none'/)
@@ -62,15 +89,25 @@ test('owner console assets are same-origin, CSP-hardened and contain no secrets'
   assert.match(body, /软件所有者授权管理台/)
   assert.match(body, /name="unlimited" type="checkbox" checked/,
     'Default license must explicitly sign unlimited staff seats')
+  assert.match(body, /name="mainSystem" type="checkbox" checked/,
+    'Owner must explicitly see and control main-system authorization')
+  assert.match(body, /id="approved-provision-panel"/)
+  assert.match(body, /id="provision-approved"/)
   assert.match(body, /id="rotate"[^>]*disabled/, 'UI must not rotate an undistributed signer')
   assert.doesNotMatch(body, /<script(?![^>]*src=)/)
   for (const asset of ['/owner/console/app.mjs', '/owner/console/policy.mjs',
-    '/owner/console/styles.css']) {
+    '/owner/console/styles.css', '/owner/recovery', '/owner/recovery.mjs']) {
     const result = await fetch(url + asset)
     assert.equal(result.status, 200, asset)
     assert.equal(result.headers.get('x-content-type-options'), 'nosniff')
+    if (asset.endsWith('/styles.css')) {
+      assert.match(await result.text(), /\[hidden\]\{display:none!important\}/,
+        'CSS grid must not override hidden Owner provisioning fields')
+    }
     if (asset.endsWith('/app.mjs')) {
       const browserScript = await result.text()
+      assert.match(browserScript, /mode: 'cors'/,
+        'Owner browser requests must retain an HTTPS Origin under no-referrer')
       assert.doesNotMatch(browserScript, /api\('\/owner\/v1\/signing-keys\/rotate'/)
       assert.doesNotMatch(browserScript, /\b(?:localStorage|sessionStorage)\s*[.\[]/)
     }
@@ -98,7 +135,63 @@ test('HTTP API is inaccessible as an owner without TOTP session', async () => {
   assert.equal(login.headers.get('cache-control'), 'no-store')
   assert.equal((await api('/owner/v1/applications', { token: sessionToken })).status, 200)
 })
+test('public institution registration creates a pending owner application without clinical data', async () => {
+  const page = await fetch(url + '/owner/register')
+  assert.equal(page.status, 200)
+  const pageHtml = await page.text()
+  assert.match(pageHtml, /机构申请/)
+  assert.match(pageHtml, /接下来怎么做/)
+  assert.match(pageHtml, /打开主系统登录页/)
+  assert.match(pageHtml, /name="contactEmail" type="email" required/)
+  assert.doesNotMatch(pageHtml, /name="contactPhone"/)
+  assert.doesNotMatch(pageHtml, /name="region"/)
+  assert.doesNotMatch(pageHtml, /name="note"/)
+  const minimal = await api('/public/v1/applications', {
+    method: 'POST', body: {
+      organization: '三字段合成康复机构', contactName: '测试联系人',
+      contactEmail: 'minimal@example.com'
+    }
+  })
+  assert.equal(minimal.status, 201, JSON.stringify(minimal.body))
+  assert.equal(minimal.body.status, 'PENDING')
+  const submitted = await api('/public/v1/applications', {
+    method: 'POST', body: {
+      organization: '线上申请合成康复中心', contactName: '申请联系人',
+      contactPhone: '13800000000', contactEmail: 'apply@example.com',
+      region: '杭州', note: '需要主系统和动作评估模块'
+    }
+  })
+  assert.equal(submitted.status, 201, JSON.stringify(submitted.body))
+  assert.equal(submitted.body.status, 'PENDING')
+  assert.match(submitted.body.tenantId, /^[0-9a-f-]{36}$/)
+  const list = await api('/owner/v1/applications', { token: sessionToken })
+  assert.equal(list.body.activationEmailConfigured, false,
+    'Mail notification must fail closed without operator-provided credentials')
+  const application = list.body.applications.find(item => item.id === submitted.body.applicationId)
+  assert.equal(application.source, 'public')
+  assert.equal(application.contactName, '申请联系人')
+  assert.equal(application.contactEmail, 'apply@example.com')
+  const minimalApplication = list.body.applications.find(item => item.id === minimal.body.applicationId)
+  assert.equal(minimalApplication.contactPhone, null)
+  assert.equal(minimalApplication.status, 'PENDING')
+  const mailNotReady = await api('/owner/v1/applications/' + submitted.body.applicationId + '/send-activation-email', {
+    method: 'POST', token: sessionToken, body: {}
+  })
+  assert.equal(mailNotReady.status, 400)
+  assert.equal(mailNotReady.body.error, 'MAIN_SYSTEM_NOT_ACTIVE')
+  assert.equal((await api('/owner/v1/applications/' + submitted.body.applicationId + '/send-activation-email', {
+    method: 'POST', body: {}
+  })).status, 401)
+  const requested = await api('/owner/v1/applications/' + submitted.body.applicationId + '/request-info', {
+    method: 'POST', token: sessionToken, body: { reason: '请补充机构使用人数和所在地' }
+  })
+  assert.equal(requested.status, 200)
+  assert.equal(requested.body.status, 'NEEDS_INFO')
+})
 test('CORS, unknown fields, payload length and alternate HTTP content types fail closed', async () => {
+  assert.equal((await api('/public/v1/applications', {
+    method: 'POST', body: {}, headers: { origin: 'http://127.0.0.1:5173' }
+  })).status, 403)
   assert.equal((await api('/owner/v1/applications', {
     token: sessionToken, headers: { origin: 'https://evil.example.invalid' }
   })).status, 403)
@@ -142,11 +235,11 @@ test('owner controls cryptographic signer, pending studio cannot renew', async (
   })
   assert.equal(unlicensed.status, 409)
   const pending = await api('/owner/v1/applications', { token: sessionToken })
-  assert.equal(pending.body.applications[0].status, 'PENDING')
+  assert.equal(pending.body.applications.find(item => item.tenantId === TENANT).status, 'PENDING')
   const unauthApproval = await api('/owner/v1/applications/' + app.body.applicationId + '/approve', {
     method: 'POST', body: {
       policy: { expiresAtMs: now() + 86_400_000, seatLimit: 6,
-        maxInstallations: 1, modules: ['rehab', 'report'] }
+        maxInstallations: 1, modules: ['rehab', 'motion', 'report'] }
     }
   })
   assert.equal(unauthApproval.status, 401)
@@ -154,7 +247,7 @@ test('owner controls cryptographic signer, pending studio cannot renew', async (
     method: 'POST', token: sessionToken, body: {
       reason: 'Synthetic approval',
       policy: { expiresAtMs: now() + 86_400_000, seatLimit: 6,
-        maxInstallations: 1, modules: ['rehab', 'report'] }
+        maxInstallations: 1, modules: ['rehab', 'motion', 'report'] }
     }
   })
   assert.equal(approved.status, 200, JSON.stringify(approved.body))
@@ -256,6 +349,33 @@ test('checkpoint API is owner-only, emergency key revocation removes issuer imme
 test('owner logout invalidates bearer', async () => {
   const end = await api('/owner/v1/logout', { method: 'POST', token: sessionToken, body: {} })
   assert.equal(end.status, 200)
+  assert.equal((await api('/owner/v1/audit', { token: sessionToken })).status, 401)
+})
+test('loopback MFA recovery challenge is one-time and revokes the old owner session', async () => {
+  const challenge = await api('/owner/v1/mfa/recovery/challenge')
+  assert.equal(challenge.status, 200)
+  assert.match(challenge.body.challenge, /^[A-Za-z0-9_-]{43}$/)
+  const recovered = await api('/owner/v1/mfa/recover', {
+    method: 'POST',
+    body: {
+      challenge: challenge.body.challenge,
+      username: 'owneradmin',
+      password: ADMIN_PASSWORD,
+      confirmation: 'ROTATE-MFA'
+    }
+  })
+  assert.equal(recovered.status, 200, JSON.stringify(recovered.body))
+  assert.match(recovered.body.secret, /^[A-Z2-7]{32}$/)
+  assert.match(recovered.body.otpauthUrl, /^otpauth:\/\/totp\//)
+  assert.equal((await api('/owner/v1/mfa/recover', {
+    method: 'POST',
+    body: {
+      challenge: challenge.body.challenge,
+      username: 'owneradmin',
+      password: ADMIN_PASSWORD,
+      confirmation: 'ROTATE-MFA'
+    }
+  })).status, 400)
   assert.equal((await api('/owner/v1/audit', { token: sessionToken })).status, 401)
 })
 test('actual TLS listener authenticates a pinned self-signed test certificate', async () => {

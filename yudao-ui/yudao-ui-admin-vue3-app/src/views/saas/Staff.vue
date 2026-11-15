@@ -1,7 +1,7 @@
 <template>
   <section class="staff" v-loading="busy">
     <header><div><small>REHAB SAAS · 开发版</small><h1>治疗师邀请</h1><p>仅本机构管理员可操作。邀请有效期 72 小时，仅能使用一次。</p></div><el-button @click="load(0)">刷新</el-button></header>
-    <el-alert title="首次使用前，请在角色管理中配置 rehab_therapist 角色及康复业务权限。邀请凭据不会发送邮件，请通过可信渠道交付本人。" type="info" :closable="false" />
+    <el-alert title="新机构使用 tenant_rehab_therapist 最小权限模板；旧机构需在套餐更新后补齐该模板，历史 rehab_therapist 角色不会用于新邀请。邀请凭据不会发送邮件，请通过可信渠道交付本人。" type="info" :closable="false" />
     <el-form inline @submit.prevent="issue"><el-form-item label="治疗师邮箱"><el-input v-model="email" type="email" maxlength="50" placeholder="name@example.com" /></el-form-item><el-button native-type="submit" type="primary">创建邀请</el-button></el-form>
     <el-alert v-if="error" :title="error" type="error" :closable="false" />
     <el-table :data="rows"><el-table-column prop="recipient_email" label="接收人" /><el-table-column prop="status" label="状态" /><el-table-column prop="expires_at" label="到期时间" /><el-table-column label="操作"><template #default="{ row }"><el-button v-if="row.status === 'pending'" link type="danger" @click="revoke(row.id)">撤销</el-button></template></el-table-column></el-table>

@@ -154,7 +154,7 @@ public class RehabMotionController {
 
     @PostMapping("/trial/manual")
     @Operation(summary = "Trial 人工字段（疼痛、有效性、人工判定）")
-    @PreAuthorize("@ss.hasPermission('rehab:motion:review')")
+    @PreAuthorize("@ss.hasPermission('rehab:motion:create')")
     public CommonResult<Boolean> updateTrialManual(@Valid @RequestBody RehabMotionTrialManualReqVO req) {
         assessmentService.updateTrialManual(req, getLoginUserId());
         return success(true);
@@ -162,7 +162,7 @@ public class RehabMotionController {
 
     @PostMapping("/manual-inputs")
     @Operation(summary = "人工输入（清除测试、YBT、TJA、LESS、NASM 观察）")
-    @PreAuthorize("@ss.hasPermission('rehab:motion:review')")
+    @PreAuthorize("@ss.hasPermission('rehab:motion:create')")
     public CommonResult<Boolean> saveManualInputs(@Valid @RequestBody RehabMotionManualInputsReqVO req) {
         assessmentService.saveManualInputs(req, getLoginUserId());
         return success(true);

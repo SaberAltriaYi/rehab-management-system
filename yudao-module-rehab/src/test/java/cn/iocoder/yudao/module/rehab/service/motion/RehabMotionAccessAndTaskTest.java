@@ -140,6 +140,13 @@ class RehabMotionAccessAndTaskTest {
     }
 
     @Test
+    void clinicalReviewerMayPerformReviewAndSignatureActions() {
+        when(dataPermissionService.isClinicalReviewer(9L)).thenReturn(true);
+        access.requireClinician(9L);
+        assertEquals("clinical_reviewer", access.role(9L));
+    }
+
+    @Test
     void memberIdCollisionWithAdminTherapistMustNotAuthorizeClinicalWrite() {
         // Simulate MEMBER id=7 and an unrelated ADMIN therapist id=7.
         when(dataPermissionService.isTherapist(7L)).thenReturn(true);

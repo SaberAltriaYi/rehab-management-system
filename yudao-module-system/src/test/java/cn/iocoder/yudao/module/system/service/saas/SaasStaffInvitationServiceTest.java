@@ -27,7 +27,7 @@ class SaasStaffInvitationServiceTest {
         jdbc.execute("CREATE TABLE system_users(id BIGINT PRIMARY KEY,tenant_id BIGINT,deleted INT)");
         jdbc.execute("CREATE TABLE saas_staff_invitations(id BIGINT AUTO_INCREMENT PRIMARY KEY,tenant_id BIGINT,role_id BIGINT,recipient_email VARCHAR(50),token_hash CHAR(64),status VARCHAR(20) DEFAULT 'pending',invited_by BIGINT,accepted_user_id BIGINT,expires_at TIMESTAMP,created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,accepted_at TIMESTAMP,UNIQUE(tenant_id,token_hash))");
         jdbc.update("INSERT INTO tenant_subscriptions VALUES(11),(22)");jdbc.update("INSERT INTO tenant_usage VALUES(11,1),(22,1)");
-        jdbc.update("INSERT INTO system_role VALUES(7,11,'rehab_therapist',0,0)");
+        jdbc.update("INSERT INTO system_role VALUES(7,11,'tenant_rehab_therapist',0,0)");
         jdbc.update("INSERT INTO system_users VALUES(1,11,0)");
         users=mock(AdminUserService.class);permissions=mock(PermissionService.class);access=mock(SaasTenantAccessService.class);
         when(access.requireCurrentTenant()).thenReturn(Collections.singletonMap("max_users",2));
@@ -40,11 +40,19 @@ class SaasStaffInvitationServiceTest {
     Long accept(){return tx.execute(s->service.accept(token,"synthetic","synthetic-1234","合成治疗师"));}
     @AfterEach void cleanup(){TenantContextHolder.clear();jdbc.execute("SET DB_CLOSE_DELAY 0");}
     @Test void rawTokenIsNotStoredAndIssuedTokensAreUnique(){Map<String,Object> a=tx.execute(s->service.issue("test@example.invalid"));Map<String,Object> b=tx.execute(s->service.issue("test@example.invalid"));assertNotEquals(a.get("token"),b.get("token"));assertEquals(43,a.get("token").toString().length());assertEquals(0,jdbc.queryForObject("SELECT COUNT(*) FROM saas_staff_invitations WHERE token_hash=?",Integer.class,a.get("token")));}
+    @Test void issueUsesNewTenantTherapistTemplateAndIgnoresLegacyRole(){jdbc.update("INSERT INTO system_role VALUES(8,11,'rehab_therapist',0,0)");Map<String,Object> issued=tx.execute(s->service.issue("template@example.invalid"));assertEquals(7L,jdbc.queryForObject("SELECT role_id FROM saas_staff_invitations WHERE id=?",Long.class,issued.get("id")));}
+    @Test void invitationBoundToNewTenantTherapistTemplateCanBeRedeemed(){jdbc.update("INSERT INTO system_role VALUES(8,11,'tenant_rehab_therapist',0,0)");jdbc.update("UPDATE saas_staff_invitations SET role_id=8 WHERE id=1");Long id=accept();verify(permissions).assignUserRole(id,Collections.singleton(8L));}
     @Test void singleUseAndScopedRole(){Long id=accept();verify(permissions).assignUserRole(id,Collections.singleton(7L));assertThrows(RuntimeException.class,this::accept);assertEquals(2L,jdbc.queryForObject("SELECT user_count FROM tenant_usage WHERE tenant_id=11",Long.class));}
     @Test void crossTenantCannotRedeem(){TenantContextHolder.setTenantId(22L);assertThrows(RuntimeException.class,this::accept);verifyNoInteractions(users);}
     @Test void expiredCannotRedeem(){jdbc.update("UPDATE saas_staff_invitations SET expires_at=TIMESTAMPADD(HOUR,-1,CURRENT_TIMESTAMP)");assertThrows(RuntimeException.class,this::accept);verifyNoInteractions(users);}
     @Test void revokedCannotRedeem(){tx.execute(s->{service.revoke(1);return null;});assertThrows(RuntimeException.class,this::accept);verifyNoInteractions(users);}
     @Test void inactiveRoleCannotRedeem(){jdbc.update("UPDATE system_role SET status=1");assertThrows(RuntimeException.class,this::accept);verifyNoInteractions(users);}
+    @Test void legacyTherapistRoleCannotBeUsedForNewInvitations(){
+        jdbc.update("UPDATE system_role SET code='rehab_therapist'");
+        assertThrows(RuntimeException.class,()->tx.execute(s->service.issue("legacy@example.invalid")));
+        assertThrows(RuntimeException.class,this::accept);
+        verifyNoInteractions(users);
+    }
     @Test void quotaFailureDoesNotConsumeInvitation(){when(access.requireCurrentTenant()).thenReturn(Collections.singletonMap("max_users",1));assertThrows(RuntimeException.class,this::accept);assertEquals("pending",jdbc.queryForObject("SELECT status FROM saas_staff_invitations WHERE id=1",String.class));verifyNoInteractions(users);}
     @Test void assignmentFailureRollsBackUserAndInvitation(){doThrow(new IllegalStateException("synthetic failure")).when(permissions).assignUserRole(anyLong(),anySet());assertThrows(RuntimeException.class,this::accept);assertEquals(1,jdbc.queryForObject("SELECT COUNT(*) FROM system_users",Integer.class));assertEquals("pending",jdbc.queryForObject("SELECT status FROM saas_staff_invitations WHERE id=1",String.class));}
     @Test void rejectsUnmanagedTransaction(){assertThrows(IllegalStateException.class,()->service.accept(token,"synthetic","synthetic-1234","test"));verifyNoInteractions(users);}

@@ -1400,7 +1400,7 @@ public class RehabNasmCesSummaryBuilder {
                 return new LinkedHashMap<>();
             }
             try {
-                Map<String, Object> parsed = JsonUtils.parseObject(text, new TypeReference<LinkedHashMap<String, Object>>() {
+                Map<String, Object> parsed = RehabAssessmentJson.read(text, new TypeReference<LinkedHashMap<String, Object>>() {
                 });
                 return parsed == null ? new LinkedHashMap<>() : parsed;
             } catch (Exception ignore) {

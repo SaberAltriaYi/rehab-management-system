@@ -24,6 +24,8 @@ import cn.iocoder.yudao.module.crm.service.business.CrmBusinessService;
 import cn.iocoder.yudao.module.crm.service.contact.CrmContactService;
 import cn.iocoder.yudao.module.crm.service.contract.CrmContractService;
 import cn.iocoder.yudao.module.crm.service.customer.CrmCustomerService;
+import cn.iocoder.yudao.module.crm.service.department.CrmDepartmentService;
+import cn.iocoder.yudao.module.crm.enums.common.CrmBizTypeEnum;
 import cn.iocoder.yudao.module.crm.service.product.CrmProductService;
 import cn.iocoder.yudao.module.crm.service.receivable.CrmReceivableService;
 import cn.iocoder.yudao.module.system.api.dept.DeptApi;
@@ -64,6 +66,8 @@ public class CrmContractController {
     private CrmContractService contractService;
     @Resource
     private CrmCustomerService customerService;
+    @Resource
+    private CrmDepartmentService departmentService;
     @Resource
     private CrmContactService contactService;
     @Resource
@@ -137,16 +141,20 @@ public class CrmContractController {
 
     @GetMapping("/page-by-customer")
     @Operation(summary = "获得合同分页，基于指定客户")
+    @PreAuthorize("@ss.hasPermission('crm:contract:query')")
     public CommonResult<PageResult<CrmContractRespVO>> getContractPageByCustomer(@Valid CrmContractPageReqVO pageVO) {
         Assert.notNull(pageVO.getCustomerId(), "客户编号不能为空");
+        departmentService.assertCustomerVisible(pageVO.getCustomerId(), getLoginUserId());
         PageResult<CrmContractDO> pageResult = contractService.getContractPageByCustomerId(pageVO);
         return success(BeanUtils.toBean(pageResult, CrmContractRespVO.class).setList(buildContractDetailList(pageResult.getList())));
     }
 
     @GetMapping("/page-by-business")
     @Operation(summary = "获得合同分页，基于指定商机")
+    @PreAuthorize("@ss.hasPermission('crm:contract:query')")
     public CommonResult<PageResult<CrmContractRespVO>> getContractPageByBusiness(@Valid CrmContractPageReqVO pageVO) {
         Assert.notNull(pageVO.getBusinessId(), "商机编号不能为空");
+        departmentService.assertBizVisible(CrmBizTypeEnum.CRM_BUSINESS.getType(), pageVO.getBusinessId(), getLoginUserId());
         PageResult<CrmContractDO> pageResult = contractService.getContractPageByBusinessId(pageVO);
         return success(BeanUtils.toBean(pageResult, CrmContractRespVO.class).setList(buildContractDetailList(pageResult.getList())));
     }

@@ -7,10 +7,13 @@ OUTPUT_JAR="${PROJECT_ROOT}/yudao-server/target/yudao-server.jar"
 
 # Optional business modules must be an explicit build choice; default stays lean.
 BUSINESS_MODULES=false
+CRM_MODULE=false
 if [[ $# -eq 1 && "$1" == "--business" ]]; then
   BUSINESS_MODULES=true
+elif [[ $# -eq 1 && "$1" == "--crm" ]]; then
+  CRM_MODULE=true
 elif [[ $# -ne 0 ]]; then
-  echo "Usage: $0 [--business]" >&2
+  echo "Usage: $0 [--crm|--business]" >&2
   exit 2
 fi
 
@@ -77,6 +80,8 @@ rsync -a \
   cd "${BUILD_ROOT}"
   if [[ "${BUSINESS_MODULES}" == true ]]; then
     mvn -Prehab-business-integration -pl yudao-server -am -DskipTests package
+  elif [[ "${CRM_MODULE}" == true ]]; then
+    mvn -Prehab-crm -pl yudao-server -am -DskipTests package
   else
     mvn -pl yudao-server -am -DskipTests package
   fi

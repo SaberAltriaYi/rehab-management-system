@@ -26,7 +26,7 @@ public interface RehabReportMapper extends BaseMapperX<RehabReportDO> {
             "SELECT COUNT(DISTINCT r.patient_id)",
             "FROM rehab_report r",
             "INNER JOIN rehab_patient p ON p.id = r.patient_id AND p.deleted = 0",
-            "WHERE r.deleted = 0",
+            "WHERE r.deleted = 0 AND p.data_origin &lt;&gt; 'SYNTHETIC_ARCHIVED'",
             "<if test='reqVO.patientId != null'>AND r.patient_id = #{reqVO.patientId}</if>",
             "<if test='reqVO.episodeId != null'>AND r.episode_id = #{reqVO.episodeId}</if>",
             "<if test='reqVO.assessmentId != null'>AND r.assessment_id = #{reqVO.assessmentId}</if>",
@@ -54,12 +54,12 @@ public interface RehabReportMapper extends BaseMapperX<RehabReportDO> {
 
     @Select({
             "<script>",
-            "SELECT r.patient_id AS patientId, p.patient_no AS patientNo, p.name AS patientName,",
+            "SELECT r.patient_id AS patientId, p.patient_no AS patientNo, p.name AS patientName, p.data_origin AS dataOrigin,",
             "COUNT(*) AS reportCount, COUNT(DISTINCT r.assessment_id) AS assessmentCount,",
             "MAX(r.update_time) AS latestReportTime",
             "FROM rehab_report r",
             "INNER JOIN rehab_patient p ON p.id = r.patient_id AND p.deleted = 0",
-            "WHERE r.deleted = 0",
+            "WHERE r.deleted = 0 AND p.data_origin &lt;&gt; 'SYNTHETIC_ARCHIVED'",
             "<if test='reqVO.patientId != null'>AND r.patient_id = #{reqVO.patientId}</if>",
             "<if test='reqVO.episodeId != null'>AND r.episode_id = #{reqVO.episodeId}</if>",
             "<if test='reqVO.assessmentId != null'>AND r.assessment_id = #{reqVO.assessmentId}</if>",
@@ -80,7 +80,7 @@ public interface RehabReportMapper extends BaseMapperX<RehabReportDO> {
             "AND r.patient_id IN",
             "<foreach collection='patientIds' item='patientId' open='(' separator=',' close=')'>#{patientId}</foreach>",
             "</if>",
-            "GROUP BY r.patient_id, p.patient_no, p.name",
+            "GROUP BY r.patient_id, p.patient_no, p.name, p.data_origin",
             "ORDER BY latestReportTime DESC, r.patient_id DESC",
             "LIMIT #{limit} OFFSET #{offset}",
             "</script>"

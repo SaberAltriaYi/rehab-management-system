@@ -1,0 +1,29 @@
+{
+  "productName": "康复管理员恢复维护工具",
+  "identifier": "com.saberaltriayi.rehab.adminrecovery",
+  "build": {
+    "beforeBuildCommand": "pnpm build:recovery",
+    "frontendDist": "../maintenance/dist"
+  },
+  "app": {
+    "windows": [{
+      "title": "康复管理员恢复 · Owner MFA 维护工具",
+      "width": 670,
+      "height": 760,
+      "minWidth": 570,
+      "minHeight": 620,
+      "resizable": true
+    }],
+    "security": {
+      "capabilities": ["recovery-maintenance"],
+      "csp": "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src ipc: http://ipc.localhost"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["app"],
+    "resources": [],
+    "shortDescription": "仅用于 Owner MFA 核验后恢复现有 Core 内置 admin",
+    "longDescription": "独立应急维护工具，不包含康复业务运行环境或完整临床启动器，不能用于康复系统正式发布。"
+  }
+}

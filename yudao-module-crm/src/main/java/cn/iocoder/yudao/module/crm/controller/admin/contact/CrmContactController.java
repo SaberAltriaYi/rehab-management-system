@@ -16,6 +16,8 @@ import cn.iocoder.yudao.module.crm.dal.dataobject.customer.CrmCustomerDO;
 import cn.iocoder.yudao.module.crm.service.contact.CrmContactBusinessService;
 import cn.iocoder.yudao.module.crm.service.contact.CrmContactService;
 import cn.iocoder.yudao.module.crm.service.customer.CrmCustomerService;
+import cn.iocoder.yudao.module.crm.service.department.CrmDepartmentService;
+import cn.iocoder.yudao.module.crm.enums.common.CrmBizTypeEnum;
 import cn.iocoder.yudao.module.system.api.dept.DeptApi;
 import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
@@ -56,6 +58,8 @@ public class CrmContactController {
     private CrmContactService contactService;
     @Resource
     private CrmCustomerService customerService;
+    @Resource
+    private CrmDepartmentService departmentService;
     @Resource
     private CrmContactBusinessService contactBusinessLinkService;
 
@@ -124,16 +128,20 @@ public class CrmContactController {
 
     @GetMapping("/page-by-customer")
     @Operation(summary = "获得联系人分页，基于指定客户")
+    @PreAuthorize("@ss.hasPermission('crm:contact:query')")
     public CommonResult<PageResult<CrmContactRespVO>> getContactPageByCustomer(@Valid CrmContactPageReqVO pageVO) {
         Assert.notNull(pageVO.getCustomerId(), "客户编号不能为空");
+        departmentService.assertCustomerVisible(pageVO.getCustomerId(), getLoginUserId());
         PageResult<CrmContactDO> pageResult = contactService.getContactPageByCustomerId(pageVO);
         return success(new PageResult<>(buildContactDetailList(pageResult.getList()), pageResult.getTotal()));
     }
 
     @GetMapping("/page-by-business")
     @Operation(summary = "获得联系人分页，基于指定商机")
+    @PreAuthorize("@ss.hasPermission('crm:contact:query')")
     public CommonResult<PageResult<CrmContactRespVO>> getContactPageByBusiness(@Valid CrmContactPageReqVO pageVO) {
         Assert.notNull(pageVO.getBusinessId(), "商机编号不能为空");
+        departmentService.assertBizVisible(CrmBizTypeEnum.CRM_BUSINESS.getType(), pageVO.getBusinessId(), getLoginUserId());
         PageResult<CrmContactDO> pageResult = contactService.getContactPageByBusinessId(pageVO);
         return success(new PageResult<>(buildContactDetailList(pageResult.getList()), pageResult.getTotal()));
     }

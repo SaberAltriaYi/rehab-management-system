@@ -184,6 +184,77 @@ h1 {
   font-size: 13px;
 }
 
+.license-next-action {
+  padding: 14px 16px;
+  margin-top: 14px;
+  border: 1px solid #b8d3c6;
+  border-left: 4px solid #236a5b;
+  border-radius: 10px;
+  background: #f2f8f4;
+}
+
+.license-next-action strong {
+  font-size: 15px;
+}
+
+.license-next-action p {
+  margin: 7px 0 0;
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.license-help-toggle {
+  margin-top: 10px;
+  background: #fff;
+  color: #28584e;
+  border: 1px solid #bdd6cd;
+  font-size: 13px;
+}
+
+.license-onboarding {
+  margin-top: 12px;
+  padding: 14px 18px;
+  border: 1px solid #cbded7;
+  border-radius: 12px;
+  background: #f7faf8;
+  color: #355148;
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.license-onboarding ol {
+  margin: 0;
+  padding-left: 22px;
+}
+
+.license-step-list li {
+  padding: 6px 8px;
+}
+
+.license-step-list li strong,
+.license-step-list li span {
+  display: block;
+}
+
+.license-step-list li.license-step--current {
+  border-radius: 6px;
+  background: #e7f3ec;
+  color: #175f4d;
+}
+
+.license-step-list li.license-step--done strong::after {
+  content: " · 已完成";
+  color: #236a5b;
+}
+
+.license-step-list li.license-step--pending {
+  color: #687970;
+}
+
+.license-onboarding p {
+  margin: 8px 0 0;
+}
+
 .license-fields {
   margin-top: 14px;
   display: grid;

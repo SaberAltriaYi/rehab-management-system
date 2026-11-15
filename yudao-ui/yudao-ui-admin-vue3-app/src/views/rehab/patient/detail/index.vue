@@ -7,6 +7,12 @@
         <el-button type="primary" plain v-hasPermi="['rehab:motion:query']" @click="push(`/rehab/motion?patientId=${id}`)">
           动作评估
         </el-button>
+        <el-button
+          type="primary"
+          plain
+          v-hasPermi="['rehab:hep:feedback:review']"
+          @click="push(`/rehab/hep/console?patientId=${id}`)"
+        >HEP 家庭训练</el-button>
         <el-button type="primary" v-hasPermi="['rehab:patient:assign']" @click="openAssign">分配</el-button>
         <el-button type="primary" v-hasPermi="['rehab:patient:transfer']" @click="openTransfer">转交</el-button>
         <el-button type="primary" v-hasPermi="['rehab:patient:bind-crm']" @click="openBindCrm">CRM 绑定</el-button>
@@ -18,12 +24,25 @@
         <el-skeleton-item variant="rect" style="height: 180px" />
       </template>
       <template #default>
+        <el-alert
+          v-if="detail?.patient?.dataOrigin && detail.patient.dataOrigin !== 'REAL'"
+          class="mb-12px"
+          type="warning"
+          :closable="false"
+          show-icon
+          :title="
+            detail.patient.dataOrigin === 'SYNTHETIC_ARCHIVED'
+              ? '已归档模拟资料：原记录保留，可由获授权管理员恢复；不计入业务统计。'
+              : '模拟数据／非临床用途：仅供软件验收，不计入业务统计。'
+          "
+        />
         <el-row :gutter="12" class="mb-12px">
           <el-col :span="16">
             <el-card shadow="never">
               <template #header>基本信息</template>
               <el-descriptions :column="2" border>
                 <el-descriptions-item label="患者编号">{{ detail?.patient?.patientNo || '-' }}</el-descriptions-item>
+                <el-descriptions-item label="数据来源">{{ detail?.patient?.dataOrigin || '旧版后端未提供' }}</el-descriptions-item>
                 <el-descriptions-item label="姓名">{{ detail?.patient?.name || '-' }}</el-descriptions-item>
                 <el-descriptions-item label="性别">
                   <dict-tag :type="DICT_TYPE.SYSTEM_USER_SEX" :value="detail?.patient?.gender ?? ''" />
@@ -131,10 +150,14 @@
                     type="primary"
                     link
                     v-hasPermi="['rehab:assessment:generate-report']"
+                    :loading="isGeneratingReport(scope.row.id)"
                     @click="handleGenerateReport(scope.row)"
                   >
                     生成报告
                   </el-button>
+                  <el-button v-if="hasUncertainReport(scope.row.id)" type="warning" link
+                    v-hasPermi="['rehab:assessment:generate-report']" :disabled="isGeneratingReport(scope.row.id)"
+                    @click="resetPendingReport(scope.row.id)">核对后重置</el-button>
                   <el-button type="primary" link v-hasPermi="['rehab:plan:create']" @click="createPlanFromAssessment(scope.row)">
                     创建计划
                   </el-button>
@@ -621,6 +644,7 @@
 
 <script lang="ts" setup>
 import dayjs from 'dayjs'
+import { useReportGeneration } from '@/hooks/web/useReportGeneration'
 import { DICT_TYPE } from '@/utils/dict'
 import download from '@/utils/download'
 import { getRehabEpisodePage } from '@/api/rehab/episode'
@@ -628,7 +652,6 @@ import { getRehabAssessmentPage } from '@/api/rehab/assessment'
 import {
   exportRehabReportDocx,
   exportRehabReportPdf,
-  generateRehabReport,
   getRehabReportPage,
   previewRehabReport
 } from '@/api/rehab/report'
@@ -680,6 +703,7 @@ const AI_ENABLED = import.meta.env.VITE_REHAB_AI_ENABLED === 'true'
 const route = useRoute()
 const { push } = useRouter()
 const message = useMessage()
+const { generateReport: runGenerateReport, isGeneratingReport, hasUncertainReport, resetPendingReport } = useReportGeneration()
 
 const id = computed(() => Number(route.params.id))
 const loading = ref(false)
@@ -909,10 +933,7 @@ const openAssessmentDetail = (assessmentId: number) => {
 }
 
 const handleGenerateReport = async (row: any) => {
-  await message.confirm(`确认基于评估 ${row.assessmentNo} 生成报告吗？`)
-  await generateRehabReport({ assessmentId: row.id })
-  message.success('报告生成成功')
-  await loadReportList()
+  if (await runGenerateReport(row.id)) await loadReportList()
 }
 
 const createPlanFromAssessment = (row: any) => {

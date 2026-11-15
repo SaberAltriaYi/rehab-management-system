@@ -69,7 +69,10 @@ public class RehabAuditLogServiceImpl implements RehabAuditLogService {
 
     @Override
     public List<RehabAuditLogRespVO> getModuleAuditLogs(String moduleType, Long moduleId, Long operatorUserId) {
-        if (!dataPermissionService.isSuperAdmin(operatorUserId) && !dataPermissionService.isTherapist(operatorUserId)) {
+        if (!dataPermissionService.isSuperAdmin(operatorUserId)
+                && !dataPermissionService.isTenantAdmin(operatorUserId)
+                && !dataPermissionService.isTherapist(operatorUserId)
+                && !dataPermissionService.isClinicalReviewer(operatorUserId)) {
             throw exception(PATIENT_NO_PERMISSION);
         }
         return toRespList(auditLogMapper.selectListByModule(moduleType, moduleId));

@@ -30,6 +30,7 @@ export function apiRaw<T = unknown>(path: string, options: RequestOptions = {}):
       timeout: 20000,
       success: (response) => {
         if (response.statusCode < 200 || response.statusCode >= 300) {
+          if (response.statusCode === 401) clearSession()
           const body = response.data as { msg?: string } | undefined
           reject(new Error(body?.msg || `服务返回 HTTP ${response.statusCode}`))
           return

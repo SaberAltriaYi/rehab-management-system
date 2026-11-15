@@ -144,6 +144,51 @@ public class SmsCodeServiceImplTest extends BaseDbUnitTest {
     }
 
     @Test
+    public void consumeIfUnused_concurrentAttemptsHaveOneWinner() throws Exception {
+        SmsCodeDO code = randomPojo(SmsCodeDO.class, row -> row.setMobile("13800000001")
+                .setScene(SmsSceneEnum.MEMBER_LOGIN.getScene()).setCode("000000").setUsed(false));
+        smsCodeMapper.insert(code);
+        java.util.concurrent.ExecutorService workers = java.util.concurrent.Executors.newFixedThreadPool(2);
+        java.util.concurrent.CountDownLatch ready = new java.util.concurrent.CountDownLatch(2);
+        java.util.concurrent.CountDownLatch start = new java.util.concurrent.CountDownLatch(1);
+        java.util.concurrent.Callable<Integer> consume = () -> {
+            ready.countDown();
+            assertTrue(start.await(10, java.util.concurrent.TimeUnit.SECONDS));
+            LocalDateTime now = LocalDateTime.now();
+            return smsCodeMapper.consumeIfUnused(code.getId(), now, "127.0.0.1", now.minusMinutes(5));
+        };
+        try {
+            java.util.concurrent.Future<Integer> first = workers.submit(consume);
+            java.util.concurrent.Future<Integer> second = workers.submit(consume);
+            assertTrue(ready.await(10, java.util.concurrent.TimeUnit.SECONDS));
+            start.countDown();
+            assertEquals(1, first.get(10, java.util.concurrent.TimeUnit.SECONDS)
+                    + second.get(10, java.util.concurrent.TimeUnit.SECONDS));
+            assertTrue(smsCodeMapper.selectById(code.getId()).getUsed());
+        } finally {
+            start.countDown();
+            workers.shutdownNow();
+            assertTrue(workers.awaitTermination(10, java.util.concurrent.TimeUnit.SECONDS));
+        }
+    }
+
+    @Test
+    public void consumeIfUnused_replayAndExpiredCodesCannotBeConsumed() {
+        SmsCodeDO code = randomPojo(SmsCodeDO.class, row -> row.setMobile("13800000001")
+                .setScene(SmsSceneEnum.MEMBER_LOGIN.getScene()).setCode("000000").setUsed(false));
+        smsCodeMapper.insert(code);
+        LocalDateTime now = LocalDateTime.now();
+        assertEquals(1, smsCodeMapper.consumeIfUnused(code.getId(), now, "127.0.0.1", now.minusMinutes(5)));
+        assertEquals(0, smsCodeMapper.consumeIfUnused(code.getId(), now, "127.0.0.1", now.minusMinutes(5)));
+        SmsCodeDO expired = randomPojo(SmsCodeDO.class, row -> row.setMobile("13800000002")
+                .setScene(SmsSceneEnum.MEMBER_LOGIN.getScene()).setCode("000000").setUsed(false)
+                .setCreateTime(now.minusMinutes(6)));
+        smsCodeMapper.insert(expired);
+        assertEquals(0, smsCodeMapper.consumeIfUnused(expired.getId(), now, "127.0.0.1", now.minusMinutes(5)));
+        assertFalse(smsCodeMapper.selectById(expired.getId()).getUsed());
+    }
+
+    @Test
     public void validateSmsCode_notFound() {
         // 准备参数
         SmsCodeValidateReqDTO reqDTO = randomPojo(SmsCodeValidateReqDTO.class, o -> {

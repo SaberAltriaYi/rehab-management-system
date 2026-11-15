@@ -6,6 +6,7 @@ import test from 'node:test'
 const { clearSession, getSession, saveSession } = await import('../src/lib/session.ts')
 
 function storage(initial = null) {
+  if (globalThis.uni) clearSession()
   let value = initial
   let writes = 0
   let removals = 0
@@ -27,11 +28,16 @@ test('a persisted legacy patient session is discarded before any API can read it
   assert.equal(state.removals, 1)
 })
 
-test('patient tokens cannot be saved even when code calls saveSession directly', () => {
+test('patient sessions require a future expiry and never carry a refresh token', () => {
   const state = storage(legacyPatient)
-  assert.throws(() => saveSession(legacyPatient), /患者凭据/)
+  assert.throws(() => saveSession(legacyPatient), /会话无效/)
   assert.equal(state.writes, 0)
   assert.equal(state.value, null)
+  const validPatient = { ...legacyPatient, expiresTime: '2999-01-01T00:00:00.000Z' }
+  saveSession(validPatient)
+  assert.deepEqual(getSession(), validPatient)
+  assert.equal(state.writes, 0, 'patient credentials must never be persisted')
+  assert.throws(() => saveSession({ ...validPatient, refreshToken: 'SHOULD_NOT_PERSIST' }), /会话无效/)
 })
 
 test('the existing staff session remains usable', () => {
@@ -95,4 +101,23 @@ test('storage failures cannot expose a credential or break logout', () => {
   }
   assert.equal(getSession(), null)
   assert.doesNotThrow(() => clearSession())
+})
+
+test('previously persisted short-lived patient credentials are not restored', () => {
+  const state = storage({ ...legacyPatient, expiresTime: '2999-01-01T00:00:00.000Z' })
+  assert.equal(getSession(), null)
+  assert.equal(state.value, null)
+  assert.equal(state.writes, 0)
+})
+
+test('memory-only patient sessions cannot be mutated through input or returned objects', () => {
+  storage()
+  const input = { ...legacyPatient, expiresTime: '2999-01-01T00:00:00.000Z' }
+  saveSession(input)
+  input.accessToken = 'ALTERED_INPUT'
+  const returned = getSession()
+  returned.accessToken = 'ALTERED_RETURN'
+  assert.equal(getSession().accessToken, legacyPatient.accessToken)
+  clearSession()
+  assert.equal(getSession(), null)
 })

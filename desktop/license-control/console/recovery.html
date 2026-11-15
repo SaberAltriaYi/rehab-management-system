@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <meta name="referrer" content="no-referrer"/>
+  <title>Rehab · 一次性 MFA 恢复</title>
+  <link rel="stylesheet" href="/owner/console/styles.css"/>
+  <script type="module" src="/owner/recovery.mjs"></script>
+</head>
+<body>
+<main class="recovery-shell">
+  <a class="toolbar-link" href="/owner/console">← 返回所有者登录</a>
+  <section class="panel">
+    <span class="eyebrow">LOOPBACK ONLY · ONE-TIME RECOVERY</span>
+    <h1>一次性 MFA 恢复</h1>
+    <p class="hint">此页面只允许本机访问。恢复会生成新的 TOTP 密钥、注销现有所有者会话，并使旧验证码失效。</p>
+    <div class="recovery-warning">
+      <strong>请确认你正在本机操作。</strong>
+      <p>成功后只显示一次新的密钥和配置链接，不会显示旧密钥。请立即导入认证器并保存恢复材料。</p>
+    </div>
+    <form id="recovery-form">
+      <label>所有者用户名
+        <input name="username" required autocomplete="username" maxlength="40"/>
+      </label>
+      <label>所有者密码
+        <input name="password" type="password" required autocomplete="current-password"/>
+      </label>
+      <label>确认操作
+        <input name="confirmation" required pattern="ROTATE-MFA" autocomplete="off"
+          placeholder="输入 ROTATE-MFA"/>
+      </label>
+      <button type="submit">生成新 TOTP 配置</button>
+    </form>
+    <p id="feedback" role="status" aria-live="polite"></p>
+    <section id="result" class="recovery-result" hidden>
+      <h2>新 TOTP 配置</h2>
+      <p>请在 <strong id="countdown">60</strong> 秒内完成导入。关闭或刷新页面后不能再次查看本次结果。</p>
+      <label>手动密钥</label>
+      <code id="secret" class="recovery-secret"></code>
+      <div class="recovery-actions">
+        <button id="copy-secret" type="button" class="outline">复制密钥</button>
+      </div>
+      <label>认证器配置链接</label>
+      <a id="otpauth-link" class="recovery-uri" href="#" rel="noreferrer"></a>
+      <div class="recovery-actions">
+        <button id="copy-uri" type="button" class="outline">复制配置链接</button>
+      </div>
+      <p class="hint">建议扫描配置链接或将密钥保存到受控密码管理器。不要把密钥发送到聊天、邮件或 Git。</p>
+    </section>
+  </section>
+</main>
+</body>
+</html>

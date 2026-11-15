@@ -9,7 +9,7 @@
     <view v-if="patients.length === 0 && !busy" class="empty-state card">暂无患者记录。</view>
     <view v-for="patient in patients" :key="patient.id" class="patient-card card" @tap="openSummary(patient)">
       <view class="patient-card-top">
-        <view><text class="patient-name">{{ patient.name || '未命名患者' }}</text><text class="patient-no">{{ patient.patientNo || '—' }}</text></view>
+        <view><text class="patient-name">{{ patient.name || '未命名患者' }}</text><text class="patient-no">{{ patient.patientNo || '—' }}</text><text v-if="patient.dataOrigin && patient.dataOrigin !== 'REAL'" class="patient-no">模拟数据／非临床用途</text></view>
         <text v-if="patient.hasHighRiskTrigger" class="risk-tag">需关注</text>
       </view>
       <view class="patient-meta"><text>{{ patient.currentStage || '阶段未设置' }}</text><text>最近打卡：{{ patient.latestCheckinDate || '暂无' }}</text></view>

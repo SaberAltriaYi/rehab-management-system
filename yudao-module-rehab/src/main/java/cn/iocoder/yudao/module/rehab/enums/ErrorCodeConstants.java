@@ -15,6 +15,9 @@ public interface ErrorCodeConstants {
     ErrorCode PATIENT_DUPLICATE_SUSPECTED = new ErrorCode(1_011_000_003, "存在可能重复建档患者");
     ErrorCode PATIENT_IMPORT_FILE_TOO_LARGE = new ErrorCode(1_011_000_004, "患者导入文件不能超过 5 MB");
     ErrorCode PATIENT_IMPORT_ROWS_EXCEEDED = new ErrorCode(1_011_000_005, "患者单次导入不能超过 2000 行");
+    ErrorCode PATIENT_DATA_ORIGIN_CONFLICT = new ErrorCode(1_011_000_006, "资料来源状态已变化，请刷新后重新确认");
+    ErrorCode PATIENT_DATA_ORIGIN_INVALID = new ErrorCode(1_011_000_007, "资料来源操作无效，模拟资料不能改回真实资料");
+    ErrorCode PATIENT_DATA_CONFIRMATION_REQUIRED = new ErrorCode(1_011_000_008, "请准确输入患者编号并填写操作理由");
 
     ErrorCode CRM_BINDING_NOT_EXISTS = new ErrorCode(1_011_001_000, "CRM 绑定记录不存在");
     ErrorCode CRM_BINDING_CONFLICT = new ErrorCode(1_011_001_001, "CRM 客户已绑定其他患者，发生冲突");
@@ -28,12 +31,13 @@ public interface ErrorCodeConstants {
     ErrorCode EPISODE_NOT_EXISTS = new ErrorCode(1_011_003_000, "episode 不存在");
     ErrorCode EPISODE_ACTIVE_ALREADY_EXISTS = new ErrorCode(1_011_003_001, "该患者已存在进行中的 episode");
     ErrorCode EPISODE_STAGE_INVALID = new ErrorCode(1_011_003_002, "episode 阶段不合法");
+    ErrorCode EPISODE_OWNER_CHANGE_FORBIDDEN = new ErrorCode(1_011_003_003, "已有疗程不允许更换患者，请为目标患者创建新疗程");
 
     ErrorCode ASSESSMENT_NOT_EXISTS = new ErrorCode(1_011_004_000, "评估记录不存在");
     ErrorCode ASSESSMENT_PATIENT_EPISODE_MISMATCH = new ErrorCode(1_011_004_001, "评估记录关联的患者与 episode 不匹配");
     ErrorCode ASSESSMENT_ALREADY_ARCHIVED = new ErrorCode(1_011_004_002, "评估已归档，不允许编辑");
     ErrorCode ASSESSMENT_MODULE_TYPE_INVALID = new ErrorCode(1_011_004_003, "评估模块类型不合法");
-    ErrorCode ASSESSMENT_CAN_NOT_DELETE = new ErrorCode(1_011_004_004, "评估已关联报告，不允许删除");
+    ErrorCode ASSESSMENT_CAN_NOT_DELETE = new ErrorCode(1_011_004_004, "评估已关联报告或训练计划，不允许删除");
     ErrorCode ASSESSMENT_ATTACHMENT_NOT_FOUND = new ErrorCode(1_011_004_005, "评估附件不存在");
     ErrorCode ASSESSMENT_TYPE_INVALID = new ErrorCode(1_011_004_006, "评估类型不合法");
     ErrorCode ASSESSMENT_SFMA_PROTOCOL_INVALID = new ErrorCode(1_011_004_007, "SFMA 原书流程数据不合法：{}");
@@ -54,12 +58,18 @@ public interface ErrorCodeConstants {
     ErrorCode REPORT_CAN_NOT_UNLOCK = new ErrorCode(1_011_005_007, "当前报告状态不可解锁");
     ErrorCode REPORT_VERSION_NOT_EXISTS = new ErrorCode(1_011_005_008, "报告版本记录不存在");
     ErrorCode REPORT_CAN_NOT_EXPORT = new ErrorCode(1_011_005_009, "报告未审批，不能导出");
+    ErrorCode REPORT_DATA_ORIGIN_CHANGED = new ErrorCode(1_011_005_010, "资料已标为模拟，请创建带模拟标识的新报告修订；旧原件保持不变");
+    ErrorCode REPORT_VERSION_SEQUENCE_INVALID = new ErrorCode(1_011_005_011, "报告历史版本异常，请管理员复核；既有报告不会被覆盖");
+    ErrorCode REPORT_REQUEST_INVALID = new ErrorCode(1_011_005_012, "报告请求编号或操作身份无效");
+    ErrorCode REPORT_REQUEST_CONFLICT = new ErrorCode(1_011_005_013, "同一报告请求的参数已改变，请核对原报告或明确创建新修订");
+    ErrorCode REPORT_REQUEST_RESULT_UNAVAILABLE = new ErrorCode(1_011_005_014, "原生成结果已不可用，请核对历史报告；不会自动创建替代报告");
 
     ErrorCode PLAN_NOT_EXISTS = new ErrorCode(1_011_006_000, "训练计划不存在");
     ErrorCode PLAN_PATIENT_EPISODE_MISMATCH = new ErrorCode(1_011_006_001, "计划关联的患者与 episode 不匹配");
     ErrorCode PLAN_ACTIVE_ALREADY_EXISTS = new ErrorCode(1_011_006_002, "该患者当前 episode 已存在执行中的计划");
     ErrorCode PLAN_CAN_NOT_DELETE = new ErrorCode(1_011_006_003, "计划已有执行记录，不允许删除");
     ErrorCode PLAN_STATUS_INVALID = new ErrorCode(1_011_006_004, "计划状态不合法");
+    ErrorCode PLAN_OWNER_CHANGE_FORBIDDEN = new ErrorCode(1_011_006_005, "已有训练计划不允许更换患者或疗程，请创建新计划");
 
     ErrorCode TASK_NOT_EXISTS = new ErrorCode(1_011_007_000, "训练任务不存在");
     ErrorCode TASK_PLAN_MISMATCH = new ErrorCode(1_011_007_001, "任务与计划归属不一致");
@@ -69,6 +79,8 @@ public interface ErrorCodeConstants {
     ErrorCode CHECKIN_NOT_EXISTS = new ErrorCode(1_011_008_000, "打卡记录不存在");
     ErrorCode CHECKIN_TASK_EXECUTION_EMPTY = new ErrorCode(1_011_008_001, "打卡任务执行记录不能为空");
     ErrorCode CHECKIN_TASK_NOT_BELONG_TO_PLAN = new ErrorCode(1_011_008_002, "存在任务不属于当前计划");
+    ErrorCode CHECKIN_TASK_EXECUTION_DUPLICATE = new ErrorCode(1_011_008_003, "同次训练提交中任务不能重复，请核对执行明细");
+    ErrorCode CHECKIN_TASK_EXECUTION_INVALID = new ErrorCode(1_011_008_004, "训练执行明细或完成状态不合法，请核对后重新提交");
 
     ErrorCode PROGRESS_NOT_EXISTS = new ErrorCode(1_011_009_000, "进度记录不存在");
 
@@ -86,6 +98,8 @@ public interface ErrorCodeConstants {
     ErrorCode APP_PATIENT_DAILY_CHECKIN_EXISTS = new ErrorCode(1_011_012_004, "今日已提交打卡，请勿重复提交");
     ErrorCode APP_NOTIFICATION_NOT_EXISTS = new ErrorCode(1_011_012_005, "通知不存在或已失效");
     ErrorCode APP_PATIENT_AUTH_DISABLED = new ErrorCode(1_011_012_006, "患者端身份验证尚未启用");
+    ErrorCode APP_PATIENT_INVITATION_INVALID = new ErrorCode(1_011_012_007, "患者邀请无效、已过期或已使用");
+    ErrorCode APP_PATIENT_INVITATION_FORBIDDEN = new ErrorCode(1_011_012_008, "当前账号无权签发患者邀请");
 
     ErrorCode NOTIFICATION_NOT_EXISTS = new ErrorCode(1_011_013_000, "通知不存在");
     ErrorCode NOTIFICATION_NO_PERMISSION = new ErrorCode(1_011_013_001, "无权限操作该通知");

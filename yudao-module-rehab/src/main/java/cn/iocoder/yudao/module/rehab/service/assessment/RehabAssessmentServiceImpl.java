@@ -21,6 +21,7 @@ import cn.iocoder.yudao.module.rehab.dal.mysql.report.RehabReportMapper;
 import cn.iocoder.yudao.module.rehab.enums.RehabAssessmentConstants;
 import cn.iocoder.yudao.module.rehab.enums.RehabOperationTypeConstants;
 import cn.iocoder.yudao.module.rehab.service.RehabDataPermissionService;
+import cn.iocoder.yudao.module.rehab.service.RehabClinicalSources;
 import cn.iocoder.yudao.module.rehab.service.log.RehabAuditLogService;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import cn.iocoder.yudao.module.system.api.user.dto.AdminUserRespDTO;
@@ -50,6 +51,8 @@ import static cn.iocoder.yudao.module.rehab.enums.ErrorCodeConstants.*;
 @Validated
 @Slf4j
 public class RehabAssessmentServiceImpl implements RehabAssessmentService {
+    @Resource
+    private RehabClinicalSources clinicalSources;
 
     private static final DateTimeFormatter ASSESSMENT_NO_DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyyMMdd");
     private static final long MAX_ATTACHMENT_SIZE_BYTES = 16L * 1024L * 1024L;
@@ -95,7 +98,8 @@ public class RehabAssessmentServiceImpl implements RehabAssessmentService {
     public RehabAssessmentCreateRespVO createAssessment(RehabAssessmentCreateReqVO reqVO, Long operatorUserId) {
         RehabPatientDO patient = validatePatientExists(reqVO.getPatientId());
         validatePatientReadable(patient.getId(), operatorUserId);
-        RehabEpisodeDO episode = validateEpisodeExists(reqVO.getEpisodeId());
+        clinicalSources.patient(patient.getId());
+        RehabEpisodeDO episode = clinicalSources.episode(reqVO.getEpisodeId());
         validateEpisodeBelongsToPatient(episode, patient.getId());
 
         RehabAssessmentRecordDO assessment = BeanUtils.toBean(reqVO, RehabAssessmentRecordDO.class);
@@ -151,8 +155,7 @@ public class RehabAssessmentServiceImpl implements RehabAssessmentService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void updateAssessment(RehabAssessmentUpdateReqVO reqVO, Long operatorUserId) {
-        RehabAssessmentRecordDO oldAssessment = validateAssessmentExists(reqVO.getId());
-        validatePatientReadable(oldAssessment.getPatientId(), operatorUserId);
+        RehabAssessmentRecordDO oldAssessment = lockEditableSource(reqVO.getId(), operatorUserId);
         ensureAssessmentEditable(oldAssessment);
         // Ordinary edits must never move historical assessments between people.
         // Attachments, reports and plans already refer to the original identity.
@@ -160,7 +163,7 @@ public class RehabAssessmentServiceImpl implements RehabAssessmentService {
             throw exception(ASSESSMENT_OWNER_CHANGE_FORBIDDEN);
         }
 
-        RehabEpisodeDO episode = validateEpisodeExists(reqVO.getEpisodeId());
+        RehabEpisodeDO episode = clinicalSources.episode(reqVO.getEpisodeId());
         validateEpisodeBelongsToPatient(episode, reqVO.getPatientId());
 
         RehabAssessmentRecordDO updateObj = BeanUtils.toBean(reqVO, RehabAssessmentRecordDO.class);
@@ -192,9 +195,8 @@ public class RehabAssessmentServiceImpl implements RehabAssessmentService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void deleteAssessment(Long id, Long operatorUserId) {
-        RehabAssessmentRecordDO assessment = validateAssessmentExists(id);
-        validatePatientReadable(assessment.getPatientId(), operatorUserId);
-        if (CollUtil.isNotEmpty(reportMapper.selectListByAssessmentId(id))) {
+        RehabAssessmentRecordDO assessment = lockEditableSource(id, operatorUserId);
+        if (clinicalSources.hasAssessmentReports(id)) {
             throw exception(ASSESSMENT_CAN_NOT_DELETE);
         }
         assessmentRecordMapper.deleteById(id);
@@ -208,8 +210,7 @@ public class RehabAssessmentServiceImpl implements RehabAssessmentService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void archiveAssessment(RehabAssessmentArchiveReqVO reqVO, Long operatorUserId) {
-        RehabAssessmentRecordDO oldAssessment = validateAssessmentExists(reqVO.getId());
-        validatePatientReadable(oldAssessment.getPatientId(), operatorUserId);
+        RehabAssessmentRecordDO oldAssessment = lockEditableSource(reqVO.getId(), operatorUserId);
 
         RehabAssessmentRecordDO updateObj = new RehabAssessmentRecordDO().setId(reqVO.getId())
                 .setStatus(RehabAssessmentConstants.STATUS_ARCHIVED);
@@ -277,11 +278,10 @@ public class RehabAssessmentServiceImpl implements RehabAssessmentService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public RehabAssessmentModuleDataRespVO saveModuleData(RehabAssessmentModuleDataSaveReqVO reqVO, Long operatorUserId) {
-        RehabAssessmentRecordDO assessment = validateAssessmentExists(reqVO.getAssessmentId());
-        validatePatientReadable(assessment.getPatientId(), operatorUserId);
+        RehabAssessmentRecordDO assessment = lockEditableSource(reqVO.getAssessmentId(), operatorUserId);
         ensureAssessmentEditable(assessment);
 
-        RehabAssessmentModuleDataDO oldData = moduleDataMapper.selectByAssessmentIdAndModuleType(reqVO.getAssessmentId(), reqVO.getModuleType());
+        RehabAssessmentModuleDataDO oldData = clinicalSources.module(reqVO.getAssessmentId(), reqVO.getModuleType());
         RehabAssessmentModuleDataDO saved = upsertModuleData(reqVO.getAssessmentId(), reqVO.getModuleType(), reqVO.getModuleStatus(),
                 reqVO.getDataJson(), reqVO.getSourceType(), reqVO.getVersion(), reqVO.getNote());
         // A caller performing a recoverable segment save can explicitly keep
@@ -312,8 +312,7 @@ public class RehabAssessmentServiceImpl implements RehabAssessmentService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public RehabAssessmentAttachmentRespVO uploadAttachment(Long assessmentId, String moduleType, MultipartFile file, Long operatorUserId) {
-        RehabAssessmentRecordDO assessment = validateAssessmentExists(assessmentId);
-        validatePatientReadable(assessment.getPatientId(), operatorUserId);
+        RehabAssessmentRecordDO assessment = lockEditableSource(assessmentId, operatorUserId);
         ensureAssessmentEditable(assessment);
 
         if (StrUtil.isBlank(moduleType) || !RehabAssessmentConstants.MODULE_TYPES.contains(moduleType)) {
@@ -418,6 +417,15 @@ public class RehabAssessmentServiceImpl implements RehabAssessmentService {
         }).collect(Collectors.toList());
     }
 
+    private RehabAssessmentRecordDO lockEditableSource(Long id, Long operatorUserId) {
+        RehabAssessmentRecordDO before = validateAssessmentExists(id);
+        validatePatientReadable(before.getPatientId(), operatorUserId);
+        clinicalSources.patient(before.getPatientId());
+        RehabAssessmentRecordDO current = clinicalSources.assessment(id);
+        if (!ObjUtil.equals(before.getPatientId(), current.getPatientId())) throw exception(ASSESSMENT_OWNER_CHANGE_FORBIDDEN);
+        return current;
+    }
+
     private RehabAssessmentRecordDO validateAssessmentExists(Long id) {
         RehabAssessmentRecordDO assessment = assessmentRecordMapper.selectById(id);
         if (assessment == null) {
@@ -468,7 +476,7 @@ public class RehabAssessmentServiceImpl implements RehabAssessmentService {
 
     private void ensurePrimaryModuleData(Long assessmentId, String assessmentType) {
         validateAssessmentType(assessmentType);
-        List<RehabAssessmentModuleDataDO> modules = moduleDataMapper.selectListByAssessmentId(assessmentId);
+        List<RehabAssessmentModuleDataDO> modules = clinicalSources.modules(assessmentId);
         if (CollUtil.isNotEmpty(modules)) {
             return;
         }
@@ -503,7 +511,7 @@ public class RehabAssessmentServiceImpl implements RehabAssessmentService {
         if (StrUtil.isBlank(moduleType) || !RehabAssessmentConstants.MODULE_TYPES.contains(moduleType)) {
             throw exception(ASSESSMENT_MODULE_TYPE_INVALID);
         }
-        RehabAssessmentModuleDataDO oldData = moduleDataMapper.selectByAssessmentIdAndModuleType(assessmentId, moduleType);
+        RehabAssessmentModuleDataDO oldData = clinicalSources.module(assessmentId, moduleType);
 
         RehabAssessmentModuleDataDO data = oldData == null ? new RehabAssessmentModuleDataDO() : oldData;
         data.setAssessmentId(assessmentId);
@@ -520,7 +528,7 @@ public class RehabAssessmentServiceImpl implements RehabAssessmentService {
             data.clean();
             moduleDataMapper.updateById(data);
         }
-        return moduleDataMapper.selectByAssessmentIdAndModuleType(assessmentId, moduleType);
+        return clinicalSources.module(assessmentId, moduleType);
     }
 
     private String buildAndSerializeModuleData(String moduleType, Object dataJson) {
@@ -528,12 +536,11 @@ public class RehabAssessmentServiceImpl implements RehabAssessmentService {
             try {
                 return serializeJson(staticAssessmentSummaryBuilder.enrichWithSummary(dataJson));
             } catch (Exception ex) {
-                log.warn("[assessment][static_summary] failed, fallback with conservative summary. reason={}", ex.getMessage(), ex);
+                log.warn("[assessment][static_summary] SUMMARY_BUILD_FAILED; conservative fallback");
                 try {
-                    return serializeJson(staticAssessmentSummaryBuilder.enrichWithFallback(dataJson, ex.getMessage()));
+                    return serializeJson(staticAssessmentSummaryBuilder.enrichWithFallback(dataJson, "自动摘要未完成，请人工复核"));
                 } catch (Exception fallbackEx) {
-                    log.error("[assessment][static_summary] fallback failed, save raw payload instead. reason={}",
-                            fallbackEx.getMessage(), fallbackEx);
+                    log.error("[assessment][static_summary] SUMMARY_FALLBACK_FAILED; preserving raw payload");
                     return serializeJson(dataJson);
                 }
             }
@@ -542,12 +549,11 @@ public class RehabAssessmentServiceImpl implements RehabAssessmentService {
             try {
                 return serializeJson(nasmCesSummaryBuilder.enrichWithSummary(dataJson));
             } catch (Exception ex) {
-                log.warn("[assessment][nasm_ces_summary] failed, fallback with conservative summary. reason={}", ex.getMessage(), ex);
+                log.warn("[assessment][nasm_ces_summary] SUMMARY_BUILD_FAILED; conservative fallback");
                 try {
-                    return serializeJson(nasmCesSummaryBuilder.enrichWithFallback(dataJson, ex.getMessage()));
+                    return serializeJson(nasmCesSummaryBuilder.enrichWithFallback(dataJson, "自动摘要未完成，请人工复核"));
                 } catch (Exception fallbackEx) {
-                    log.error("[assessment][nasm_ces_summary] fallback failed, save raw payload instead. reason={}",
-                            fallbackEx.getMessage(), fallbackEx);
+                    log.error("[assessment][nasm_ces_summary] SUMMARY_FALLBACK_FAILED; preserving raw payload");
                     return serializeJson(dataJson);
                 }
             }
@@ -563,12 +569,11 @@ public class RehabAssessmentServiceImpl implements RehabAssessmentService {
             try {
                 return serializeJson(sfmaSummaryBuilder.enrichWithSummary(dataJson));
             } catch (Exception ex) {
-                log.warn("[assessment][sfma_summary] failed, fallback with conservative summary. reason={}", ex.getMessage(), ex);
+                log.warn("[assessment][sfma_summary] SUMMARY_BUILD_FAILED; conservative fallback");
                 try {
-                    return serializeJson(sfmaSummaryBuilder.enrichWithFallback(dataJson, ex.getMessage()));
+                    return serializeJson(sfmaSummaryBuilder.enrichWithFallback(dataJson, "自动摘要未完成，请人工复核"));
                 } catch (Exception fallbackEx) {
-                    log.error("[assessment][sfma_summary] fallback failed, save raw payload instead. reason={}",
-                            fallbackEx.getMessage(), fallbackEx);
+                    log.error("[assessment][sfma_summary] SUMMARY_FALLBACK_FAILED; preserving raw payload");
                     return serializeJson(dataJson);
                 }
             }
@@ -581,12 +586,12 @@ public class RehabAssessmentServiceImpl implements RehabAssessmentService {
     }
 
     private void refreshAssessmentDerivedStatus(Long assessmentId, boolean keepDraft) {
-        RehabAssessmentRecordDO assessment = assessmentRecordMapper.selectById(assessmentId);
+        RehabAssessmentRecordDO assessment = clinicalSources.assessment(assessmentId);
         if (assessment == null || ObjUtil.equals(assessment.getStatus(), RehabAssessmentConstants.STATUS_ARCHIVED)) {
             return;
         }
 
-        List<RehabAssessmentModuleDataDO> modules = moduleDataMapper.selectListByAssessmentId(assessmentId);
+        List<RehabAssessmentModuleDataDO> modules = clinicalSources.modules(assessmentId);
         String rawInputStatus;
         if (CollUtil.isEmpty(modules)) {
             rawInputStatus = RehabAssessmentConstants.RAW_INPUT_MISSING;

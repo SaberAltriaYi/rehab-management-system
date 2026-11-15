@@ -235,7 +235,7 @@ public class RehabSfmaBookProtocol {
         if (rawDataJson instanceof String && StrUtil.isBlank((String) rawDataJson)) {
             return new LinkedHashMap<>();
         }
-        Map<String, Object> parsed = JsonUtils.parseObject(
+        Map<String, Object> parsed = RehabAssessmentJson.read(
                 rawDataJson instanceof String ? (String) rawDataJson : JsonUtils.toJsonString(rawDataJson),
                 new TypeReference<Map<String, Object>>() {});
         return parsed == null ? new LinkedHashMap<>() : parsed;

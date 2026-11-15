@@ -13,6 +13,10 @@ import cn.iocoder.yudao.module.crm.dal.dataobject.customer.CrmCustomerPoolConfig
 import cn.iocoder.yudao.module.crm.enums.common.CrmBizTypeEnum;
 import cn.iocoder.yudao.module.crm.enums.common.CrmSceneTypeEnum;
 import cn.iocoder.yudao.module.crm.util.CrmPermissionUtils;
+import cn.iocoder.yudao.framework.tenant.core.context.TenantContextHolder;
+import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
+import cn.iocoder.yudao.module.system.api.user.dto.AdminUserRespDTO;
+import cn.hutool.extra.spring.SpringUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import org.apache.ibatis.annotations.Mapper;
@@ -57,6 +61,7 @@ public interface CrmCustomerMapper extends BaseMapperX<CrmCustomerDO> {
             CrmPermissionUtils.appendPermissionCondition(query, CrmBizTypeEnum.CRM_CUSTOMER.getType(),
                     CrmCustomerDO::getId, ownerUserId, pageReqVO.getSceneType());
         }
+        appendDepartmentBoundary(query, ownerUserId);
         // 拼接自身的查询条件
         query.selectAll(CrmCustomerDO.class)
                 .likeIfPresent(CrmCustomerDO::getName, pageReqVO.getName())
@@ -109,6 +114,7 @@ public interface CrmCustomerMapper extends BaseMapperX<CrmCustomerDO> {
         // 拼接数据权限的查询条件
         CrmPermissionUtils.appendPermissionCondition(query, CrmBizTypeEnum.CRM_CUSTOMER.getType(),
                 CrmCustomerDO::getId, ownerUserId, pageReqVO.getSceneType());
+        appendDepartmentBoundary(query, ownerUserId);
 
         // 未锁定 + 未成交
         query.eq(CrmCustomerDO::getLockStatus, false).eq(CrmCustomerDO::getDealStatus, false);
@@ -132,6 +138,17 @@ public interface CrmCustomerMapper extends BaseMapperX<CrmCustomerDO> {
                             .or().isNull(CrmCustomerDO::getContactLastTime)));
         });
         return query;
+    }
+
+    static void appendDepartmentBoundary(MPJLambdaWrapperX<CrmCustomerDO> query, Long userId) {
+        if (CrmPermissionUtils.isCrmAdmin()) {
+            return;
+        }
+        AdminUserRespDTO user = SpringUtil.getBean(AdminUserApi.class).getUser(userId);
+        Long deptId = user == null || user.getDeptId() == null ? -1L : user.getDeptId();
+        query.apply("NOT EXISTS (SELECT 1 FROM crm_department_case dc WHERE dc.tenant_id={0} "
+                        + "AND dc.customer_id=t.id AND dc.dept_id<>{1})",
+                TenantContextHolder.getRequiredTenantId(), deptId);
     }
 
     /**

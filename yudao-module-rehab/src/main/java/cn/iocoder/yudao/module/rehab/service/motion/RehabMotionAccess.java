@@ -79,14 +79,16 @@ public class RehabMotionAccess {
             throw exception(CLINICAL_ROLE_REQUIRED);
         }
         if (dataPermissionService.isClerk(userId) && !dataPermissionService.isSuperAdmin(userId)
-                && !dataPermissionService.isTherapist(userId)) {
+                && !dataPermissionService.isTherapist(userId)
+                && !dataPermissionService.isClinicalReviewer(userId)) {
             throw exception(CLERK_WRITE_FORBIDDEN);
         }
         // Deny by default. A non-clerk user is not necessarily a clinician.
         // Controller permissions alone cannot be used to authorize service-layer
         // writes (manual scores, clinical review, signature).
         if (!dataPermissionService.isSuperAdmin(userId)
-                && !dataPermissionService.isTherapist(userId)) {
+                && !dataPermissionService.isTherapist(userId)
+                && !dataPermissionService.isClinicalReviewer(userId)) {
             throw exception(CLINICAL_ROLE_REQUIRED);
         }
     }
@@ -149,6 +151,9 @@ public class RehabMotionAccess {
         }
         if (dataPermissionService.isTherapist(userId)) {
             return "therapist";
+        }
+        if (dataPermissionService.isClinicalReviewer(userId)) {
+            return "clinical_reviewer";
         }
         if (dataPermissionService.isClerk(userId)) {
             return "clerk";

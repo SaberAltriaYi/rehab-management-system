@@ -1,0 +1,19 @@
+{
+  "productName": "康复管理系统内部版",
+  "identifier": "com.saberaltriayi.rehab.internal",
+  "app": {
+    "windows": [{
+      "title": "康复管理系统 · 工作室内部受控版",
+      "width": 1040,
+      "height": 820,
+      "minWidth": 820,
+      "minHeight": 680,
+      "resizable": true,
+      "fullscreen": false
+    }]
+  },
+  "bundle": {
+    "shortDescription": "仅供本工作室使用的独立内部环境",
+    "longDescription": "工作室内部受控版。独立配置、数据库、附件、镜像及回环端口，不迁移或清空旧环境。非商业签名发行。"
+  }
+}

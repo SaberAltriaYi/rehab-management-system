@@ -16,7 +16,7 @@
     "dev:app": "uni -p app",
     "build:app": "uni build -p app",
     "type-check": "vue-tsc --noEmit",
-    "test:security": "node --experimental-strip-types --test tests/patient-session-gate.test.mjs"
+    "test:security": "node --experimental-strip-types --test tests/*.test.mjs"
   },
   "dependencies": {
     "@dcloudio/uni-app": "3.0.0-5020620260917001",

@@ -7,8 +7,11 @@
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "build": "tsc --noEmit && vite build",
-    "test": "vitest run",
+    "test": "vitest run src && node --test maintenance/*.test.mjs",
     "cargo:test": "cargo test --manifest-path src-tauri/Cargo.toml",
+    "build:recovery": "tsc --project maintenance/tsconfig.json --noEmit && vite build maintenance --outDir dist",
+    "prepackage:mvp": "node ../scripts/mvp306-release-gate.mjs && node ../scripts/prepackage-readiness.mjs",
+    "package:mvp:dmg": "pnpm prepackage:mvp && tauri build --bundles dmg --features studio-internal",
     "tauri": "tauri"
   },
   "dependencies": {

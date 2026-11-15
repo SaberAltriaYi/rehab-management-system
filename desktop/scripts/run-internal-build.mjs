@@ -17,6 +17,10 @@ import {
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 const frontendRoot = resolve(projectRoot, 'yudao-ui/yudao-ui-admin-vue3-app')
 invalidateFrontendReceipt(projectRoot)
+// unplugin-vue-components merges existing declarations. A stale ignored file may
+// contain prior dist-internal chunk names (including invalid numeric identifiers).
+// Regenerate this build artifact from source on every internal build.
+rmSync(resolve(frontendRoot, 'src/types/auto-components.d.ts'), { force: true })
 const envDir = stageInternalEnv(projectRoot)
 try {
   const environment = { ...sanitizedInternalBuildEnv(), REHAB_INTERNAL_ENV_DIR: envDir }

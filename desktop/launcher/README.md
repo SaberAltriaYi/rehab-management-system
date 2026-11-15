@@ -1,5 +1,18 @@
 # 康复管理系统 Tauri v2 启动器
 
+## 本工作室内部受控升级（2026-10-28）
+
+用户已选择仅供工作室内部使用，不作商业发行。独立只读检查为
+`node desktop/scripts/internal-controlled-readiness.mjs /absolute/path/internal-evidence.json`：
+可以不要求商业代码签名，但仍须真实验证身份/权限、业务、数据迁移和恢复，
+不能把内部证据交给正式发布流程冒充通过。原正式L3/签名门槛不变。
+
+特别注意：本机现用Core、运动评估、HEP为原生多服务；本启动器管理的是Docker四服务。
+两者并非天然同一数据库，不能仅替换.app/启动容器就宣称完成升级。
+目标、验收和精确旧安装包清理范围见
+[`internal-controlled-installation.md`](../../docs/execution/internal-controlled-installation.md)。
+尚未验收时不删除现用程序、数据、备份或必要回滚版本。
+
 ## L3 工作室授权/首次激活（P0、本地开发，生产 NO-GO）
 
 新增独立 Rust `src-tauri/src/license.rs` 与 Tauri 的工作室授权面板；为每台新安装生成私有 Ed25519 密钥和永久安装 UUID，支持在线申请/在线签名挑战续租、离线所有者签发 `.rehab-license` 导入、已签名 RHR1 撤销状态查询、最长 72 小时许可、到期告警，以及新机器请求所有者审核换机。**发行商可信公钥只能预置于已签名安装包，不会信任客户导入的临时公钥或公开 `/issuers` 目录**。当前随仓库的 `src-tauri/resources/license/trusted-issuers.json` 为空，以确保没有真实发行商运营密钥时不能激活。

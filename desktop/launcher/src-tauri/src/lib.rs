@@ -1,4 +1,5 @@
 mod config;
+mod admin_recovery;
 mod docker;
 mod error;
 mod license;
@@ -9,6 +10,12 @@ mod runtime;
 mod service;
 mod single_instance;
 mod transfer;
+
+#[cfg(feature = "owner-recovery-headless")]
+pub mod owner_recovery_headless;
+
+#[cfg(feature = "core-backup-headless")]
+pub mod core_backup_headless;
 
 use config::AppPaths;
 use license::LicenseOverview;
@@ -239,6 +246,21 @@ fn update_admin_credentials(
 }
 
 #[tauri::command]
+fn begin_admin_recovery(state: State<'_, LauncherState>) -> Result<String, String> {
+    state.0.lock().map_err(|_| "启动器状态锁异常".to_owned())?
+        .begin_admin_recovery().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn recover_admin_credentials(
+    state: State<'_, LauncherState>, authorization_code: String, new_password: String,
+) -> Result<LauncherOverview, String> {
+    state.0.lock().map_err(|_| "启动器状态锁异常".to_owned())?
+        .recover_admin_credentials(&authorization_code, &new_password)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 fn open_data_directory(
     app: tauri::AppHandle,
     state: State<'_, LauncherState>,
@@ -267,6 +289,7 @@ fn delete_all_data(
         .map_err(|error| error.to_string())
 }
 
+#[cfg(not(feature = "recovery-maintenance"))]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _, _| {
@@ -278,6 +301,10 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
+            if cfg!(feature = "studio-internal")
+                && app.config().identifier != model::APP_IDENTIFIER {
+                return Err("内部版必须使用 tauri.internal.conf.json，禁止复用旧版数据目录".into());
+            }
             let fallback = AppPaths::platform_default()?;
             let data_dir = app
                 .path()
@@ -309,6 +336,8 @@ pub fn run() {
             export_full_transfer,
             import_full_transfer,
             update_admin_credentials,
+            begin_admin_recovery,
+            recover_admin_credentials,
             read_logs,
             open_data_directory,
             get_diagnostics,
@@ -317,4 +346,76 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("康复管理系统启动器运行失败");
+}
+
+// Only these three commands exist in the recovery-only IPC handler.
+// The normal launcher commands (service start/stop, transfer, license and
+// destructive operations) are intentionally NOT registered here.
+#[cfg(feature = "recovery-maintenance")]
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RecoveryMaintenanceStatus {
+    services_healthy: bool,
+}
+
+#[cfg(feature = "recovery-maintenance")]
+#[tauri::command]
+fn recovery_maintenance_status(
+    state: State<'_, LauncherState>,
+) -> Result<RecoveryMaintenanceStatus, String> {
+    let overview = state.0.lock().map_err(|_| "恢复工具状态锁异常".to_owned())?
+        .overview();
+    // Never send a first-login password, user list, credentials or diagnostics.
+    Ok(RecoveryMaintenanceStatus { services_healthy: overview.ready })
+}
+
+#[cfg(feature = "recovery-maintenance")]
+#[tauri::command]
+fn recovery_maintenance_apply(
+    state: State<'_, LauncherState>,
+    authorization_code: String,
+    new_password: String,
+) -> Result<(), String> {
+    state.0.lock().map_err(|_| "恢复工具状态锁异常".to_owned())?
+        .recover_admin_credentials(&authorization_code, &new_password)
+        .map(|_| ())
+        .map_err(|e| e.to_string())
+}
+
+#[cfg(feature = "recovery-maintenance")]
+pub fn run() {
+    tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, _, _| {
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
+        }))
+        .setup(|app| {
+            if app.config().identifier != "com.saberaltriayi.rehab.adminrecovery" {
+                return Err("管理员恢复维护工具的独立应用标识错误".into());
+            }
+            // The separate maintenance app must attach ONLY to an existing
+            // approved internal studio. Never initialize fresh credentials,
+            // create a new runtime, or select a user-supplied data path.
+            let paths = AppPaths::platform_default()?;
+            if !paths.env_path().is_file() ||
+                !paths.settings_path().is_file() ||
+                !paths.version_path().is_file() ||
+                !paths.secrets_dir.join("backup.passphrase").is_file() {
+                return Err("原工作室配置或备份密钥缺失，拒绝启动恢复工具".into());
+            }
+            let resource_dir = app.path().resource_dir()?;
+            let service = LauncherService::new(paths, resource_dir)
+                .map_err(|e| Box::<dyn std::error::Error>::from(e.to_string()))?;
+            app.manage(LauncherState(Mutex::new(service)));
+            Ok(())
+        })
+        .invoke_handler(tauri::generate_handler![
+            recovery_maintenance_status,
+            begin_admin_recovery,
+            recovery_maintenance_apply
+        ])
+        .run(tauri::generate_context!())
+        .expect("管理员恢复维护工具启动失败");
 }

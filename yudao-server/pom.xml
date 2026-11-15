@@ -148,6 +148,17 @@
     <!-- Explicit build profile only: CRM pulls in BPM. Do not activate this
          for a running service before the additive schema and permission gates. -->
     <profiles>
+        <!-- Candidate CRM delivery only. CRM depends on BPM transitively; ERP/report stay out. -->
+        <profile>
+            <id>rehab-crm</id>
+            <dependencies>
+                <dependency>
+                    <groupId>cn.iocoder.boot</groupId>
+                    <artifactId>yudao-module-crm</artifactId>
+                    <version>${revision}</version>
+                </dependency>
+            </dependencies>
+        </profile>
         <profile>
             <id>rehab-business-integration</id>
             <dependencies>

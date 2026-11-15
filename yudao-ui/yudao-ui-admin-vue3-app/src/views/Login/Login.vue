@@ -55,8 +55,45 @@
           <div
             class="m-auto h-[calc(100%-60px)] w-[100%] flex items-center at-2xl:max-w-500px at-lg:max-w-500px at-md:max-w-500px at-xl:max-w-500px"
           >
-            <!-- 账号登录 -->
-            <LoginForm class="m-auto h-auto p-20px lt-xl:(rounded-3xl light:bg-white)" />
+            <div class="auth-panel m-auto h-auto w-full p-20px lt-xl:(rounded-3xl light:bg-white)">
+              <div v-if="!isInternalStaffLogin" class="entry-switcher" role="tablist" aria-label="入口选择">
+                <el-button :type="activeMode === 'system' ? 'primary' : 'default'" @click="selectMode('system')">
+                  主系统登录
+                </el-button>
+                <el-button :type="activeMode === 'assessment' ? 'primary' : 'default'" @click="selectMode('assessment')">
+                  运动评估登录
+                </el-button>
+              </div>
+              <div v-if="activeMode === 'register'" class="registration-card">
+                <div v-if="canSelfRegister && !registrationKind" class="registration-choice">
+                  <h2>选择注册方式</h2>
+                  <p>个人账号用于登录已获授权的机构；机构账号需要先提交申请并等待平台审核。</p>
+                  <el-button type="primary" plain class="w-full" @click="selectRegistration('personal')">注册新账号</el-button>
+                  <el-button type="success" plain class="w-full" @click="selectRegistration('organization')">申请机构账号</el-button>
+                </div>
+                <RegisterForm v-if="registrationKind === 'personal'" @back-login="selectMode('system')" />
+                <RegistrationForm v-else-if="registrationKind === 'organization'" @back-login="selectMode('system')" />
+                <el-button v-if="canSelfRegister && registrationKind" link type="primary" class="registration-back" @click="selectMode('register')">返回注册方式</el-button>
+              </div>
+              <template v-else>
+                <p v-if="isInternalStaffLogin" class="staff-login-title">机构员工统一登录</p>
+                <LoginForm
+                  class="login-card"
+                  :default-redirect="activeMode === 'assessment' ? '/rehab/assessment' : '/index'"
+                />
+              </template>
+              <p v-if="activeMode !== 'register'" class="entry-hint">
+                {{ activeMode === 'assessment' ? '使用同一机构账号登录后进入运动评估，权限仍由 Yudao 统一校验。' : '使用管理员分配的 Yudao 账号密码登录，按角色进入授权功能。' }}
+              </p>
+              <el-button
+                v-if="isInternalStaffLogin && activeMode !== 'register'"
+                link type="primary" class="register-entry"
+                @click="selectMode(activeMode === 'assessment' ? 'system' : 'assessment')"
+              >{{ activeMode === 'assessment' ? '登录后进入主系统' : '登录后直接进入运动评估' }}</el-button>
+              <el-button v-if="activeMode !== 'register'" link type="primary" class="register-entry" @click="selectMode('register')">
+                {{ canSelfRegister ? '注册新账号 / 申请机构账号' : '申请机构入驻（需 Owner 审批）' }}
+              </el-button>
+            </div>
           </div>
         </Transition>
       </div>
@@ -64,6 +101,7 @@
   </div>
 </template>
 <script lang="ts" setup>
+import { computed, ref } from 'vue'
 import { underlineToHump } from '@/utils'
 
 import { useDesign } from '@/hooks/web/useDesign'
@@ -71,7 +109,10 @@ import { useAppStore } from '@/store/modules/app'
 import { ThemeSwitch } from '@/layout/components/ThemeSwitch'
 import { LocaleDropdown } from '@/layout/components/LocaleDropdown'
 
-import { LoginForm } from './components'
+import { LoginForm, RegisterForm } from './components'
+import { LoginStateEnum, useLoginState } from './components/useLogin'
+import RegistrationForm from '@/views/saas/RegistrationForm.vue'
+import { allowSelfRegistration, getFixedLoginTenantName } from '@/utils/loginExperience'
 
 defineOptions({ name: 'Login' })
 
@@ -80,6 +121,40 @@ const appStore = useAppStore()
 const { getPrefixCls } = useDesign()
 const softwareVersion = import.meta.env.VITE_APP_VERSION || 'V1.0'
 const prefixCls = getPrefixCls('login')
+const { currentRoute, replace } = useRouter()
+const isInternalStaffLogin = Boolean(getFixedLoginTenantName(
+  import.meta.env.VITE_APP_TENANT_ENABLE,
+  import.meta.env.VITE_APP_FIXED_TENANT_LOGIN,
+  import.meta.env.VITE_APP_DEFAULT_LOGIN_TENANT
+))
+const canSelfRegister = allowSelfRegistration(import.meta.env.VITE_APP_SELF_REGISTER_ENABLE)
+type EntryMode = 'system' | 'assessment' | 'register'
+const activeMode = computed<EntryMode>(() => {
+  if (currentRoute.value.query.mode === 'register') return 'register'
+  if (currentRoute.value.query.entry === 'assessment' || currentRoute.value.query.redirect === '/rehab/assessment') return 'assessment'
+  return 'system'
+})
+const registrationKind = ref<'personal' | 'organization' | ''>(canSelfRegister ? '' : 'organization')
+const { setLoginState } = useLoginState()
+
+function selectMode(mode: EntryMode) {
+  setLoginState(LoginStateEnum.LOGIN)
+  if (mode === 'register') {
+    registrationKind.value = canSelfRegister ? '' : 'organization'
+    replace({ path: '/login', query: { mode: 'register' } })
+    return
+  }
+  replace({
+    path: '/login',
+    query: { entry: mode, redirect: mode === 'assessment' ? '/rehab/assessment' : '/index' }
+  })
+}
+
+function selectRegistration(kind: 'personal' | 'organization') {
+  if (kind === 'personal' && !canSelfRegister) return
+  registrationKind.value = kind
+  setLoginState(kind === 'personal' ? LoginStateEnum.REGISTER : LoginStateEnum.LOGIN)
+}
 </script>
 
 <style lang="scss" scoped>
@@ -104,6 +179,26 @@ $prefix-cls: #{$namespace}-login;
   }
 }
 </style>
+
+.auth-panel {
+  max-width: 520px;
+  border-radius: 24px;
+  background: color-mix(in srgb, var(--el-bg-color) 94%, transparent);
+  box-shadow: 0 20px 60px rgb(26 65 59 / 10%);
+}
+
+.entry-switcher { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-bottom: 22px; }
+.entry-switcher .el-button { margin-left: 0; min-height: 40px; white-space: normal; }
+.login-card { padding: 0 !important; }
+.registration-card { padding: 4px 2px; }
+.registration-choice { margin-bottom: 18px; text-align: center; }
+.registration-choice h2 { margin: 4px 0 8px; color: var(--el-text-color-primary); }
+.registration-choice p { margin: 0 0 14px; color: var(--el-text-color-secondary); font-size: 13px; line-height: 1.6; }
+.registration-choice .el-button { margin: 6px 0 0; }
+.registration-back, .register-entry { display: block; margin: 10px auto 0; }
+.staff-login-title { font-weight: 600; text-align: center; color: var(--el-text-color-primary); margin: 4px 0 14px; }
+.entry-hint { margin: 14px 0 0; color: var(--el-text-color-secondary); font-size: 13px; text-align: center; }
+@media (max-width: 520px) { .entry-switcher { grid-template-columns: 1fr; } }
 
 <style lang="scss">
 .dark .login-form {

@@ -14,6 +14,8 @@ public class RehabPatientRespVO {
     private Long id;
     @Schema(description = "患者编号字符串", example = "PT202603080001")
     private String patientNo;
+    @Schema(description = "数据来源 REAL / SYNTHETIC / SYNTHETIC_ARCHIVED")
+    private String dataOrigin;
     @Schema(description = "姓名")
     private String name;
     @Schema(description = "性别（1男 2女）")

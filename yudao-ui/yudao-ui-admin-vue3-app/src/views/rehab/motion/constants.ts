@@ -24,6 +24,40 @@ export const TEST_OPTIONS: Array<{ value: string; label: string; family: string 
 
 export const testLabel = (code?: string) => TEST_OPTIONS.find((t) => t.value === code)?.label || code || '-'
 
+/** 评估命名模板：与临床采集表保持一致，OpenCap Session/Trial 也应使用同名。 */
+export const TEMPLATE_ASSESSMENT_NAMES = [
+  'NASM-CES（NASM 纠正性运动专家）',
+  'Overhead-Squat — 过顶深蹲',
+  'Single-Leg-Squat — 单腿蹲',
+  'Push-Up — 俯卧撑',
+  'Standing-Row — 站立划船',
+  'Standing-Dumbbell-Overhead-Press — 站姿哑铃过头推举',
+  'Upper-Extremity-Transition-Assessment — 上肢过渡评估',
+  'Upper-Extremity-Davies-Test — 上肢戴维斯测试',
+  'Landing-Error-Scoring-System (LESS) — 落地错误评分系统测试',
+  'Tuck-Jump-Assessment — 团身跳评估',
+  'Gait-Analysis — 步态分析',
+  'FMS（功能性动作筛查）',
+  'Deep-Squat — 深蹲',
+  'Hurdle-Step-L/R — 跨栏步',
+  'In-Line-Lunge-L/R— 直线弓步蹲',
+  'Shoulder-Mobility-L/R — 肩部灵活性',
+  'Active-Straight-Leg Raise-L/R — 主动直腿抬高',
+  'Trunk-Stability-Push-Up — 躯干稳定俯卧撑',
+  'Rotary-Stability — 旋转稳定性',
+  'FMS Clearing Tests（FMS 清除测试）',
+  'Shoulder Clearing Test — 肩部清除测试',
+  'Spinal Extension Clearing Test — 脊柱伸展清除测试',
+  'Spinal Flexion Clearing Test — 脊柱屈曲清除测试',
+  'YBT（Y Balance Test，Y平衡测试）',
+  'Lower-Quarter (LQ) — 下肢',
+  'Left: A ; PM ; PL — 左：前侧（A）；后内侧（PM）；后外侧（PL）',
+  'Right: A ; PM ; PL — 右：前侧（A）；后内侧（PM）；后外侧（PL）',
+  'Upper Quarter (UQ) — 上肢'
+] as const
+
+export const OPENCAP_WEB_URL = 'https://www.opencap.ai/'
+
 export const SIDE_OPTIONS = [
   { value: 'bilateral', label: '双侧' },
   { value: 'left', label: '左' },

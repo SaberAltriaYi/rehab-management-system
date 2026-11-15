@@ -103,9 +103,16 @@ async function main() {
   }
   const server = createOwnerControlServer(service, {
     tlsOptions: { cert, key, minVersion: 'TLSv1.2' },
+    // Opt-in, even when a newer Owner service build is installed. Must be
+    // enabled only for a supervised on-device recovery maintenance window.
+    adminRecoveryEnabled: process.env.REHAB_CORE_ADMIN_RECOVERY_ENABLED === 'true',
+    adminRecoveryUntilMs: Number(process.env.REHAB_CORE_ADMIN_RECOVERY_UNTIL_MS ?? 0),
     // Explicit HTTPS loopback default for the isolated same-origin L4 owner
     // console. Reverse-proxy deployments must set their own exact HTTPS origin.
-    permittedBrowserOrigin: process.env.REHAB_OWNER_BROWSER_ORIGIN ?? `https://127.0.0.1:${port}`
+    permittedBrowserOrigin: process.env.REHAB_OWNER_BROWSER_ORIGIN
+      ?.split(',').map(origin => origin.trim()).filter(Boolean)
+      .filter((origin, index, origins) => origins.indexOf(origin) === index)
+      || `https://127.0.0.1:${port}`
   })
   server.requestTimeout = 10_000
   server.headersTimeout = 15_000

@@ -8,11 +8,13 @@ import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
 import cn.iocoder.yudao.framework.tenant.core.aop.TenantIgnore;
+import cn.iocoder.yudao.module.system.controller.admin.tenant.vo.tenant.TenantOwnerOverviewRespVO;
 import cn.iocoder.yudao.module.system.controller.admin.tenant.vo.tenant.TenantPageReqVO;
 import cn.iocoder.yudao.module.system.controller.admin.tenant.vo.tenant.TenantRespVO;
 import cn.iocoder.yudao.module.system.controller.admin.tenant.vo.tenant.TenantSaveReqVO;
 import cn.iocoder.yudao.module.system.dal.dataobject.tenant.TenantDO;
 import cn.iocoder.yudao.module.system.service.tenant.TenantService;
+import cn.iocoder.yudao.module.system.service.tenant.TenantOwnerOverviewService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -40,6 +42,16 @@ public class TenantController {
 
     @Resource
     private TenantService tenantService;
+
+    @Resource
+    private TenantOwnerOverviewService ownerOverviewService;
+
+    @GetMapping("/owner/overview")
+    @Operation(summary = "获得系统拥有者租户总览")
+    @PreAuthorize("@tenantOwnerAccess.isOwner() and @ss.hasPermission('system:tenant:owner')")
+    public CommonResult<TenantOwnerOverviewRespVO> getTenantOwnerOverview() {
+        return success(ownerOverviewService.getOverview());
+    }
 
     @GetMapping("/get-id-by-name")
     @PermitAll
@@ -77,14 +89,14 @@ public class TenantController {
 
     @PostMapping("/create")
     @Operation(summary = "创建租户")
-    @PreAuthorize("@ss.hasPermission('system:tenant:create')")
+    @PreAuthorize("@tenantOwnerAccess.isOwner() and @ss.hasPermission('system:tenant:create')")
     public CommonResult<Long> createTenant(@Valid @RequestBody TenantSaveReqVO createReqVO) {
         return success(tenantService.createTenant(createReqVO));
     }
 
     @PutMapping("/update")
     @Operation(summary = "更新租户")
-    @PreAuthorize("@ss.hasPermission('system:tenant:update')")
+    @PreAuthorize("@tenantOwnerAccess.isOwner() and @ss.hasPermission('system:tenant:update')")
     public CommonResult<Boolean> updateTenant(@Valid @RequestBody TenantSaveReqVO updateReqVO) {
         tenantService.updateTenant(updateReqVO);
         return success(true);
@@ -93,7 +105,7 @@ public class TenantController {
     @DeleteMapping("/delete")
     @Operation(summary = "删除租户")
     @Parameter(name = "id", description = "编号", required = true, example = "1024")
-    @PreAuthorize("@ss.hasPermission('system:tenant:delete')")
+    @PreAuthorize("@tenantOwnerAccess.isOwner() and @ss.hasPermission('system:tenant:delete')")
     public CommonResult<Boolean> deleteTenant(@RequestParam("id") Long id) {
         tenantService.deleteTenant(id);
         return success(true);
@@ -102,7 +114,7 @@ public class TenantController {
     @DeleteMapping("/delete-list")
     @Parameter(name = "ids", description = "编号列表", required = true)
     @Operation(summary = "批量删除租户")
-    @PreAuthorize("@ss.hasPermission('system:tenant:delete')")
+    @PreAuthorize("@tenantOwnerAccess.isOwner() and @ss.hasPermission('system:tenant:delete')")
     public CommonResult<Boolean> deleteTenantList(@RequestParam("ids") List<Long> ids) {
         tenantService.deleteTenantList(ids);
         return success(true);
@@ -111,7 +123,7 @@ public class TenantController {
     @GetMapping("/get")
     @Operation(summary = "获得租户")
     @Parameter(name = "id", description = "编号", required = true, example = "1024")
-    @PreAuthorize("@ss.hasPermission('system:tenant:query')")
+    @PreAuthorize("@tenantOwnerAccess.isOwner() and @ss.hasPermission('system:tenant:query')")
     public CommonResult<TenantRespVO> getTenant(@RequestParam("id") Long id) {
         TenantDO tenant = tenantService.getTenant(id);
         return success(BeanUtils.toBean(tenant, TenantRespVO.class));
@@ -119,7 +131,7 @@ public class TenantController {
 
     @GetMapping("/page")
     @Operation(summary = "获得租户分页")
-    @PreAuthorize("@ss.hasPermission('system:tenant:query')")
+    @PreAuthorize("@tenantOwnerAccess.isOwner() and @ss.hasPermission('system:tenant:query')")
     public CommonResult<PageResult<TenantRespVO>> getTenantPage(@Valid TenantPageReqVO pageVO) {
         PageResult<TenantDO> pageResult = tenantService.getTenantPage(pageVO);
         return success(BeanUtils.toBean(pageResult, TenantRespVO.class));
@@ -127,7 +139,7 @@ public class TenantController {
 
     @GetMapping("/export-excel")
     @Operation(summary = "导出租户 Excel")
-    @PreAuthorize("@ss.hasPermission('system:tenant:export')")
+    @PreAuthorize("@tenantOwnerAccess.isOwner() and @ss.hasPermission('system:tenant:export')")
     @ApiAccessLog(operateType = EXPORT)
     public void exportTenantExcel(@Valid TenantPageReqVO exportReqVO, HttpServletResponse response) throws IOException {
         exportReqVO.setPageSize(PageParam.PAGE_SIZE_NONE);

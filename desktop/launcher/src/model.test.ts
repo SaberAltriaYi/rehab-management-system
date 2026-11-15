@@ -9,11 +9,47 @@ import {
   licenseExpiryNotice,
   licenseNeedsOnlineRenewal,
   licenseLabel,
+  licenseEnrollmentReady,
+  licenseOnboardingStep,
+  licenseFirstRunGuidance,
   redactDiagnosticText,
   serviceBadgeClass
 } from './model'
 
 describe('launcher view model', () => {
+  it('keeps first-run actions blocked without bundled issuer and Owner URL, with visible guidance', () => {
+    const base = {
+      status: 'UNLICENSED' as const,
+      detail: '', tenantId: null, installationId: null,
+      organization: null, applicationId: null, expiry: null,
+      seatLimit: null, modules: [], pendingReplacement: false,
+      publisherConfigured: false, ownerEndpointConfigured: false,
+      localVerificationOnly: true
+    }
+    expect(licenseEnrollmentReady(base)).toBe(false)
+    expect(licenseOnboardingStep(null)).toBe(0)
+    expect(licenseOnboardingStep(base)).toBe(1)
+    expect(licenseFirstRunGuidance(base)).toContain('正式签名发行包')
+    expect(licenseEnrollmentReady({ ...base, publisherConfigured: true })).toBe(false)
+    expect(licenseOnboardingStep({ ...base, publisherConfigured: true })).toBe(1)
+    expect(licenseFirstRunGuidance({ ...base, publisherConfigured: true })).toContain('授权端点')
+    const ready = { ...base, publisherConfigured: true, ownerEndpointConfigured: true }
+    expect(licenseEnrollmentReady(ready)).toBe(true)
+    expect(licenseOnboardingStep(ready)).toBe(2)
+    expect(licenseFirstRunGuidance(ready)).toContain('首次登记安装身份')
+    expect(licenseFirstRunGuidance({ ...ready, tenantId: 'test-tenant' })).toContain('不完整')
+    const enrolled = { ...ready, tenantId: 'test-tenant', installationId: 'test-install' }
+    expect(licenseOnboardingStep(enrolled)).toBe(3)
+    expect(licenseOnboardingStep({ ...enrolled, applicationId: 'test-app' })).toBe(4)
+    expect(licenseOnboardingStep({ ...enrolled, applicationId: 'test-app', status: 'ACTIVE' })).toBe(5)
+    expect(licenseOnboardingStep({ ...enrolled, applicationId: 'test-app', status: 'REVOKED' })).toBe(4)
+    expect(licenseFirstRunGuidance({ ...enrolled, applicationId: 'test-app', status: 'REVOKED' })).toContain('不允许使用')
+    expect(licenseFirstRunGuidance({ ...enrolled, applicationId: 'test-app', status: 'EXPIRED' })).toContain('已到期')
+    expect(licenseFirstRunGuidance(null)).toContain('正在读取')
+    expect(licenseFirstRunGuidance({
+      ...enrolled, applicationId: 'test-application'
+    })).toContain('Owner MFA')
+  })
   it('redacts credentials and mobile numbers from diagnostics', () => {
     const value = 'password=abc123 token:xyz mobile=13800138000'
     const redacted = redactDiagnosticText(value)

@@ -33,5 +33,6 @@ public interface RehabMotionErrorCodeConstants {
     ErrorCode MOTION_ENGINE_UNAVAILABLE = new ErrorCode(1_011_030_023, "动作分析引擎不可用：{}");
     ErrorCode MOTION_IDEMPOTENCY_KEY_INVALID = new ErrorCode(1_011_030_024, "幂等键不合法");
     ErrorCode MOTION_MANUAL_INPUT_INVALID = new ErrorCode(1_011_030_025, "人工输入不合法：{}");
+    ErrorCode MOTION_WORKSPACE_FAILED = new ErrorCode(1_011_030_026, "运动学工作区：{}");
 
 }

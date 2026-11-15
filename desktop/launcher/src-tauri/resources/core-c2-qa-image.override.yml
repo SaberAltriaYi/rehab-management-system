@@ -1,0 +1,5 @@
+# Exact source-pinned, synthetic-only D1/C2 internal Core candidate.
+# Only the server image changes; the launcher checks its immutable image ID.
+services:
+  server:
+    image: rehab-c2-not-deployed:f3570d7b6db4

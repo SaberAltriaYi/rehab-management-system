@@ -1,0 +1,119 @@
+{
+  "schemaVersion": 1,
+  "capturedAt": "2026-10-27T11:01:01.659Z",
+  "scope": "Only ignored Rust compilation caches in three inactive historical worktrees",
+  "mode": "removed_rebuildable_cache",
+  "totalKiB": 9941028,
+  "entries": [
+    {
+      "path": "rehab/worktrees/l7-motion-license-integration-20261010/desktop/launcher/src-tauri/target/debug/build",
+      "beforeKiB": 247992,
+      "removed": true
+    },
+    {
+      "path": "rehab/worktrees/l7-motion-license-integration-20261010/desktop/launcher/src-tauri/target/debug/deps",
+      "beforeKiB": 2014700,
+      "removed": true
+    },
+    {
+      "path": "rehab/worktrees/l7-motion-license-integration-20261010/desktop/launcher/src-tauri/target/debug/incremental",
+      "beforeKiB": 534316,
+      "removed": true
+    },
+    {
+      "path": "rehab/worktrees/l7-motion-license-integration-20261010/desktop/launcher/src-tauri/target/release/build",
+      "beforeKiB": 185156,
+      "removed": true
+    },
+    {
+      "path": "rehab/worktrees/l7-motion-license-integration-20261010/desktop/launcher/src-tauri/target/release/deps",
+      "beforeKiB": 442440,
+      "removed": true
+    },
+    {
+      "path": "rehab/worktrees/l7-motion-license-integration-20261010/desktop/launcher/src-tauri/target/release/incremental",
+      "beforeKiB": 0,
+      "removed": true
+    },
+    {
+      "path": "rehab/worktrees/l7-motion-license-integration-20261010/desktop/launcher/src-tauri/target/aarch64-apple-darwin/release/build",
+      "beforeKiB": 4108,
+      "removed": true
+    },
+    {
+      "path": "rehab/worktrees/l7-motion-license-integration-20261010/desktop/launcher/src-tauri/target/aarch64-apple-darwin/release/deps",
+      "beforeKiB": 577928,
+      "removed": true
+    },
+    {
+      "path": "rehab/worktrees/l7-motion-license-integration-20261010/desktop/launcher/src-tauri/target/aarch64-apple-darwin/release/incremental",
+      "beforeKiB": 0,
+      "removed": true
+    },
+    {
+      "path": "rehab/worktrees/motion-assessment/desktop/launcher/src-tauri/target/debug/build",
+      "beforeKiB": 206180,
+      "removed": true
+    },
+    {
+      "path": "rehab/worktrees/motion-assessment/desktop/launcher/src-tauri/target/debug/deps",
+      "beforeKiB": 1921760,
+      "removed": true
+    },
+    {
+      "path": "rehab/worktrees/motion-assessment/desktop/launcher/src-tauri/target/debug/incremental",
+      "beforeKiB": 287452,
+      "removed": true
+    },
+    {
+      "path": "rehab/worktrees/motion-assessment/desktop/launcher/src-tauri/target/release/build",
+      "beforeKiB": 189160,
+      "removed": true
+    },
+    {
+      "path": "rehab/worktrees/motion-assessment/desktop/launcher/src-tauri/target/release/deps",
+      "beforeKiB": 1019812,
+      "removed": true
+    },
+    {
+      "path": "rehab/worktrees/motion-assessment/desktop/launcher/src-tauri/target/release/incremental",
+      "beforeKiB": 0,
+      "removed": true
+    },
+    {
+      "path": "rehab/worktrees/saas-platform-v2/desktop/launcher/src-tauri/target/debug/build",
+      "beforeKiB": 206204,
+      "removed": true
+    },
+    {
+      "path": "rehab/worktrees/saas-platform-v2/desktop/launcher/src-tauri/target/debug/deps",
+      "beforeKiB": 1879600,
+      "removed": true
+    },
+    {
+      "path": "rehab/worktrees/saas-platform-v2/desktop/launcher/src-tauri/target/debug/incremental",
+      "beforeKiB": 224220,
+      "removed": true
+    }
+  ],
+  "preserved": [
+    "source code and Git worktrees",
+    "Cargo.lock and all repository history",
+    "target bundle/installers and top-level executables",
+    "active project dependencies and test evidence",
+    "runtime databases, attachments, credentials, backups and rollback releases"
+  ],
+  "treeMeasurements": {
+    "method": "du -sk per complete worktree before and after; differs from summed subdirectory blocks due to hard links",
+    "beforeKiB": 13872276,
+    "afterKiB": 4426252,
+    "reductionKiB": 9446024,
+    "worktrees": [
+      {"name": "l7-motion-license-integration-20261010", "beforeKiB": 4938012, "afterKiB": 1180376},
+      {"name": "motion-assessment", "beforeKiB": 4985112, "afterKiB": 1481752},
+      {"name": "saas-platform-v2", "beforeKiB": 3949152, "afterKiB": 1764124}
+    ]
+  },
+  "recovery": "Rebuild from preserved source and lockfiles; deleted cache files are not in Trash",
+  "spaceCaveat": "du allocated-block inventory, not a guarantee of equal physical disk free-space change"
+}

@@ -11,6 +11,9 @@ import {
   isValidAdminCredentialInput,
   isValidTransferPassword,
   licenseLabel,
+  licenseEnrollmentReady,
+  licenseOnboardingStep,
+  licenseFirstRunGuidance,
   licenseAllowsBusiness,
   licenseExpiryNotice,
   licenseNeedsOnlineRenewal,
@@ -32,6 +35,8 @@ let busy = false
 let logText = ''
 let selectedImportPath = ''
 let licenseError = ''
+// Null means auto-expand for a not-yet-licensed user; clicks override across 5s refreshes.
+let licenseOnboardingPreference: boolean | null = null
 
 function escapeHtml(value: string): string {
   return value
@@ -43,6 +48,16 @@ function escapeHtml(value: string): string {
 }
 
 function render(): void {
+  const enrollmentReady = licenseEnrollmentReady(overview.license)
+  const onboardingStep = licenseOnboardingStep(overview.license)
+  const licenseOnboardingOpen = licenseOnboardingPreference ?? (onboardingStep > 0 && onboardingStep < 5)
+  const onboardingSteps = [
+    ['获取可信安装包', '由软件所有者提供正式签名版本，预置可信发行公钥及可访问的 HTTPS Owner 授权地址。'],
+    ['登记这台设备', '填写工作室名称，在本机生成独立安装身份与私钥。私钥不得复制给软件所有者。'],
+    ['提交授权申请', '在线提交后记录申请编号；提交不等于已批准。'],
+    ['Owner 审核与领证', '所有者独立登录并完成 MFA、机构与套餐审核；批准后点击“在线获取或续签”。'],
+    ['验证后进入系统', '验证本机签名租约和 Core 服务端授权均有效，再启动业务并使用管理员账户登录。']
+  ] as const
   const serviceCards = overview.services
     .map(
       (service) => `
@@ -90,9 +105,29 @@ function render(): void {
         <p class="license-hint">${overview.releaseRequiresLicense
           ? '正式强制授权构建：业务服务还必须验证相同签名许可证；未激活不得启动。'
           : '当前为开发/兼容构建，未启用正式业务授权强制门禁；本机校验通过不代表生产服务已获准使用。'}</p>
-        ${!overview.license?.publisherConfigured
-          ? '<p class="warning-text">本安装包尚未预置所有者可信公钥或授权端点；请使用软件所有者提供的正式签名发行包。不得导入未知第三方公钥。</p>'
+        ${overview.license && !enrollmentReady
+          ? '<p class="warning-text">当前安装包未配置完整可信授权渠道，不能登记或提交真实机构申请；请由软件所有者提供包含可信公钥和HTTPS授权端点的正式签名发行包。不要导入未知第三方公钥。</p>'
           : ''}
+        <div class="license-next-action" role="status" aria-live="polite">
+          <strong>${onboardingStep ? `当前步骤 ${onboardingStep}/5：${escapeHtml(onboardingSteps[onboardingStep - 1]?.[0] ?? '核查授权状态')}` : '正在读取授权状态'}</strong>
+          <p>${escapeHtml(licenseFirstRunGuidance(overview.license))}</p>
+        </div>
+        <button type="button" class="license-help-toggle secondary" data-action="license-help"
+          aria-expanded="${licenseOnboardingOpen}" aria-controls="license-onboarding-steps">
+          ${licenseOnboardingOpen ? '收起首次授权步骤' : '查看首次授权步骤'}
+        </button>
+        ${licenseOnboardingOpen ? `<section class="license-onboarding" id="license-onboarding-steps">
+          <ol class="license-step-list">
+            ${onboardingSteps.map((step, index) => {
+              const stepNumber = index + 1
+              const state = stepNumber < onboardingStep ? 'done' : stepNumber === onboardingStep ? 'current' : 'pending'
+              return `<li class="license-step--${state}" ${state === 'current' ? 'aria-current="step"' : ''}>
+                <strong>${escapeHtml(step[0])}</strong><span>${escapeHtml(step[1])}</span>
+              </li>`
+            }).join('')}
+          </ol>
+          <p>尚未获得发行包时，请联系软件所有者；不要提供本机私钥、Owner密码或TOTP。</p>
+        </section>` : ''}
         <dl class="license-fields">
           <div><dt>工作室</dt><dd>${escapeHtml(overview.license?.organization ?? '未登记')}</dd></div>
           <div><dt>租户编号</dt><dd>${escapeHtml(overview.license?.tenantId ?? '未生成')}</dd></div>
@@ -105,12 +140,12 @@ function render(): void {
             : '未授权'}</dd></div>
         </dl>
         <div class="actions license-actions">
-          <button data-action="license-begin" ${busy || !!overview.license?.tenantId || !overview.license?.publisherConfigured ? 'disabled' : ''}>首次登记安装身份</button>
-          <button data-action="license-submit" ${busy || !overview.license?.tenantId || !!overview.license?.applicationId || !!overview.license?.pendingReplacement ? 'disabled' : ''}>在线提交授权申请</button>
-          <button data-action="license-renew" ${busy || !overview.license?.tenantId ? 'disabled' : ''}>在线获取或续签</button>
-          <button data-action="license-check" ${busy || !overview.license?.tenantId ? 'disabled' : ''}>刷新撤销状态</button>
-          <button data-action="license-import" ${busy || !overview.license?.tenantId ? 'disabled' : ''}>导入离线许可证</button>
-          <button data-action="license-replace" ${busy || !!overview.license?.tenantId || !overview.license?.publisherConfigured ? 'disabled' : ''}>新设备换机申请</button>
+          <button data-action="license-begin" title="${escapeHtml(enrollmentReady ? '生成本机安装身份' : licenseFirstRunGuidance(overview.license))}" ${busy || !!overview.license?.tenantId || !enrollmentReady ? 'disabled' : ''}>首次登记安装身份</button>
+          <button data-action="license-submit" ${busy || !enrollmentReady || !overview.license?.tenantId || !overview.license?.installationId || !!overview.license?.applicationId || !!overview.license?.pendingReplacement ? 'disabled' : ''}>在线提交授权申请</button>
+          <button data-action="license-renew" ${busy || !enrollmentReady || !overview.license?.tenantId || !overview.license?.installationId || !overview.license.applicationId ? 'disabled' : ''}>在线获取或续签</button>
+          <button data-action="license-check" ${busy || !enrollmentReady || !overview.license?.tenantId || !overview.license?.installationId || !overview.license.applicationId ? 'disabled' : ''}>刷新撤销状态</button>
+          <button data-action="license-import" ${busy || !overview.license?.publisherConfigured || !overview.license?.tenantId || !overview.license?.installationId ? 'disabled' : ''}>导入离线许可证</button>
+          <button data-action="license-replace" ${busy || !!overview.license?.tenantId || !enrollmentReady ? 'disabled' : ''}>新设备换机申请</button>
         </div>
         <p class="license-hint">离线许可证必须由软件所有者签发，最长有效 72 小时。换机需要所有者人工确认，复制文件或自行重建私钥无法转移授权。</p>
       </section>
@@ -138,6 +173,7 @@ function render(): void {
         <button data-action="export-data" ${busy || !overview.ready || overview.releaseRequiresLicense ? 'disabled' : ''}>一键导出整店数据</button>
         <button data-action="import-data" ${busy || !overview.ready || overview.releaseRequiresLicense ? 'disabled' : ''}>一键导入整店数据</button>
         <button data-action="admin-settings" ${busy || !overview.ready || overview.releaseRequiresLicense ? 'disabled' : ''}>管理员账号设置</button>
+        <button data-action="admin-recovery" class="secondary" ${busy || !overview.ready ? 'disabled' : ''}>通过 Owner MFA 找回管理员密码</button>
         <button data-action="logs">查看日志</button>
         <button data-action="directory">打开数据目录</button>
         <button data-action="diagnostics">复制诊断信息</button>
@@ -228,6 +264,29 @@ function render(): void {
         </menu>
       </form>
     </dialog>
+    <dialog id="admin-recovery-dialog">
+      <form method="dialog" id="admin-recovery-form">
+        <h2>Owner MFA · 恢复内置 Core admin 密码</h2>
+        <p class="warning-text">仅适用于本机内置租户 1、用户 ID 1 的 admin 密码，不更改账号、租户或许可证。执行前自动创建加密备份，成功后撤销旧登录会话。需独立 Owner MFA 审批，不能跳过。</p>
+        <label>设备挑战码（复制到 Owner 控制台）
+          <input name="deviceChallenge" type="text" readonly autocomplete="off" />
+        </label>
+        <p>在浏览器中打开 <code>https://127.0.0.1:9444/owner/console</code>，登录独立 Owner 账号，完成 TOTP 再认证并生成 120 秒一次性授权码。</p>
+        <label>Owner 一次性恢复授权码
+          <input name="authorizationCode" minlength="43" maxlength="43" pattern="[A-Za-z0-9_-]{43}" autocomplete="off" required />
+        </label>
+        <label>新 Core admin 密码（12–16 位）
+          <input name="newPassword" type="password" minlength="12" maxlength="16" autocomplete="new-password" required />
+        </label>
+        <label>再次输入新密码
+          <input name="confirmPassword" type="password" minlength="12" maxlength="16" autocomplete="new-password" required />
+        </label>
+        <menu>
+          <button value="cancel" class="secondary">取消恢复</button>
+          <button data-action="confirm-admin-recovery" value="default">验证 Owner MFA 并重设密码</button>
+        </menu>
+      </form>
+    </dialog>
   `
   bindActions()
 }
@@ -297,6 +356,10 @@ function bindActions(): void {
       const action = (event.currentTarget as HTMLButtonElement).dataset.action
       if (!action) return
       switch (action) {
+        case 'license-help':
+          licenseOnboardingPreference = !(licenseOnboardingPreference ?? (licenseOnboardingStep(overview.license) > 0 && licenseOnboardingStep(overview.license) < 5))
+          render()
+          break
         case 'license-begin':
           document.querySelector<HTMLDialogElement>('#license-begin-dialog')?.showModal()
           break
@@ -457,6 +520,47 @@ function bindActions(): void {
         case 'admin-settings':
           document.querySelector<HTMLDialogElement>('#admin-dialog')?.showModal()
           break
+        case 'admin-recovery': {
+          try {
+            const deviceChallenge = await invoke<string>('begin_admin_recovery')
+            const dialog = document.querySelector<HTMLDialogElement>('#admin-recovery-dialog')
+            const field = dialog?.querySelector<HTMLInputElement>('input[name="deviceChallenge"]')
+            if (!dialog || !field) throw Error('管理员恢复对话框缺失')
+            dialog.querySelector<HTMLFormElement>('form')?.reset()
+            field.value = deviceChallenge
+            dialog.showModal()
+          } catch (error) {
+            overview.lastError = String(error)
+            render()
+          }
+          break
+        }
+        case 'confirm-admin-recovery': {
+          event.preventDefault()
+          const form = document.querySelector<HTMLFormElement>('#admin-recovery-form')
+          if (!form) return
+          const data = new FormData(form)
+          const authorizationCode = String(data.get('authorizationCode') ?? '').trim()
+          const newPassword = String(data.get('newPassword') ?? '')
+          const confirmPassword = String(data.get('confirmPassword') ?? '')
+          if (!/^[A-Za-z0-9_-]{43}$/.test(authorizationCode) ||
+              !isValidAdminCredentialInput('admin', newPassword) ||
+              newPassword !== confirmPassword) {
+            window.alert('请输入完整的 Owner 一次性授权码，并确认两次新密码相同且为 12–16 位。')
+            return
+          }
+          if (!window.confirm('确认以 Owner MFA 授权恢复 Core admin 密码？将先自动备份，成功后旧登录会话失效。')) return
+          try {
+            overview = await invokeOperation<LauncherOverview>('recover_admin_credentials', {
+              authorizationCode, newPassword
+            })
+            window.alert('Core admin 密码已恢复。请使用租户“工作室内部”、账号 admin 和新密码重新登录。')
+          } catch (error) {
+            overview.lastError = String(error)
+          }
+          await refresh()
+          break
+        }
         case 'save-admin': {
           event.preventDefault()
           const form = document.querySelector<HTMLFormElement>('#admin-form')

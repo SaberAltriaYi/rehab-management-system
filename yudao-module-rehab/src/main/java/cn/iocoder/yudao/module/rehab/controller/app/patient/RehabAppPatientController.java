@@ -2,6 +2,7 @@ package cn.iocoder.yudao.module.rehab.controller.app.patient;
 
 import cn.iocoder.yudao.framework.common.pojo.CommonResult;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
+import cn.iocoder.yudao.framework.common.enums.UserTypeEnum;
 import cn.iocoder.yudao.module.rehab.controller.app.patient.vo.*;
 import cn.iocoder.yudao.module.rehab.service.app.RehabAppPatientService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -19,6 +20,7 @@ import java.util.List;
 
 import static cn.iocoder.yudao.framework.common.pojo.CommonResult.success;
 import static cn.iocoder.yudao.framework.security.core.util.SecurityFrameworkUtils.getLoginUserId;
+import static cn.iocoder.yudao.framework.web.core.util.WebFrameworkUtils.getLoginUserType;
 
 @Tag(name = "患者端 APP - 康复服务")
 @RestController
@@ -33,17 +35,18 @@ public class RehabAppPatientController {
     @PermitAll
     @Operation(summary = "患者端登录")
     public ResponseEntity<CommonResult<AppPatientLoginRespVO>> login(@RequestBody @Valid AppPatientLoginReqVO reqVO) {
-        // 手机号 + 患者编号不能证明身份；客户端开关不能代替服务端安全门禁。
-        // 完成独立身份验证、限频和防枚举以前，任何配置都不得重新启用此入口。
+        // 会员手机号短信登录和机构一次性邀请绑定在独立入口完成；此旧接口保留为兼容门禁。
         // 使用显式 HTTP 状态，避免全局 Exception 处理器将拒绝错误转成 500。
-        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(CommonResult.error(403, "患者端身份验证尚未启用"));
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(CommonResult.error(403, "请先使用会员手机号短信登录，再通过机构签发的一次性邀请绑定患者身份"));
     }
 
     @PostMapping("/auth/bind")
-    @PermitAll
     @Operation(summary = "患者身份绑定")
-    public ResponseEntity<CommonResult<Long>> bind(@RequestBody @Valid AppPatientAuthBindReqVO reqVO) {
-        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(CommonResult.error(403, "患者端身份验证尚未启用"));
+    public CommonResult<Long> bind(@RequestBody @Valid AppPatientAuthBindReqVO reqVO) {
+        if (!UserTypeEnum.MEMBER.getValue().equals(getLoginUserType()) || getLoginUserId() == null) {
+            return CommonResult.error(403, "请先完成会员手机号短信登录");
+        }
+        return success(appPatientService.bindPatient(reqVO, getLoginUserId()));
     }
 
     @GetMapping("/home/summary")
@@ -137,22 +140,24 @@ public class RehabAppPatientController {
         return success(appPatientService.getLatestAiFollowup(getLoginUserId()));
     }
 
-    // Fail closed on every patient data route, including already-issued member tokens.
-    // A clinic-issued invitation and a verified-phone challenge must be delivered and
-    // audited before this gate can be replaced by a scoped patient principal check.
     private void rejectUnverifiedPatientAccess() {
-        throw new PatientGateClosedException();
+        if (!UserTypeEnum.MEMBER.getValue().equals(getLoginUserType()) || getLoginUserId() == null) {
+            throw new PatientGateClosedException("患者端仅允许会员账号访问");
+        }
+        appPatientService.validatePatientSession(getLoginUserId());
     }
 
     /** GlobalExceptionHandler catches generic exceptions and maps them to 500; keep this gate a real HTTP 403. */
-    @ExceptionHandler(PatientGateClosedException.class)
-    public ResponseEntity<CommonResult<Void>> handlePatientGateClosed(PatientGateClosedException ignored) {
-        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(CommonResult.error(403, "患者端身份验证尚未启用"));
+    @ExceptionHandler(ResponseStatusException.class)
+    @ResponseStatus(HttpStatus.FORBIDDEN)
+    public ResponseEntity<CommonResult<Void>> handlePatientGateClosed(ResponseStatusException ignored) {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(CommonResult.error(403,
+                ignored.getReason() == null ? "患者端访问被拒绝" : ignored.getReason()));
     }
 
-    private static final class PatientGateClosedException extends ResponseStatusException {
-        private PatientGateClosedException() {
-            super(HttpStatus.FORBIDDEN, "患者端身份验证尚未启用");
+    public static final class PatientGateClosedException extends ResponseStatusException {
+        public PatientGateClosedException(String reason) {
+            super(HttpStatus.FORBIDDEN, reason);
         }
     }
 }

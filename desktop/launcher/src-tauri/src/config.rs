@@ -1,9 +1,13 @@
 use crate::error::{LauncherError, LauncherResult};
-use crate::model::{LauncherSettings, VersionState, APP_VERSION};
+use crate::model::{LauncherSettings, VersionState, APP_VERSION, APP_IDENTIFIER, COMPOSE_PROJECT};
 use bcrypt::{hash, DEFAULT_COST};
+use chrono::Datelike;
 use directories::BaseDirs;
 use rand::distr::{Alphanumeric, SampleString};
-use rcgen::{generate_simple_self_signed, CertifiedKey};
+use rcgen::{
+    CertificateParams, DnType, ExtendedKeyUsagePurpose, IsCa, KeyPair,
+    KeyUsagePurpose,
+};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::fs::{self, OpenOptions};
@@ -41,7 +45,7 @@ impl AppPaths {
         let base = BaseDirs::new()
             .ok_or_else(|| LauncherError::Internal("无法解析操作系统用户数据目录".to_owned()))?;
         Ok(Self::from_data_dir(
-            base.data_dir().join("com.saberaltriayi.rehab"),
+            base.data_dir().join(APP_IDENTIFIER),
         ))
     }
 
@@ -230,6 +234,9 @@ pub fn write_environment(
         ("BIND_ADDRESS", settings.bind_address.clone()),
         ("APP_PORT", settings.http_port.to_string()),
         ("TLS_PORT", settings.https_port.to_string()),
+        ("REHAB_VOLUME_PREFIX", COMPOSE_PROJECT.to_owned()),
+        ("REHAB_SERVER_IMAGE", format!("{COMPOSE_PROJECT}-server:{APP_VERSION}")),
+        ("REHAB_ADMIN_IMAGE", format!("{COMPOSE_PROJECT}-admin:{APP_VERSION}")),
         (
             "TLS_CERT_PATH",
             docker_path(&paths.config_dir.join("tls/server.crt")),
@@ -315,15 +322,53 @@ pub fn build_admin_update_sql(username: &str, password: &str) -> LauncherResult<
     ))
 }
 
+/// Owner-MFA recovery is independent of the disabled general admin editor.
+/// It updates only the existing tenant-1 user-id-1 administrator password;
+/// a missing super_admin role causes a strict no-op.
+pub fn build_admin_recovery_sql(password: &str) -> LauncherResult<String> {
+    validate_admin_credentials("admin", password)?;
+    let hashed = hash(password, DEFAULT_COST)
+        .map_err(|error| LauncherError::Internal(format!("管理员密码哈希失败：{error}")))?;
+    Ok(format!(
+        "START TRANSACTION;\n\
+         SET @rehab_recovered := 0;\n\
+         UPDATE system_users SET password = '{hashed}', updater = 'owner-mfa-recovery', update_time = NOW()\n\
+         WHERE id = 1 AND tenant_id = 1 AND username = 'admin' AND status = 0 AND deleted = b'0'\n\
+         AND EXISTS (SELECT 1 FROM system_user_role ur JOIN system_role r ON r.id = ur.role_id\n\
+            WHERE ur.user_id = 1 AND ur.tenant_id = 1 AND r.tenant_id = 1\n\
+              AND r.code = 'super_admin' AND r.status = 0 AND r.deleted = b'0');\n\
+         SET @rehab_recovered := ROW_COUNT();\n\
+         DELETE FROM system_oauth2_access_token WHERE user_id = 1 AND user_type = 2 AND @rehab_recovered = 1;\n\
+         DELETE FROM system_oauth2_refresh_token WHERE user_id = 1 AND user_type = 2 AND @rehab_recovered = 1;\n\
+         SELECT CONCAT('REHAB_ADMIN_RECOVERED=', @rehab_recovered);\n\
+         COMMIT;\n",
+        hashed = hashed.replace('\'', "''")
+    ))
+}
+
 fn ensure_tls(paths: &AppPaths) -> LauncherResult<()> {
     let cert_path = paths.config_dir.join("tls/server.crt");
     let key_path = paths.config_dir.join("tls/server.key");
     if cert_path.exists() && key_path.exists() {
         return Ok(());
     }
-    let CertifiedKey { cert, signing_key } =
-        generate_simple_self_signed(vec!["localhost".to_owned(), "127.0.0.1".to_owned()])
-            .map_err(|error| LauncherError::Internal(format!("生成本机 TLS 证书失败：{error}")))?;
+    // A server leaf, not an unbounded self-issued root. Trusting this local
+    // certificate in macOS is an explicit user action, never silently done
+    // by the launcher. Do not overwrite an existing trusted certificate.
+    let mut params = CertificateParams::new(vec![
+        "localhost".to_owned(), "127.0.0.1".to_owned(),
+    ]).map_err(|error| LauncherError::Internal(format!("配置本机 TLS 证书失败：{error}")))?;
+    let today = chrono::Utc::now().date_naive();
+    params.not_before = rcgen::date_time_ymd(today.year(), today.month() as u8, 1);
+    params.not_after = rcgen::date_time_ymd(today.year() + 2, today.month() as u8, 1);
+    params.distinguished_name.push(DnType::CommonName, "Rehab Internal Localhost");
+    params.is_ca = IsCa::ExplicitNoCa;
+    params.key_usages = vec![KeyUsagePurpose::DigitalSignature];
+    params.extended_key_usages = vec![ExtendedKeyUsagePurpose::ServerAuth];
+    let signing_key = KeyPair::generate()
+        .map_err(|error| LauncherError::Internal(format!("生成本机 TLS 密钥失败：{error}")))?;
+    let cert = params.self_signed(&signing_key)
+        .map_err(|error| LauncherError::Internal(format!("签发本机 TLS 证书失败：{error}")))?;
     write_private(&cert_path, cert.pem().as_bytes())?;
     write_private(&key_path, signing_key.serialize_pem().as_bytes())
 }
@@ -409,6 +454,34 @@ mod tests {
     }
 
     #[test]
+    fn recovery_sql_is_password_only_and_scoped_to_existing_super_admin() {
+        let password = "TestOnlyPWD2026";
+        let sql = build_admin_recovery_sql(password).unwrap();
+        assert!(!sql.contains(password));
+        assert!(sql.contains("password = '$2"));
+        assert!(sql.contains("username = 'admin'"));
+        assert!(sql.contains("id = 1 AND tenant_id = 1"));
+        assert!(sql.contains("r.code = 'super_admin'"));
+        assert!(!sql.contains("SET username"));
+        assert!(!sql.contains("status = 0, updater"));
+        assert!(sql.contains("system_oauth2_access_token"));
+        assert!(sql.contains("system_oauth2_refresh_token"));
+        assert!(sql.contains("START TRANSACTION"));
+        assert!(sql.contains("COMMIT"));
+        assert!(build_admin_recovery_sql("short").is_err());
+    }
+
+    #[test]
+    #[ignore = "requires explicit isolated database test output; never run on production"]
+    fn export_synthetic_recovery_sql_for_disposable_mysql_qa() {
+        let path = std::env::var("REHAB_SYNTHETIC_RECOVERY_SQL_OUTPUT")
+            .expect("Requires an explicit isolated QA SQL output path");
+        let sql = build_admin_recovery_sql("QaOnlyFake2026").unwrap();
+        assert!(!sql.contains("QaOnlyFake2026"));
+        std::fs::write(path, sql).unwrap();
+    }
+
+    #[test]
     fn configuration_is_created_without_exposing_admin_password() {
         let dir = tempdir().unwrap();
         let paths = AppPaths::from_data_dir(dir.path().join("app"));
@@ -447,6 +520,29 @@ mod tests {
         }
     }
 
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn generated_tls_leaf_has_localhost_ip_san_and_never_silently_rotates() {
+        let dir = tempdir().unwrap();
+        let paths = AppPaths::from_data_dir(dir.path().join("tls-check"));
+        initialize_config(&paths).unwrap();
+        let cert_path = paths.config_dir.join("tls/server.crt");
+        let first = fs::read(&cert_path).unwrap();
+        let details = std::process::Command::new("/usr/bin/openssl")
+            .args(["x509", "-in"])
+            .arg(&cert_path)
+            .args(["-noout", "-text"])
+            .output().unwrap();
+        assert!(details.status.success());
+        let text = String::from_utf8(details.stdout).unwrap();
+        assert!(text.contains("IP Address:127.0.0.1"), "missing IP SAN");
+        assert!(text.contains("DNS:localhost"), "missing localhost SAN");
+        assert!(text.contains("CA:FALSE"), "server certificate must not be a CA");
+        assert!(text.contains("TLS Web Server Authentication"), "missing serverAuth");
+        initialize_config(&paths).unwrap();
+        assert_eq!(first, fs::read(&cert_path).unwrap(), "existing TLS cert must be retained");
+    }
+
     #[test]
     fn explicit_data_directory_is_stable_across_versions() {
         let base = PathBuf::from("/tmp/rehab-stable-data");
@@ -461,8 +557,30 @@ mod tests {
         let paths = AppPaths::platform_default().unwrap();
         assert_eq!(
             paths.data_dir.file_name(),
-            Some(std::ffi::OsStr::new("com.saberaltriayi.rehab"))
+            Some(std::ffi::OsStr::new(APP_IDENTIFIER))
         );
+    }
+
+    #[test]
+    fn generated_runtime_uses_the_compiled_profile_without_sharing_volumes_or_images() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = AppPaths::from_data_dir(dir.path().to_path_buf());
+        paths.create().unwrap();
+        write_environment(&paths, &LauncherSettings::default(), &generate_distinct_secrets()).unwrap();
+        let env = std::fs::read_to_string(paths.env_path()).unwrap();
+        assert!(env.lines().any(|v| v == format!("REHAB_VOLUME_PREFIX={COMPOSE_PROJECT}")));
+        assert!(env.lines().any(|v| v == format!("REHAB_SERVER_IMAGE={COMPOSE_PROJECT}-server:{APP_VERSION}")));
+        assert!(env.lines().any(|v| v == format!("REHAB_ADMIN_IMAGE={COMPOSE_PROJECT}-admin:{APP_VERSION}")));
+        if cfg!(feature = "studio-internal") {
+            assert_eq!(APP_IDENTIFIER, "com.saberaltriayi.rehab.internal");
+            assert_eq!(COMPOSE_PROJECT, "rehab-studio-internal");
+            assert!(crate::model::VOLUME_NAMES.iter().all(|v| v.starts_with("rehab-studio-internal-")));
+            assert_eq!(LauncherSettings::default().https_port, 18443);
+        } else {
+            assert_eq!(APP_IDENTIFIER, "com.saberaltriayi.rehab");
+            assert_eq!(COMPOSE_PROJECT, "rehab-desktop");
+            assert_eq!(LauncherSettings::default().https_port, 8443);
+        }
     }
 
     #[test]

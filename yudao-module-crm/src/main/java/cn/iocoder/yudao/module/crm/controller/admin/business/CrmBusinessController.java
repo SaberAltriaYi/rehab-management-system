@@ -15,9 +15,11 @@ import cn.iocoder.yudao.module.crm.dal.dataobject.business.CrmBusinessStatusDO;
 import cn.iocoder.yudao.module.crm.dal.dataobject.business.CrmBusinessStatusTypeDO;
 import cn.iocoder.yudao.module.crm.dal.dataobject.customer.CrmCustomerDO;
 import cn.iocoder.yudao.module.crm.dal.dataobject.product.CrmProductDO;
+import cn.iocoder.yudao.module.crm.enums.common.CrmBizTypeEnum;
 import cn.iocoder.yudao.module.crm.service.business.CrmBusinessService;
 import cn.iocoder.yudao.module.crm.service.business.CrmBusinessStatusService;
 import cn.iocoder.yudao.module.crm.service.customer.CrmCustomerService;
+import cn.iocoder.yudao.module.crm.service.department.CrmDepartmentService;
 import cn.iocoder.yudao.module.crm.service.product.CrmProductService;
 import cn.iocoder.yudao.module.system.api.dept.DeptApi;
 import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
@@ -57,6 +59,8 @@ public class CrmBusinessController {
     private CrmBusinessService businessService;
     @Resource
     private CrmCustomerService customerService;
+    @Resource
+    private CrmDepartmentService departmentService;
     @Resource
     private CrmBusinessStatusService businessStatusTypeService;
     @Resource
@@ -148,10 +152,12 @@ public class CrmBusinessController {
 
     @GetMapping("/page-by-customer")
     @Operation(summary = "获得商机分页，基于指定客户")
+    @PreAuthorize("@ss.hasPermission('crm:business:query')")
     public CommonResult<PageResult<CrmBusinessRespVO>> getBusinessPageByCustomer(@Valid CrmBusinessPageReqVO pageReqVO) {
         if (pageReqVO.getCustomerId() == null) {
             throw exception(CUSTOMER_NOT_EXISTS);
         }
+        departmentService.assertCustomerVisible(pageReqVO.getCustomerId(), getLoginUserId());
         PageResult<CrmBusinessDO> pageResult = businessService.getBusinessPageByCustomerId(pageReqVO);
         return success(new PageResult<>(buildBusinessDetailList(pageResult.getList()), pageResult.getTotal()));
     }
@@ -160,6 +166,9 @@ public class CrmBusinessController {
     @Operation(summary = "获得联系人的商机分页")
     @PreAuthorize("@ss.hasPermission('crm:business:query')")
     public CommonResult<PageResult<CrmBusinessRespVO>> getBusinessContactPage(@Valid CrmBusinessPageReqVO pageReqVO) {
+        if (pageReqVO.getContactId() != null) {
+            departmentService.assertBizVisible(CrmBizTypeEnum.CRM_CONTACT.getType(), pageReqVO.getContactId(), getLoginUserId());
+        }
         PageResult<CrmBusinessDO> pageResult = businessService.getBusinessPageByContact(pageReqVO);
         return success(new PageResult<>(buildBusinessDetailList(pageResult.getList()), pageResult.getTotal()));
     }

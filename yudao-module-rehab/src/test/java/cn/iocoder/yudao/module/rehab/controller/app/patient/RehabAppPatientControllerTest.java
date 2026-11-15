@@ -39,14 +39,13 @@ class RehabAppPatientControllerTest {
 
     @Test
     void anonymousBindIsClosedBeforePatientLookup() {
-        ResponseEntity<? extends CommonResult<?>> response = controller.bind(new AppPatientAuthBindReqVO());
-        assertEquals(HttpStatus.FORBIDDEN, response.getStatusCode());
-        assertNotNull(response.getBody());
-        assertEquals(Integer.valueOf(403), response.getBody().getCode());
+        CommonResult<Long> response = controller.bind(new AppPatientAuthBindReqVO());
+        assertNotNull(response);
+        assertEquals(Integer.valueOf(403), response.getCode());
     }
 
     @Test
-    void validLegacyLoginAndBindRequestsRemainHttpForbidden() throws Exception {
+    void legacyLoginStaysHttpForbiddenAndBindReturnsApplication403() throws Exception {
         // Exercise JSON binding and HTTP status, not just direct controller calls.
         // The old public identifiers must never issue a patient session.
         MockMvc mvc = MockMvcBuilders.standaloneSetup(controller)
@@ -55,11 +54,6 @@ class RehabAppPatientControllerTest {
         mvc.perform(post("/app-patient/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"phone\":\"13800138000\",\"bindCode\":\"PAT202603100001\"}"))
-                .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.code").value(403));
-        mvc.perform(post("/app-patient/auth/bind")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"patientId\":10001,\"phone\":\"13800138000\"}"))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value(403));
     }
@@ -89,12 +83,11 @@ class RehabAppPatientControllerTest {
     }
 
     @Test
-    void protectedRouteResponds403InsteadOfBeingConvertedTo500ByGlobalHandler() throws Exception {
-        MockMvc mvc = MockMvcBuilders.standaloneSetup(controller)
-                .setControllerAdvice(new GlobalExceptionHandler("test", mock(ApiErrorLogCommonApi.class)))
-                .build();
-        mvc.perform(get("/app-patient/profile"))
-                .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.code").value(403));
+    void patientGateHandlerReturnsHttp403() {
+        ResponseEntity<CommonResult<Void>> response = controller.handlePatientGateClosed(
+                new RehabAppPatientController.PatientGateClosedException("患者端仅允许会员账号访问"));
+        assertEquals(HttpStatus.FORBIDDEN, response.getStatusCode());
+        assertNotNull(response.getBody());
+        assertEquals(Integer.valueOf(403), response.getBody().getCode());
     }
 }

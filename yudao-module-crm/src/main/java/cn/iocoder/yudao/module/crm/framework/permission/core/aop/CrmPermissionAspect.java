@@ -10,6 +10,7 @@ import cn.iocoder.yudao.module.crm.enums.common.CrmBizTypeEnum;
 import cn.iocoder.yudao.module.crm.enums.permission.CrmPermissionLevelEnum;
 import cn.iocoder.yudao.module.crm.framework.permission.core.annotations.CrmPermission;
 import cn.iocoder.yudao.module.crm.service.permission.CrmPermissionService;
+import cn.iocoder.yudao.module.crm.service.department.CrmDepartmentService;
 import cn.iocoder.yudao.module.crm.util.CrmPermissionUtils;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import cn.iocoder.yudao.module.system.api.user.dto.AdminUserRespDTO;
@@ -42,6 +43,8 @@ public class CrmPermissionAspect {
 
     @Resource
     private AdminUserApi adminUserApi;
+    @Resource
+    private CrmDepartmentService departmentService;
 
     @Before("@annotation(crmPermission)")
     public void doBefore(JoinPoint joinPoint, CrmPermission crmPermission) {
@@ -62,27 +65,24 @@ public class CrmPermissionAspect {
         // 2. 逐个校验权限
         List<CrmPermissionDO> permissionList = crmPermissionService.getPermissionListByBiz(bizType, bizIds);
         Map<Long, List<CrmPermissionDO>> multiMap = convertMultiMap(permissionList, CrmPermissionDO::getBizId);
-        bizIds.forEach(bizId -> validatePermission(bizType, multiMap.get(bizId), permissionLevel));
+        bizIds.forEach(bizId -> validatePermission(bizType, bizId, multiMap.get(bizId), permissionLevel));
     }
 
-    private void validatePermission(Integer bizType, List<CrmPermissionDO> bizPermissions, Integer permissionLevel) {
+    private void validatePermission(Integer bizType, Long bizId, List<CrmPermissionDO> bizPermissions, Integer permissionLevel) {
         // 1. 如果是超级管理员则直接通过
         if (CrmPermissionUtils.isCrmAdmin()) {
             return;
         }
-        // 特殊：没有数据权限的情况，针对 READ 的特殊处理
+        departmentService.assertBizVisible(bizType, bizId, getUserId());
+        if (CrmBizTypeEnum.CRM_CUSTOMER.getType().equals(bizType)) {
+            if (CrmPermissionLevelEnum.isRead(permissionLevel)
+                    && departmentService.isCustomerInOwnDept(bizId, getUserId())) {
+                return;
+            }
+        }
         if (CollUtil.isEmpty(bizPermissions)) {
-            // 1.1 公海数据，如果没有团队成员，大家也应该有 READ 权限才对
-            if (CrmPermissionLevelEnum.isRead(permissionLevel)) {
-                return;
-            }
-            // 没有数据权限的情况下超出了读权限直接报错，避免后面校验空指针
+            // 公海/共享目录只能通过返回有限字段的专用接口查看，不能绕过详情权限。
             throw exception(CRM_PERMISSION_DENIED, CrmBizTypeEnum.getNameByType(bizType));
-        } else { // 1.2 有数据权限但是没有负责人的情况
-            if (!anyMatch(bizPermissions, item -> CrmPermissionLevelEnum.isOwner(item.getLevel()))
-                && CrmPermissionLevelEnum.isRead(permissionLevel)) {
-                return;
-            }
         }
 
         // 2. 只考虑自的身权限

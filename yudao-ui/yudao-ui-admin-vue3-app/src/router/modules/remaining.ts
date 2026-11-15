@@ -32,13 +32,19 @@ const { t } = useI18n()
  canTo: true               设置为true即使hidden为true，也依然可以进行路由跳转(默认 false)
  }
  **/
+const ownerPortalRoutes: AppRouteRecordRaw[] = import.meta.env.VITE_PORTAL_MODE === 'owner' ? [
+  { path: '/owner/login', name: 'OwnerLogin', component: () => import('@/views/owner/Login.vue'), meta: { hidden: true, noTagsView: true, title: '拥有者登录' } },
+  { path: '/owner', name: 'OwnerConsole', component: () => import('@/views/owner/Console.vue'), meta: { hidden: true, noTagsView: true, title: '拥有者控制台' } }
+] : []
+
 const remainingRouter: AppRouteRecordRaw[] = [
+  ...ownerPortalRoutes,
+  { path: '/saas/register', name: 'SaasRegister', redirect: '/login?mode=register', meta: { hidden: true, noTagsView: true, title: '机构入驻' } },
   ...(import.meta.env.VITE_SAAS_ENABLE === 'true' ? [
     { path: '/saas/join', name: 'SaasJoin', component: () => import('@/views/saas/Join.vue'), meta: { hidden: true, noTagsView: true, title: '接受团队邀请' } },
     { path: '/saas/staff', name: 'SaasStaff', component: Layout, meta: { hidden: true }, children: [
       { path: '', name: 'SaasStaffInvitations', component: () => import('@/views/saas/Staff.vue'), meta: { title: '治疗师邀请', noCache: true } }
     ] },
-    { path: '/saas/register', name: 'SaasRegister', component: () => import('@/views/saas/Register.vue'), meta: { hidden: true, noTagsView: true, title: '机构入驻' } },
     { path: '/saas/platform', name: 'SaasPlatform', component: Layout, meta: { hidden: true }, children: [
       { path: '', name: 'SaasPlatformConsole', component: () => import('@/views/saas/Platform.vue'), meta: { title: '平台管理', noCache: true } }
     ] }

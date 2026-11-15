@@ -16,6 +16,8 @@ interface ImportMetaEnv {
   readonly VITE_APP_CAPTCHA_ENABLE: string
   readonly VITE_APP_TENANT_ENABLE: string
   readonly VITE_APP_DEFAULT_LOGIN_TENANT: string
+  readonly VITE_APP_FIXED_TENANT_LOGIN?: string
+  readonly VITE_APP_SELF_REGISTER_ENABLE?: string
   readonly VITE_APP_DEFAULT_LOGIN_USERNAME: string
   readonly VITE_APP_DEFAULT_LOGIN_PASSWORD: string
   readonly VITE_APP_DOCALERT_ENABLE: string

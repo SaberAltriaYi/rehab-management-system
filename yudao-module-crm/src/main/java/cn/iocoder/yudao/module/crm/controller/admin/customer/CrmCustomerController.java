@@ -83,6 +83,7 @@ public class CrmCustomerController {
             @Parameter(name = "id", description = "客户编号", required = true),
             @Parameter(name = "dealStatus", description = "成交状态", required = true)
     })
+    @PreAuthorize("@ss.hasPermission('crm:customer:update')")
     public CommonResult<Boolean> updateCustomerDealStatus(@RequestParam("id") Long id,
                                                           @RequestParam("dealStatus") Boolean dealStatus) {
         customerService.updateCustomerDealStatus(id, dealStatus);
@@ -223,12 +224,26 @@ public class CrmCustomerController {
 
     @GetMapping(value = "/simple-list")
     @Operation(summary = "获取客户精简信息列表", description = "只包含有读权限的客户，主要用于前端的下拉选项")
+    @PreAuthorize("@ss.hasPermission('crm:customer:query')")
     public CommonResult<List<CrmCustomerRespVO>> getCustomerSimpleList() {
         CrmCustomerPageReqVO reqVO = new CrmCustomerPageReqVO();
         reqVO.setPageSize(PAGE_SIZE_NONE); // 不分页
         List<CrmCustomerDO> list = customerService.getCustomerPage(reqVO, getLoginUserId()).getList();
         return success(convertList(list, customer -> // 只返回 id、name 精简字段
                 new CrmCustomerRespVO().setId(customer.getId()).setName(customer.getName())));
+    }
+
+    @GetMapping("/simple-search")
+    @Operation(summary = "按名称分页搜索可访问的客户", description = "供绑定等选择器使用；不会一次加载全库")
+    @PreAuthorize("@ss.hasPermission('crm:customer:query')")
+    public CommonResult<List<CrmCustomerRespVO>> searchCustomerSimple(@RequestParam(required = false) String keyword) {
+        CrmCustomerPageReqVO reqVO = new CrmCustomerPageReqVO();
+        reqVO.setPageNo(1);
+        reqVO.setPageSize(20);
+        reqVO.setName(keyword == null ? null : keyword.trim());
+        List<CrmCustomerDO> list = customerService.getCustomerPage(reqVO, getLoginUserId()).getList();
+        return success(convertList(list, customer -> new CrmCustomerRespVO()
+                .setId(customer.getId()).setName(customer.getName())));
     }
 
     @GetMapping("/export-excel")
