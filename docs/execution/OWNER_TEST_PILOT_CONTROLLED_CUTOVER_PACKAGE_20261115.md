@@ -84,3 +84,7 @@ bash desktop/scripts/hep-037-approved-grants-isolated.sh --synthetic-only
 用户后续独立选择 `A` 批准 D1；已完成新鲜加密备份及独立恢复，并在原有 MySQL/Redis/Nginx 保持原容器的条件下，只将运行的 Core `server` 从旧镜像切换到固定 SHA-256 的 C2 QA 候选，Spring Boot 健康及 HTTPS API 通过；DB 仍 036/36，正式 SaaS 计划/开户记录 0/0，Owner 开关关闭。本次**没有实施 D2/D3/D4/D5/037**。
 
 **重要限制**：Mac 现有 Launcher `start_inner` 仍用旧捆绑资源 `up --build`，未来点击其“启动”可能重建旧 Core；本次仅是运行容器 D1 QA 更新，并未完成 Launcher 发行版的持久性升级。只读试点预检现已额外核查真实候选镜像 ID，镜像回退时会 fail-closed。完整实际结果及私有回滚说明见 [D1 执行与验收](OWNER_CORE_D1_LIVE_BACKEND_CUTOVER_20261115.md)。
+
+## 2026-11-15 19:05 D2 真实建档补充（覆盖原先 D2 三菜单草案）
+
+用户后续明确要求将 D2 的新权限套餐改成「`test` 独立的**全部权限套餐**」。已在**现网 Core** 以有审计的受控维护事务新建 ID **113**，名称 `test-full-allmenu-qa-draft`，包含**全部 274 个当前启用的菜单 ID**，但状态 **1=停用**且**未绑定任何机构**。原 `111` 和其他用户/角色、SaaS 计划、Owner 开通均没有变动。原 D2 三菜单方案仍可用作严格 P0 权限边界和只读开户门禁，但不再代表最新用户要求的套餐建档结果。**后续不得自动将所有系统/基础设施管理权限及临床签发权限授予 `test` 管理员**。完整证据参见 [D2 全量菜单套餐创建验收](OWNER_TEST_D2_FULL_MENU_PACKAGE_CREATED_20261115.md)。
