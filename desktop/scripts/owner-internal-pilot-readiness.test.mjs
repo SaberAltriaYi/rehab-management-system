@@ -7,7 +7,7 @@ const license = {
   license_status: 'ACTIVE', seat_limit: 20, modules_json: '["rehab","motion","report"]'
 }
 const verified = { applicants: [license], planMatches: 1, packageMatches: 1,
-  ownerCore: { ready: true } }
+  permissionMatches: 1, ownerCore: { ready: true } }
 
 test('matching synthetic-only pilot reports technical readiness without authorizing writes', () => {
   const result = evaluateInternalPilotReadiness(verified)
@@ -51,11 +51,23 @@ test('an approved license is not equivalent to an active Core tenant', () => {
 
 test('incorrect Core quota, package or machine identity cannot produce ready', () => {
   for (const change of [
-    { planMatches: 0 }, { packageMatches: 0 }, { ownerCore: { ready: false } }
+    { planMatches: 0 }, { packageMatches: 0 }, { permissionMatches: 0 },
+    { ownerCore: { ready: false } }
   ]) {
     const result = evaluateInternalPilotReadiness({ ...verified, ...change })
     assert.equal(result.technicalPrerequisitesReady, false)
   }
+})
+
+test('enabled package without rehab query permission blocks a usable institution', () => {
+  const result = evaluateInternalPilotReadiness({ ...verified,
+    packageMatches: 1, permissionMatches: 0 })
+  assert.equal(result.checks.effectiveCorePermissionPackageVerified, true)
+  assert.equal(result.checks.corePermissionPackageHasRehabMotionQuery, false)
+  assert.deepEqual(result.blockers, ['corePermissionPackageHasRehabMotionQuery'])
+  assert.equal(result.technicalPrerequisitesReady, false)
+  assert.equal(evaluateInternalPilotReadiness({ ...verified,
+    permissionMatches: undefined }).technicalPrerequisitesReady, false)
 })
 
 test('reports never include application UUIDs, names, contact data or credentials', () => {

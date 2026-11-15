@@ -28,7 +28,8 @@ function privateEnv(contents) {
   return values
 }
 
-export function evaluateInternalPilotReadiness({ applicants, planMatches, packageMatches, ownerCore }) {
+export function evaluateInternalPilotReadiness({ applicants, planMatches, packageMatches,
+  permissionMatches, ownerCore }) {
   const uniqueApplicant = Array.isArray(applicants) && applicants.length === 1 ? applicants[0] : null
   let modules = []
   try {
@@ -44,6 +45,9 @@ export function evaluateInternalPilotReadiness({ applicants, planMatches, packag
     ownerCoreProvisioningNotYetAttempted: uniqueApplicant?.provisioning_status === 'NOT_CONFIGURED',
     effectiveCorePilotQuotaVerified: planMatches === 1,
     effectiveCorePermissionPackageVerified: packageMatches === 1,
+    // A valid but empty rehab permission package is insufficient for a usable
+    // clinic: real OAuth login succeeds but motion assessment returns 403.
+    corePermissionPackageHasRehabMotionQuery: permissionMatches === 1,
     ownerCoreMachineChannelReady: ownerCore?.ready === true
   }
   return {
@@ -74,26 +78,33 @@ export async function inspectInternalPilotLive() {
   const pkg = positiveId(owner.REHAB_MAIN_PROVISIONING_PACKAGE_ID)
   let planMatches = 0
   let packageMatches = 0
+  let permissionMatches = 0
   if (plan && pkg) {
     const sql = `SELECT
       (SELECT COUNT(*) FROM saas_plans WHERE id=${plan} AND status=1
         AND max_users=20 AND max_patients=400 AND motion_quota=2000
         AND storage_quota=5368709120),
       (SELECT COUNT(*) FROM system_tenant_package WHERE id=${pkg}
-        AND status=0 AND deleted=0);`
+        AND status=0 AND deleted=0),
+      (SELECT COUNT(*) FROM system_tenant_package p WHERE p.id=${pkg}
+        AND p.status=0 AND p.deleted=0
+        AND EXISTS (SELECT 1 FROM system_menu m
+          WHERE m.permission='rehab:motion:query' AND m.deleted=0
+          AND JSON_CONTAINS(p.menu_ids, CAST(m.id AS CHAR))));`
     const output = execFileSync('docker', [
       'exec', 'rehab-studio-internal-mysql-1', 'mysql',
       '--defaults-extra-file=/run/rehab-secrets/mysql-client.cnf',
       '--batch', '--skip-column-names', 'ruoyi-vue-pro', '--execute', sql
     ], { encoding: 'utf8', timeout: 12000, maxBuffer: 128 })
     const counts = output.trim().split(/\s+/).map(Number)
-    if (counts.length !== 2 || counts.some(n => !Number.isSafeInteger(n))) {
+    if (counts.length !== 3 || counts.some(n => !Number.isSafeInteger(n))) {
       throw Error('INVALID_CORE_PLAN_METADATA')
     }
-    ;[planMatches, packageMatches] = counts
+    ;[planMatches, packageMatches, permissionMatches] = counts
   }
   return evaluateInternalPilotReadiness({
-    applicants, planMatches, packageMatches, ownerCore: await inspectLocalProvisioning()
+    applicants, planMatches, packageMatches, permissionMatches,
+    ownerCore: await inspectLocalProvisioning()
   })
 }
 
