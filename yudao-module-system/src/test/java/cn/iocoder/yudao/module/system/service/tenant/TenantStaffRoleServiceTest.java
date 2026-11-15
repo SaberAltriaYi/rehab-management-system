@@ -206,13 +206,13 @@ class TenantStaffRoleServiceTest {
     }
 
     @Test
-    void disabledOrMissingTargetUsesBadRequestWithoutRoleMutation() {
+    void invisibleTargetUsesForbiddenWhileDisabledTargetUsesBadRequest() {
         try (MockedStatic<SecurityFrameworkUtils> security = mockStatic(SecurityFrameworkUtils.class)) {
             prepareAdminContext(security);
             TenantDO tenant = new TenantDO();
             tenant.setContactUserId(10L);
             when(tenantService.getTenant(100L)).thenReturn(tenant);
-            assertErrorCode(BAD_REQUEST.getCode(),
+            assertErrorCode(FORBIDDEN.getCode(),
                     () -> service.assignRole(20L, RoleCodeEnum.TENANT_REHAB_THERAPIST.getCode()));
 
             AdminUserDO disabled = new AdminUserDO();

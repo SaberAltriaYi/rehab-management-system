@@ -76,7 +76,13 @@ public class TenantStaffRoleService {
             throw exception(FORBIDDEN);
         }
         AdminUserDO user = userService.getUser(userId);
-        if (user == null || !CommonStatusEnum.ENABLE.getStatus().equals(user.getStatus())) {
+        if (user == null) {
+            // Tenant-scoped user lookup intentionally hides foreign users. Treat
+            // every target outside the caller's visible tenant as forbidden so
+            // this endpoint cannot be used to enumerate user IDs across tenants.
+            throw exception(FORBIDDEN);
+        }
+        if (!CommonStatusEnum.ENABLE.getStatus().equals(user.getStatus())) {
             throw invalidParamException("目标员工不存在或已停用");
         }
         if (!tenantId.equals(user.getTenantId())) {
