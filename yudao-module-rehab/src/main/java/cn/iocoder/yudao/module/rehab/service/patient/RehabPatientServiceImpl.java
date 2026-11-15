@@ -749,8 +749,14 @@ public class RehabPatientServiceImpl implements RehabPatientService {
         if (dataPermissionService.isSuperAdmin(userId)) {
             return "admin";
         }
+        if (dataPermissionService.isTenantAdmin(userId)) {
+            return "tenant_admin";
+        }
         if (dataPermissionService.isTherapist(userId)) {
             return "therapist";
+        }
+        if (dataPermissionService.isClinicalReviewer(userId)) {
+            return "clinical_reviewer";
         }
         if (dataPermissionService.isClerk(userId)) {
             return "clerk";

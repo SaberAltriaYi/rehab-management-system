@@ -12,7 +12,10 @@ import lombok.Getter;
 public enum RoleCodeEnum {
 
     SUPER_ADMIN("super_admin", "超级管理员"),
-    TENANT_ADMIN("tenant_admin", "租户管理员"),
+    TENANT_ADMIN("tenant_admin", "机构管理员"),
+    REHAB_THERAPIST("rehab_therapist", "康复治疗师（历史角色，仅兼容既有账号）"),
+    TENANT_REHAB_THERAPIST("tenant_rehab_therapist", "康复治疗师"),
+    REHAB_CLINICAL_REVIEWER("tenant_rehab_clinical_reviewer", "临床审核人"),
     CRM_ADMIN("crm_admin", "CRM 管理员"); // CRM 系统专用
     ;
 

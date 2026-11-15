@@ -50,7 +50,8 @@ class RehabAppAdminServiceImplTest {
         ReflectionTestUtils.setField(appAdminService, "patientMapper", patients);
         ReflectionTestUtils.setField(appAdminService, "notificationService", notifications);
         when(permissionApi.hasAnyRoles(100L, RehabRoleCodeConstants.SUPER_ADMIN,
-                RehabRoleCodeConstants.REHAB_THERAPIST, RehabRoleCodeConstants.REHAB_CLERK)).thenReturn(true);
+                RehabRoleCodeConstants.REHAB_THERAPIST, RehabRoleCodeConstants.TENANT_REHAB_THERAPIST,
+                RehabRoleCodeConstants.REHAB_CLERK)).thenReturn(true);
         when(scope.getVisiblePatientIds(100L)).thenReturn(java.util.Collections.emptySet());
         when(notifications.countUnreadForAdminUser(100L)).thenReturn(5L);
         cn.iocoder.yudao.module.rehab.controller.admin.app.vo.AppAdminDashboardSummaryRespVO summary =
@@ -76,6 +77,7 @@ class RehabAppAdminServiceImplTest {
         when(permissionApi.hasAnyRoles(2001L,
                 RehabRoleCodeConstants.SUPER_ADMIN,
                 RehabRoleCodeConstants.REHAB_THERAPIST,
+                RehabRoleCodeConstants.TENANT_REHAB_THERAPIST,
                 RehabRoleCodeConstants.REHAB_CLERK)).thenReturn(false);
 
         ServiceException ex = assertThrows(ServiceException.class, () -> appAdminService.login(reqVO));
@@ -98,6 +100,7 @@ class RehabAppAdminServiceImplTest {
         when(permissionApi.hasAnyRoles(100L,
                 RehabRoleCodeConstants.SUPER_ADMIN,
                 RehabRoleCodeConstants.REHAB_THERAPIST,
+                RehabRoleCodeConstants.TENANT_REHAB_THERAPIST,
                 RehabRoleCodeConstants.REHAB_CLERK)).thenReturn(true);
 
         AuthLoginRespVO respVO = appAdminService.login(reqVO);

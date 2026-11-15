@@ -75,6 +75,11 @@ export const updateUserStatus = (id: number, status: number) => {
   return request.put({ url: '/system/user/update-status', data: data })
 }
 
+/** Assign the limited Rehab therapist template; reviewer assignment is separately controlled. */
+export const assignRehabStaffRole = (data: { userId: number; roleCode: 'tenant_rehab_therapist' }) => {
+  return request.post({ url: '/system/user/assign-rehab-staff-role', data })
+}
+
 // 获取用户精简信息列表
 export const getSimpleUserList = (): Promise<UserVO[]> => {
   return request.get({ url: '/system/user/simple-list' })

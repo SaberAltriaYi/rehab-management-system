@@ -9,6 +9,7 @@ import cn.iocoder.yudao.framework.common.enums.CommonStatusEnum;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.collection.CollectionUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
+import cn.iocoder.yudao.framework.tenant.core.context.TenantContextHolder;
 import cn.iocoder.yudao.module.system.controller.admin.permission.vo.role.RolePageReqVO;
 import cn.iocoder.yudao.module.system.controller.admin.permission.vo.role.RoleSaveReqVO;
 import cn.iocoder.yudao.module.system.dal.dataobject.permission.RoleDO;
@@ -101,6 +102,37 @@ public class RoleServiceImpl implements RoleService {
         updateObject.setId(id);
         updateObject.setDataScope(dataScope);
         updateObject.setDataScopeDeptIds(dataScopeDeptIds);
+        roleMapper.updateById(updateObject);
+    }
+
+    @Override
+    @CacheEvict(value = RedisKeyConstants.ROLE, key = "#id")
+    public void updateTenantTemplateRoleDataScope(Long id, Integer dataScope) {
+        RoleDO role = roleMapper.selectById(id);
+        if (role == null) {
+            throw exception(ROLE_NOT_EXISTS);
+        }
+        Long currentTenantId = TenantContextHolder.getTenantId();
+        if (currentTenantId == null || TenantContextHolder.isIgnore()
+                || !currentTenantId.equals(role.getTenantId())) {
+            throw new IllegalArgumentException("只能在当前机构上下文内更新角色模板数据范围");
+        }
+        boolean tenantTemplate = RoleCodeEnum.TENANT_ADMIN.getCode().equals(role.getCode())
+                || RoleCodeEnum.TENANT_REHAB_THERAPIST.getCode().equals(role.getCode())
+                || RoleCodeEnum.REHAB_CLINICAL_REVIEWER.getCode().equals(role.getCode());
+        if (!RoleTypeEnum.SYSTEM.getType().equals(role.getType()) || !tenantTemplate
+                || !CommonStatusEnum.ENABLE.getStatus().equals(role.getStatus())) {
+            throw new IllegalArgumentException("仅允许更新内置租户角色模板的数据范围");
+        }
+        Integer expectedScope = RoleCodeEnum.TENANT_REHAB_THERAPIST.getCode().equals(role.getCode())
+                ? DataScopeEnum.SELF.getScope() : DataScopeEnum.ALL.getScope();
+        if (!expectedScope.equals(dataScope)) {
+            throw new IllegalArgumentException("租户角色模板的数据范围与角色定义不匹配");
+        }
+        RoleDO updateObject = new RoleDO();
+        updateObject.setId(id);
+        updateObject.setDataScope(dataScope);
+        updateObject.setDataScopeDeptIds(Collections.<Long>emptySet());
         roleMapper.updateById(updateObject);
     }
 

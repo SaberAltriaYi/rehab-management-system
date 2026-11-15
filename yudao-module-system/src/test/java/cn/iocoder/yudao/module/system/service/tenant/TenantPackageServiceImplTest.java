@@ -14,6 +14,7 @@ import org.springframework.context.annotation.Import;
 
 import javax.annotation.Resource;
 import java.util.List;
+import java.util.Set;
 
 import static cn.iocoder.yudao.framework.common.util.date.LocalDateTimeUtils.buildBetweenTime;
 import static cn.iocoder.yudao.framework.common.util.date.LocalDateTimeUtils.buildTime;
@@ -65,12 +66,13 @@ public class TenantPackageServiceImplTest extends BaseDbUnitTest {
     public void testUpdateTenantPackage_success() {
         // mock 数据
         TenantPackageDO dbTenantPackage = randomPojo(TenantPackageDO.class,
-                o -> o.setStatus(randomCommonStatus()));
+                o -> o.setStatus(CommonStatusEnum.ENABLE.getStatus()).setMenuIds(java.util.Collections.singleton(1L)));
         tenantPackageMapper.insert(dbTenantPackage);// @Sql: 先插入出一条存在的数据
         // 准备参数
         TenantPackageSaveReqVO reqVO = randomPojo(TenantPackageSaveReqVO.class, o -> {
             o.setId(dbTenantPackage.getId()); // 设置更新的 ID
-            o.setStatus(randomCommonStatus());
+            o.setStatus(CommonStatusEnum.ENABLE.getStatus());
+            o.setMenuIds(java.util.Collections.singleton(2L));
         });
         // mock 方法
         Long tenantId01 = randomLongId();
@@ -87,6 +89,25 @@ public class TenantPackageServiceImplTest extends BaseDbUnitTest {
         // 校验调用租户的菜单
         verify(tenantService).updateTenantRoleMenu(eq(tenantId01), eq(reqVO.getMenuIds()));
         verify(tenantService).updateTenantRoleMenu(eq(tenantId02), eq(reqVO.getMenuIds()));
+    }
+
+    @Test
+    public void testUpdateTenantPackage_statusChangedReappliesTenantRoleTemplates() {
+        Set<Long> menuIds = java.util.Collections.singleton(113L);
+        TenantPackageDO dbTenantPackage = randomPojo(TenantPackageDO.class, o -> o
+                .setStatus(CommonStatusEnum.DISABLE.getStatus()).setMenuIds(menuIds));
+        tenantPackageMapper.insert(dbTenantPackage);
+        TenantPackageSaveReqVO reqVO = randomPojo(TenantPackageSaveReqVO.class, o -> o
+                .setId(dbTenantPackage.getId())
+                .setStatus(CommonStatusEnum.ENABLE.getStatus())
+                .setMenuIds(menuIds));
+        Long tenantId = 100L;
+        when(tenantService.getTenantListByPackageId(eq(reqVO.getId())))
+                .thenReturn(asList(randomPojo(TenantDO.class, o -> o.setId(tenantId))));
+
+        tenantPackageService.updateTenantPackage(reqVO);
+
+        verify(tenantService).updateTenantRoleMenu(eq(tenantId), eq(menuIds));
     }
 
     @Test

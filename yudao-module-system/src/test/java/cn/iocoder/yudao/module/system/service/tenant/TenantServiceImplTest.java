@@ -7,6 +7,7 @@ import cn.iocoder.yudao.framework.tenant.core.context.TenantContextHolder;
 import cn.iocoder.yudao.framework.test.core.ut.BaseDbUnitTest;
 import cn.iocoder.yudao.module.system.controller.admin.tenant.vo.tenant.TenantPageReqVO;
 import cn.iocoder.yudao.module.system.controller.admin.tenant.vo.tenant.TenantSaveReqVO;
+import cn.iocoder.yudao.module.system.controller.admin.permission.vo.role.RoleSaveReqVO;
 import cn.iocoder.yudao.module.system.dal.dataobject.permission.MenuDO;
 import cn.iocoder.yudao.module.system.dal.dataobject.permission.RoleDO;
 import cn.iocoder.yudao.module.system.dal.dataobject.tenant.TenantDO;
@@ -31,6 +32,8 @@ import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 import static cn.iocoder.yudao.framework.common.util.collection.SetUtils.asSet;
 import static cn.iocoder.yudao.framework.common.util.date.LocalDateTimeUtils.buildBetweenTime;
@@ -131,17 +134,16 @@ public class TenantServiceImplTest extends BaseDbUnitTest {
 
     @Test
     public void testCreateTenant() {
-        // mock 套餐 100L
-        TenantPackageDO tenantPackage = randomPojo(TenantPackageDO.class, o -> o.setId(100L));
+        // mock 套餐 100L：菜单集合是功能上限，不直接成为管理员权限集合
+        List<MenuDO> menus = roleTemplateMenus();
+        Set<Long> packageMenuIds = menus.stream().map(MenuDO::getId).collect(Collectors.toSet());
+        TenantPackageDO tenantPackage = randomPojo(TenantPackageDO.class,
+                o -> o.setId(100L).setMenuIds(packageMenuIds));
         when(tenantPackageService.validTenantPackage(eq(100L))).thenReturn(tenantPackage);
-        // mock 角色 200L
-        when(roleService.createRole(argThat(role -> {
-            assertEquals(RoleCodeEnum.TENANT_ADMIN.getName(), role.getName());
-            assertEquals(RoleCodeEnum.TENANT_ADMIN.getCode(), role.getCode());
-            assertEquals(0, role.getSort());
-            assertEquals("系统自动生成", role.getRemark());
-            return true;
-        }), eq(RoleTypeEnum.SYSTEM.getType()))).thenReturn(200L);
+        when(menuService.getMenuList()).thenReturn(menus);
+        // Three built-in roles are created; only the tenant administrator is assigned to the bootstrap user.
+        when(roleService.createRole(any(RoleSaveReqVO.class), eq(RoleTypeEnum.SYSTEM.getType())))
+                .thenReturn(200L, 201L, 202L);
         // mock 用户 300L
         when(userService.createUser(argThat(user -> {
             assertEquals("yunai", user.getUsername());
@@ -170,34 +172,70 @@ public class TenantServiceImplTest extends BaseDbUnitTest {
         TenantDO tenant = tenantMapper.selectById(tenantId);
         assertPojoEquals(reqVO, tenant, "id");
         assertEquals(300L, tenant.getContactUserId());
-        // verify 分配权限
-        verify(permissionService).assignRoleMenu(eq(200L), same(tenantPackage.getMenuIds()));
-        // verify 分配角色
+        verify(roleService).createRole(argThat(role ->
+                RoleCodeEnum.TENANT_ADMIN.getCode().equals(role.getCode())
+                        && "机构管理员".equals(role.getName()) && role.getSort() == 0),
+                eq(RoleTypeEnum.SYSTEM.getType()));
+        verify(roleService).createRole(argThat(role ->
+                RoleCodeEnum.TENANT_REHAB_THERAPIST.getCode().equals(role.getCode())
+                        && "康复治疗师".equals(role.getName())), eq(RoleTypeEnum.SYSTEM.getType()));
+        verify(roleService).createRole(argThat(role ->
+                RoleCodeEnum.REHAB_CLINICAL_REVIEWER.getCode().equals(role.getCode())
+                        && "临床审核人".equals(role.getName())), eq(RoleTypeEnum.SYSTEM.getType()));
+        verify(roleService).updateTenantTemplateRoleDataScope(eq(200L),
+                eq(TenantRolePermissionTemplate.definition(RoleCodeEnum.TENANT_ADMIN.getCode()).getDataScope()));
+        verify(roleService).updateTenantTemplateRoleDataScope(eq(201L),
+                eq(TenantRolePermissionTemplate.definition(RoleCodeEnum.TENANT_REHAB_THERAPIST.getCode()).getDataScope()));
+        verify(roleService).updateTenantTemplateRoleDataScope(eq(202L),
+                eq(TenantRolePermissionTemplate.definition(RoleCodeEnum.REHAB_CLINICAL_REVIEWER.getCode()).getDataScope()));
+        verify(permissionService).assignRoleMenu(eq(200L), eq(TenantRolePermissionTemplate.resolveMenuIds(
+                RoleCodeEnum.TENANT_ADMIN.getCode(), packageMenuIds, menus)));
+        verify(permissionService).assignRoleMenu(eq(201L), eq(TenantRolePermissionTemplate.resolveMenuIds(
+                RoleCodeEnum.TENANT_REHAB_THERAPIST.getCode(), packageMenuIds, menus)));
+        verify(permissionService).assignRoleMenu(eq(202L), eq(TenantRolePermissionTemplate.resolveMenuIds(
+                RoleCodeEnum.REHAB_CLINICAL_REVIEWER.getCode(), packageMenuIds, menus)));
+        // Only the institution administrator role is assigned to the bootstrap user.
         verify(permissionService).assignUserRole(eq(300L), eq(singleton(200L)));
     }
 
     @Test
     public void testUpdateTenant_success() {
         // mock 数据
-        TenantDO dbTenant = randomPojo(TenantDO.class, o -> o.setStatus(randomCommonStatus()));
+        TenantDO dbTenant = randomPojo(TenantDO.class, o -> o.setStatus(randomCommonStatus()).setPackageId(1L));
         tenantMapper.insert(dbTenant);// @Sql: 先插入出一条存在的数据
         // 准备参数
         TenantSaveReqVO reqVO = randomPojo(TenantSaveReqVO.class, o -> {
             o.setId(dbTenant.getId()); // 设置更新的 ID
+            o.setPackageId(2L);
             o.setStatus(randomCommonStatus());
             o.setWebsites(singletonList(randomString()));
         });
 
         // mock 套餐
+        List<MenuDO> menus = roleTemplateMenus();
+        Set<Long> packageMenuIds = menus.stream().map(MenuDO::getId).collect(Collectors.toSet());
+        packageMenuIds.add(200L);
+        packageMenuIds.add(201L);
         TenantPackageDO tenantPackage = randomPojo(TenantPackageDO.class,
-                o -> o.setMenuIds(asSet(200L, 201L)));
+                o -> o.setMenuIds(packageMenuIds));
         when(tenantPackageService.validTenantPackage(eq(reqVO.getPackageId()))).thenReturn(tenantPackage);
+        when(menuService.getMenuList()).thenReturn(menus);
         // mock 所有角色
-        RoleDO role100 = randomPojo(RoleDO.class, o -> o.setId(100L).setCode(RoleCodeEnum.TENANT_ADMIN.getCode()));
+        RoleDO role100 = randomPojo(RoleDO.class, o -> o.setId(100L).setCode(RoleCodeEnum.TENANT_ADMIN.getCode())
+                .setType(RoleTypeEnum.SYSTEM.getType()).setStatus(CommonStatusEnum.ENABLE.getStatus()));
         role100.setTenantId(dbTenant.getId());
-        RoleDO role101 = randomPojo(RoleDO.class, o -> o.setId(101L));
+        RoleDO role102 = randomPojo(RoleDO.class, o -> o.setId(102L).setCode(RoleCodeEnum.TENANT_REHAB_THERAPIST.getCode())
+                .setType(RoleTypeEnum.SYSTEM.getType()).setStatus(CommonStatusEnum.ENABLE.getStatus()));
+        role102.setTenantId(dbTenant.getId());
+        RoleDO role103 = randomPojo(RoleDO.class, o -> o.setId(103L).setCode(RoleCodeEnum.REHAB_CLINICAL_REVIEWER.getCode())
+                .setType(RoleTypeEnum.SYSTEM.getType()).setStatus(CommonStatusEnum.ENABLE.getStatus()));
+        role103.setTenantId(dbTenant.getId());
+        // Legacy rehab_therapist remains a custom role and must not be mistaken
+        // for the new tenant_rehab_therapist SYSTEM template.
+        RoleDO role101 = randomPojo(RoleDO.class, o -> o.setId(101L)
+                .setCode(RoleCodeEnum.REHAB_THERAPIST.getCode()).setType(RoleTypeEnum.CUSTOM.getType()));
         role101.setTenantId(dbTenant.getId());
-        when(roleService.getRoleList()).thenReturn(asList(role100, role101));
+        when(roleService.getRoleList()).thenReturn(asList(role100, role102, role103, role101));
         // mock 每个角色的权限
         when(permissionService.getRoleMenuListByRoleId(eq(101L))).thenReturn(asSet(201L, 202L));
 
@@ -207,8 +245,47 @@ public class TenantServiceImplTest extends BaseDbUnitTest {
         TenantDO tenant = tenantMapper.selectById(reqVO.getId()); // 获取最新的
         assertPojoEquals(reqVO, tenant);
         // verify 设置角色权限
-        verify(permissionService).assignRoleMenu(eq(100L), eq(asSet(200L, 201L)));
+        verify(permissionService).assignRoleMenu(eq(100L), eq(TenantRolePermissionTemplate.resolveMenuIds(
+                RoleCodeEnum.TENANT_ADMIN.getCode(), packageMenuIds, menus)));
+        verify(permissionService).assignRoleMenu(eq(102L), eq(TenantRolePermissionTemplate.resolveMenuIds(
+                RoleCodeEnum.TENANT_REHAB_THERAPIST.getCode(), packageMenuIds, menus)));
+        verify(permissionService).assignRoleMenu(eq(103L), eq(TenantRolePermissionTemplate.resolveMenuIds(
+                RoleCodeEnum.REHAB_CLINICAL_REVIEWER.getCode(), packageMenuIds, menus)));
         verify(permissionService).assignRoleMenu(eq(101L), eq(asSet(201L)));
+        verify(roleService).updateTenantTemplateRoleDataScope(eq(100L),
+                eq(TenantRolePermissionTemplate.definition(RoleCodeEnum.TENANT_ADMIN.getCode()).getDataScope()));
+        verify(roleService).updateTenantTemplateRoleDataScope(eq(102L),
+                eq(TenantRolePermissionTemplate.definition(RoleCodeEnum.TENANT_REHAB_THERAPIST.getCode()).getDataScope()));
+        verify(roleService).updateTenantTemplateRoleDataScope(eq(103L),
+                eq(TenantRolePermissionTemplate.definition(RoleCodeEnum.REHAB_CLINICAL_REVIEWER.getCode()).getDataScope()));
+    }
+
+    @Test
+    public void testUpdateTenantRoleMenuCreatesMissingStaffTemplatesWithoutAssigningUsers() {
+        List<MenuDO> menus = roleTemplateMenus();
+        Set<Long> packageMenuIds = menus.stream().map(MenuDO::getId).collect(Collectors.toSet());
+        when(menuService.getMenuList()).thenReturn(menus);
+        RoleDO adminRole = randomPojo(RoleDO.class, o -> o.setId(500L)
+                .setCode(RoleCodeEnum.TENANT_ADMIN.getCode()).setType(RoleTypeEnum.SYSTEM.getType())
+                .setStatus(CommonStatusEnum.ENABLE.getStatus()));
+        adminRole.setTenantId(100L);
+        when(roleService.getRoleList()).thenReturn(singletonList(adminRole));
+        when(roleService.createRole(any(RoleSaveReqVO.class), eq(RoleTypeEnum.SYSTEM.getType())))
+                .thenReturn(501L, 502L);
+
+        tenantService.updateTenantRoleMenu(100L, packageMenuIds);
+
+        verify(roleService).createRole(argThat(role ->
+                RoleCodeEnum.TENANT_REHAB_THERAPIST.getCode().equals(role.getCode())), eq(RoleTypeEnum.SYSTEM.getType()));
+        verify(roleService).createRole(argThat(role ->
+                RoleCodeEnum.REHAB_CLINICAL_REVIEWER.getCode().equals(role.getCode())), eq(RoleTypeEnum.SYSTEM.getType()));
+        verify(permissionService).assignRoleMenu(eq(500L), eq(TenantRolePermissionTemplate.resolveMenuIds(
+                RoleCodeEnum.TENANT_ADMIN.getCode(), packageMenuIds, menus)));
+        verify(permissionService, times(2)).assignRoleMenu(eq(501L), eq(TenantRolePermissionTemplate.resolveMenuIds(
+                RoleCodeEnum.TENANT_REHAB_THERAPIST.getCode(), packageMenuIds, menus)));
+        verify(permissionService, times(2)).assignRoleMenu(eq(502L), eq(TenantRolePermissionTemplate.resolveMenuIds(
+                RoleCodeEnum.REHAB_CLINICAL_REVIEWER.getCode(), packageMenuIds, menus)));
+        verify(permissionService, never()).assignUserRole(anyLong(), anySet());
     }
 
     @Test
@@ -457,5 +534,50 @@ public class TenantServiceImplTest extends BaseDbUnitTest {
         tenantService.handleTenantMenu(handler);
         // 断言
         verify(handler).handle(asSet(100L, 101L));
+    }
+
+    private static List<MenuDO> roleTemplateMenus() {
+        List<MenuDO> menus = new java.util.ArrayList<>();
+        addMenu(menus, 1L, 0L, 1, null);
+        addMenu(menus, 9000L, 0L, 1, null);
+        addMenu(menus, 100L, 1L, 2, "system:user:list");
+        addMenu(menus, 1001L, 100L, 3, "system:user:query");
+        addMenu(menus, 1002L, 100L, 3, "system:user:create");
+        addMenu(menus, 1003L, 100L, 3, "system:user:update");
+        addMenu(menus, 9001L, 9000L, 2, "rehab:dashboard:view");
+        addMenu(menus, 9002L, 9000L, 2, "rehab:patient:view");
+        addMenu(menus, 9003L, 9000L, 2, "rehab:assessment:view");
+        addMenu(menus, 9004L, 9000L, 2, "rehab:report:view");
+        addMenu(menus, 9101L, 9002L, 3, "rehab:patient:create");
+        addMenu(menus, 9102L, 9002L, 3, "rehab:patient:update");
+        addMenu(menus, 9104L, 9002L, 3, "rehab:patient:detail");
+        addMenu(menus, 9201L, 9003L, 3, "rehab:assessment:create");
+        addMenu(menus, 9202L, 9003L, 3, "rehab:assessment:update");
+        addMenu(menus, 9203L, 9003L, 3, "rehab:assessment:detail");
+        addMenu(menus, 9302L, 9004L, 3, "rehab:report:detail");
+        addMenu(menus, 9303L, 9004L, 3, "rehab:report:preview");
+        addMenu(menus, 9304L, 9004L, 3, "rehab:report:review");
+        addMenu(menus, 9305L, 9004L, 3, "rehab:report:approve");
+        addMenu(menus, 9306L, 9004L, 3, "rehab:report:lock");
+        addMenu(menus, 9308L, 9004L, 3, "rehab:report:version:view");
+        addMenu(menus, 9700L, 9000L, 2, "rehab:motion:query");
+        addMenu(menus, 9710L, 9700L, 3, "rehab:motion:query");
+        addMenu(menus, 9711L, 9700L, 3, "rehab:motion:create");
+        addMenu(menus, 9712L, 9700L, 3, "rehab:motion:upload");
+        addMenu(menus, 9713L, 9700L, 3, "rehab:motion:process");
+        addMenu(menus, 9714L, 9700L, 3, "rehab:motion:review");
+        addMenu(menus, 9715L, 9700L, 3, "rehab:motion:sign");
+        addMenu(menus, 9717L, 9700L, 3, "rehab:motion:audit");
+        return menus;
+    }
+
+    private static void addMenu(List<MenuDO> menus, Long id, Long parentId, Integer type, String permission) {
+        MenuDO menu = new MenuDO();
+        menu.setId(id);
+        menu.setParentId(parentId);
+        menu.setType(type);
+        menu.setPermission(permission);
+        menu.setStatus(CommonStatusEnum.ENABLE.getStatus());
+        menus.add(menu);
     }
 }

@@ -14,6 +14,7 @@ import cn.iocoder.yudao.module.system.dal.dataobject.user.AdminUserDO;
 import cn.iocoder.yudao.module.system.enums.common.SexEnum;
 import cn.iocoder.yudao.module.system.service.dept.DeptService;
 import cn.iocoder.yudao.module.system.service.user.AdminUserService;
+import cn.iocoder.yudao.module.system.service.tenant.TenantStaffRoleService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.Parameters;
@@ -45,6 +46,8 @@ public class UserController {
     private AdminUserService userService;
     @Resource
     private DeptService deptService;
+    @Resource
+    private TenantStaffRoleService tenantStaffRoleService;
 
     @PostMapping("/create")
     @Operation(summary = "新增用户")
@@ -59,6 +62,14 @@ public class UserController {
     @PreAuthorize("@ss.hasPermission('system:user:update')")
     public CommonResult<Boolean> updateUser(@Valid @RequestBody UserSaveReqVO reqVO) {
         userService.updateUser(reqVO);
+        return success(true);
+    }
+
+    @PostMapping("/assign-rehab-staff-role")
+    @Operation(summary = "分配康复员工预设角色（仅康复治疗师）")
+    @PreAuthorize("@ss.hasPermission('system:user:update')")
+    public CommonResult<Boolean> assignRehabStaffRole(@Valid @RequestBody UserAssignRehabStaffRoleReqVO reqVO) {
+        tenantStaffRoleService.assignRole(reqVO.getUserId(), reqVO.getRoleCode());
         return success(true);
     }
 

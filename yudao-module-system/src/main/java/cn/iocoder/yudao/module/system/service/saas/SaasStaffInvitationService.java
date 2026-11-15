@@ -2,6 +2,7 @@ package cn.iocoder.yudao.module.system.service.saas;
 
 import cn.iocoder.yudao.framework.tenant.core.context.TenantContextHolder;
 import cn.iocoder.yudao.module.system.controller.admin.user.vo.user.UserSaveReqVO;
+import cn.iocoder.yudao.module.system.enums.permission.RoleCodeEnum;
 import cn.iocoder.yudao.module.system.service.user.AdminUserService;
 import cn.iocoder.yudao.module.system.service.permission.PermissionService;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -32,13 +33,12 @@ public class SaasStaffInvitationService {
         long actor=administrator.requireCurrent(); long tenant=tenant(); access.requireCurrentTenant();
         if(email==null || email.length()>50 || (email.chars().anyMatch(Character::isWhitespace) || !email.matches("[^@]+@[^@]+[.][^@]+")))
             throw new IllegalArgumentException("邀请邮箱格式不正确");
-        List<Long> roles=jdbc.queryForList("SELECT id FROM system_role WHERE tenant_id=? AND code='rehab_therapist' AND status=0 AND deleted=0",Long.class,tenant);
-        if(roles.size()!=1) throw new IllegalStateException("请先为本机构配置唯一启用的 rehab_therapist 角色及康复权限");
+        Long therapistRoleId=findTherapistRoleId(tenant);
         byte[] random=new byte[32];RANDOM.nextBytes(random);
         String token=Base64.getUrlEncoder().withoutPadding().encodeToString(random);
         KeyHolder key=new GeneratedKeyHolder();
         jdbc.update(c->{java.sql.PreparedStatement s=c.prepareStatement("INSERT INTO saas_staff_invitations(tenant_id,role_id,recipient_email,token_hash,invited_by,expires_at) VALUES (?,?,?,?,?,TIMESTAMPADD(HOUR,72,CURRENT_TIMESTAMP))",new String[]{"id"});
-            s.setLong(1,tenant);s.setLong(2,roles.get(0));s.setString(3,email.trim().toLowerCase(Locale.ROOT));
+            s.setLong(1,tenant);s.setLong(2,therapistRoleId);s.setString(3,email.trim().toLowerCase(Locale.ROOT));
             s.setString(4,digest(tenant,token));s.setLong(5,actor);return s;},key);
         Map<String,Object> result=new LinkedHashMap<>(); result.put("id",Objects.requireNonNull(key.getKey()).longValue());
         result.put("tenantId",tenant);result.put("token",token);result.put("expiresInHours",72);
@@ -65,7 +65,8 @@ public class SaasStaffInvitationService {
         List<Map<String,Object>> rows=jdbc.queryForList("SELECT id,role_id,recipient_email FROM saas_staff_invitations WHERE tenant_id=? AND token_hash=? AND status='pending' AND expires_at>CURRENT_TIMESTAMP FOR UPDATE",tenant,hash);
         if(rows.size()!=1) throw invalid();Map<String,Object> invitation=rows.get(0);
         long role=((Number)invitation.get("role_id")).longValue();
-        Integer validRole=jdbc.queryForObject("SELECT COUNT(*) FROM system_role WHERE tenant_id=? AND id=? AND code='rehab_therapist' AND status=0 AND deleted=0",Integer.class,tenant,role);
+        Integer validRole=jdbc.queryForObject("SELECT COUNT(*) FROM system_role WHERE tenant_id=? AND id=? AND code=? AND status=0 AND deleted=0",
+                Integer.class,tenant,role,RoleCodeEnum.TENANT_REHAB_THERAPIST.getCode());
         if(!Integer.valueOf(1).equals(validRole)) throw invalid();
         Long count=jdbc.queryForObject("SELECT COUNT(*) FROM system_users WHERE tenant_id=? AND deleted=0",Long.class,tenant);
         Object limit=plan.get("max_users");
@@ -82,6 +83,14 @@ public class SaasStaffInvitationService {
     private long tenant() {
         Long tenant=TenantContextHolder.getTenantId();
         if(tenant==null || tenant<=0 || TenantContextHolder.isIgnore()) throw invalid();return tenant;
+    }
+    private Long findTherapistRoleId(long tenant) {
+        // New invitations must use the least-privilege template. Never fall
+        // back to the legacy rehab_therapist role, which may carry broad grants.
+        List<Long> roles=jdbc.queryForList("SELECT id FROM system_role WHERE tenant_id=? AND code=? AND status=0 AND deleted=0",
+                Long.class,tenant,RoleCodeEnum.TENANT_REHAB_THERAPIST.getCode());
+        if(roles.size()!=1) throw new IllegalStateException("请先为本机构配置唯一启用的康复治疗师角色模板");
+        return roles.get(0);
     }
     static String digest(long tenant,String token) {
         if(tenant<=0 || token==null || !token.matches("[A-Za-z0-9_-]{43}")) throw invalid();

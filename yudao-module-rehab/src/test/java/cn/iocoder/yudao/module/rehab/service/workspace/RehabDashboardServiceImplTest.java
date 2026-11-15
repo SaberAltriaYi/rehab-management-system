@@ -95,6 +95,7 @@ class RehabDashboardServiceImplTest {
         when(permissionApi.hasAnyRoles(100L, RehabRoleCodeConstants.SUPER_ADMIN)).thenReturn(false);
         when(permissionApi.hasAnyRoles(100L, "tenant_admin")).thenReturn(false);
         when(permissionApi.hasAnyRoles(100L, RehabRoleCodeConstants.REHAB_CLERK)).thenReturn(false);
+        when(permissionApi.hasAnyRoles(100L, RehabRoleCodeConstants.REHAB_CLINICAL_REVIEWER)).thenReturn(false);
         when(permissionApi.hasAnyRoles(100L, RehabRoleCodeConstants.REHAB_THERAPIST)).thenReturn(true);
         when(patientMapper.selectList(org.mockito.Mockito.<SFunction<RehabPatientDO, ?>>any(), eq(100L)))
                 .thenReturn(Collections.emptyList());

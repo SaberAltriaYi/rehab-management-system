@@ -96,6 +96,9 @@
               v-if="checkPermi(['system:user:update'])" link type="primary"
               :disabled="!licenseActive" @click="openForm('update', row.id)">编辑</el-button>
             <el-button
+              v-if="checkPermi(['system:user:update'])" link type="primary"
+              :disabled="!licenseActive" @click="rehabRoleFormRef?.open(row)">岗位</el-button>
+            <el-button
               v-if="checkPermi(['system:permission:assign-user-role'])" link type="primary"
               :disabled="!licenseActive" @click="roleFormRef?.open(row)">角色</el-button>
             <el-button
@@ -114,10 +117,14 @@
       <Pagination
         :total="total" v-model:page="query.pageNo"
         v-model:limit="query.pageSize" @pagination="loadStaff" />
-      <p class="text-xs text-gray-500 mt-2">账号与角色修改沿用原生 RBAC 接口；即使按钮显示可用，后端仍在事务中检查工作室席位与租户权限。</p>
+      <p class="text-xs text-gray-500 mt-2">
+        机构管理员只能通过受限接口分配康复治疗师模板；临床审核人须经专业资质核验和系统所有者单独授权。
+        通用角色分配仅对拥有者开放，服务端仍会校验租户边界。
+      </p>
     </ContentWrap>
 
     <UserForm ref="userFormRef" @success="refresh" />
+    <UserAssignRehabRoleForm ref="rehabRoleFormRef" @success="loadStaff" />
     <UserAssignRoleForm ref="roleFormRef" @success="loadStaff" />
   </div>
 </template>
@@ -127,6 +134,7 @@ import { checkPermi } from '@/utils/permission'
 import * as UserApi from '@/api/system/user'
 import { getStudioLicenseOverview, type StudioLicenseOverview } from '@/api/system/studioLicense'
 import UserForm from '@/views/system/user/UserForm.vue'
+import UserAssignRehabRoleForm from '@/views/system/user/UserAssignRehabRoleForm.vue'
 import UserAssignRoleForm from '@/views/system/user/UserAssignRoleForm.vue'
 
 defineOptions({ name: 'StudioLicenseAndStaff' })
@@ -138,6 +146,7 @@ const license = ref<StudioLicenseOverview | null>(null)
 const staff = ref<UserApi.UserVO[]>([])
 const total = ref(0)
 const userFormRef = ref<InstanceType<typeof UserForm>>()
+const rehabRoleFormRef = ref<InstanceType<typeof UserAssignRehabRoleForm>>()
 const roleFormRef = ref<InstanceType<typeof UserAssignRoleForm>>()
 const query = reactive<{ pageNo: number; pageSize: number; username?: string; status?: number }>({
   pageNo: 1, pageSize: 10, username: undefined, status: undefined

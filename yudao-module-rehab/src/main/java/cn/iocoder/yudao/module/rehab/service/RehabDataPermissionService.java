@@ -56,7 +56,12 @@ public class RehabDataPermissionService {
     }
 
     public boolean isTherapist(Long userId) {
-        return permissionApi.hasAnyRoles(userId, RehabRoleCodeConstants.REHAB_THERAPIST);
+        return permissionApi.hasAnyRoles(userId, RehabRoleCodeConstants.REHAB_THERAPIST)
+                || permissionApi.hasAnyRoles(userId, RehabRoleCodeConstants.TENANT_REHAB_THERAPIST);
+    }
+
+    public boolean isClinicalReviewer(Long userId) {
+        return permissionApi.hasAnyRoles(userId, RehabRoleCodeConstants.REHAB_CLINICAL_REVIEWER);
     }
 
     /**
@@ -71,6 +76,14 @@ public class RehabDataPermissionService {
             return Collections.emptySet();
         }
         if (isSuperAdmin(userId) || isTenantAdmin(userId)) {
+            return null;
+        }
+        if (isClinicalReviewer(userId)) {
+            // A reviewer role is tenant-local. Without a concrete tenant
+            // context, returning null would mean unrestricted patient access.
+            if (TenantContextHolder.getTenantId() == null || TenantContextHolder.isIgnore()) {
+                return Collections.emptySet();
+            }
             return null;
         }
         if (isClerk(userId)) {

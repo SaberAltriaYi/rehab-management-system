@@ -12,6 +12,13 @@
           <el-option v-for="item in roleList" :key="item.id" :label="item.name" :value="item.id" />
         </el-select>
       </el-form-item>
+      <el-alert
+        type="warning"
+        :closable="false"
+        show-icon
+        title="临床审核人属于高权限角色"
+        description="临床审核人可查看本机构患者临床资料并审批报告、签署动作评估。仅在完成专业资质核验和授权审批后分配；机构管理员不能通过普通岗位接口授予此角色。"
+      />
     </el-form>
     <template #footer>
       <el-button :disabled="formLoading" type="primary" @click="submitForm">确 定</el-button>

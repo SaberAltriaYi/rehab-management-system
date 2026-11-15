@@ -4,11 +4,13 @@ import cn.hutool.extra.spring.SpringUtil;
 import cn.iocoder.yudao.framework.common.enums.CommonStatusEnum;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.test.core.ut.BaseDbUnitTest;
+import cn.iocoder.yudao.framework.tenant.core.context.TenantContextHolder;
 import cn.iocoder.yudao.module.system.controller.admin.permission.vo.role.RolePageReqVO;
 import cn.iocoder.yudao.module.system.controller.admin.permission.vo.role.RoleSaveReqVO;
 import cn.iocoder.yudao.module.system.dal.dataobject.permission.RoleDO;
 import cn.iocoder.yudao.module.system.dal.mysql.permission.RoleMapper;
 import cn.iocoder.yudao.module.system.enums.permission.DataScopeEnum;
+import cn.iocoder.yudao.module.system.enums.permission.RoleCodeEnum;
 import cn.iocoder.yudao.module.system.enums.permission.RoleTypeEnum;
 import org.junit.jupiter.api.Test;
 import org.mockito.MockedStatic;
@@ -96,6 +98,89 @@ public class RoleServiceImplTest extends BaseDbUnitTest {
         RoleDO dbRoleDO = roleMapper.selectById(id);
         assertEquals(dataScope, dbRoleDO.getDataScope());
         assertEquals(dataScopeRoleIds, dbRoleDO.getDataScopeDeptIds());
+    }
+
+    @Test
+    public void testUpdateTenantTemplateRoleDataScope() {
+        RoleDO roleDO = randomPojo(RoleDO.class, o -> o.setType(RoleTypeEnum.SYSTEM.getType())
+                .setCode(RoleCodeEnum.TENANT_REHAB_THERAPIST.getCode()).setStatus(CommonStatusEnum.ENABLE.getStatus())
+                .setTenantId(100L));
+        roleMapper.insert(roleDO);
+        TenantContextHolder.setTenantId(100L);
+        try {
+            roleService.updateTenantTemplateRoleDataScope(roleDO.getId(), DataScopeEnum.SELF.getScope());
+        } finally {
+            TenantContextHolder.clear();
+        }
+
+        RoleDO updated = roleMapper.selectById(roleDO.getId());
+        assertEquals(DataScopeEnum.SELF.getScope(), updated.getDataScope());
+        assertTrue(updated.getDataScopeDeptIds() == null || updated.getDataScopeDeptIds().isEmpty());
+    }
+
+    @Test
+    public void testUpdateTenantTemplateRoleDataScopeRejectsCustomRole() {
+        RoleDO roleDO = randomPojo(RoleDO.class, o -> o.setType(RoleTypeEnum.CUSTOM.getType())
+                .setCode("custom_role").setTenantId(100L));
+        roleMapper.insert(roleDO);
+        TenantContextHolder.setTenantId(100L);
+        try {
+            assertThrows(IllegalArgumentException.class,
+                    () -> roleService.updateTenantTemplateRoleDataScope(roleDO.getId(), DataScopeEnum.SELF.getScope()));
+        } finally {
+            TenantContextHolder.clear();
+        }
+    }
+
+    @Test
+    public void testUpdateTenantTemplateRoleDataScopeRejectsLegacyTherapistRole() {
+        RoleDO legacy = randomPojo(RoleDO.class, o -> o.setType(RoleTypeEnum.SYSTEM.getType())
+                .setCode(RoleCodeEnum.REHAB_THERAPIST.getCode()).setStatus(CommonStatusEnum.ENABLE.getStatus())
+                .setTenantId(100L));
+        roleMapper.insert(legacy);
+        TenantContextHolder.setTenantId(100L);
+        try {
+            assertThrows(IllegalArgumentException.class,
+                    () -> roleService.updateTenantTemplateRoleDataScope(legacy.getId(), DataScopeEnum.SELF.getScope()));
+        } finally {
+            TenantContextHolder.clear();
+        }
+    }
+
+    @Test
+    public void testUpdateTenantTemplateRoleDataScopeRejectsPrivilegeWidening() {
+        RoleDO therapist = randomPojo(RoleDO.class, o -> o.setType(RoleTypeEnum.SYSTEM.getType())
+                .setCode(RoleCodeEnum.TENANT_REHAB_THERAPIST.getCode()).setStatus(CommonStatusEnum.ENABLE.getStatus())
+                .setTenantId(100L));
+        roleMapper.insert(therapist);
+        RoleDO admin = randomPojo(RoleDO.class, o -> o.setType(RoleTypeEnum.SYSTEM.getType())
+                .setCode(RoleCodeEnum.TENANT_ADMIN.getCode()).setStatus(CommonStatusEnum.ENABLE.getStatus())
+                .setTenantId(100L));
+        roleMapper.insert(admin);
+        TenantContextHolder.setTenantId(100L);
+        try {
+            assertThrows(IllegalArgumentException.class,
+                    () -> roleService.updateTenantTemplateRoleDataScope(therapist.getId(), DataScopeEnum.ALL.getScope()));
+            assertThrows(IllegalArgumentException.class,
+                    () -> roleService.updateTenantTemplateRoleDataScope(admin.getId(), DataScopeEnum.SELF.getScope()));
+        } finally {
+            TenantContextHolder.clear();
+        }
+    }
+
+    @Test
+    public void testUpdateTenantTemplateRoleDataScopeRejectsCrossTenantContext() {
+        RoleDO therapist = randomPojo(RoleDO.class, o -> o.setType(RoleTypeEnum.SYSTEM.getType())
+                .setCode(RoleCodeEnum.TENANT_REHAB_THERAPIST.getCode()).setStatus(CommonStatusEnum.ENABLE.getStatus())
+                .setTenantId(200L));
+        roleMapper.insert(therapist);
+        TenantContextHolder.setTenantId(100L);
+        try {
+            assertThrows(IllegalArgumentException.class,
+                    () -> roleService.updateTenantTemplateRoleDataScope(therapist.getId(), DataScopeEnum.SELF.getScope()));
+        } finally {
+            TenantContextHolder.clear();
+        }
     }
 
     @Test

@@ -365,7 +365,9 @@ class RehabReportServiceImplTest {
         when(permissionApi.hasAnyRoles(99L, RehabRoleCodeConstants.SUPER_ADMIN)).thenReturn(false);
         when(permissionApi.hasAnyRoles(99L, "tenant_admin")).thenReturn(false);
         when(permissionApi.hasAnyRoles(99L, RehabRoleCodeConstants.REHAB_CLERK)).thenReturn(false);
+        when(permissionApi.hasAnyRoles(99L, RehabRoleCodeConstants.REHAB_CLINICAL_REVIEWER)).thenReturn(false);
         when(permissionApi.hasAnyRoles(99L, RehabRoleCodeConstants.REHAB_THERAPIST)).thenReturn(false);
+        when(permissionApi.hasAnyRoles(99L, RehabRoleCodeConstants.TENANT_REHAB_THERAPIST)).thenReturn(false);
 
         ServiceException ex = assertThrows(ServiceException.class, () -> reportService.generateReport(reqVO, 99L));
         assertEquals(1_011_000_001, ex.getCode());

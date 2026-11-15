@@ -460,6 +460,7 @@ public class RehabAppAdminServiceImpl implements RehabAppAdminService {
 
     private boolean isAppAdminRole(Long userId) {
         return permissionApi.hasAnyRoles(userId, RehabRoleCodeConstants.SUPER_ADMIN,
-                RehabRoleCodeConstants.REHAB_THERAPIST, RehabRoleCodeConstants.REHAB_CLERK);
+                RehabRoleCodeConstants.REHAB_THERAPIST, RehabRoleCodeConstants.TENANT_REHAB_THERAPIST,
+                RehabRoleCodeConstants.REHAB_CLERK);
     }
 }

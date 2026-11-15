@@ -37,7 +37,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.validation.annotation.Validated;
 
 import javax.annotation.Resource;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 
@@ -115,8 +119,9 @@ public class TenantServiceImpl implements TenantService {
         tenantMapper.insert(tenant);
         // 创建租户的管理员
         TenantUtils.execute(tenant.getId(), () -> {
-            // 创建角色
-            Long roleId = createRole(tenantPackage);
+            // Create all immutable tenant role templates, but assign only the
+            // institution administrator template to the bootstrap account.
+            Long roleId = createDefaultRoles(tenantPackage);
             // 创建用户，并分配角色
             Long userId = createUser(roleId, createReqVO);
             // 修改租户的管理员
@@ -133,14 +138,30 @@ public class TenantServiceImpl implements TenantService {
         return userId;
     }
 
-    private Long createRole(TenantPackageDO tenantPackage) {
-        // 创建角色
+    private Long createDefaultRoles(TenantPackageDO tenantPackage) {
+        List<MenuDO> menus = menuService.getMenuList();
+        Long tenantAdminRoleId = null;
+        for (TenantRolePermissionTemplate.Definition definition : TenantRolePermissionTemplate.definitions()) {
+            Long roleId = createRole(definition, tenantPackage.getMenuIds(), menus);
+            if (RoleCodeEnum.TENANT_ADMIN.getCode().equals(definition.getCode())) {
+                tenantAdminRoleId = roleId;
+            }
+        }
+        if (tenantAdminRoleId == null) {
+            throw new IllegalStateException("机构管理员角色模板缺失");
+        }
+        return tenantAdminRoleId;
+    }
+
+    private Long createRole(TenantRolePermissionTemplate.Definition definition,
+                            Set<Long> packageMenuIds, List<MenuDO> menus) {
         RoleSaveReqVO reqVO = new RoleSaveReqVO();
-        reqVO.setName(RoleCodeEnum.TENANT_ADMIN.getName()).setCode(RoleCodeEnum.TENANT_ADMIN.getCode())
-                .setSort(0).setRemark("系统自动生成");
+        reqVO.setName(definition.getName()).setCode(definition.getCode())
+                .setSort(definition.getSort()).setRemark("系统自动生成：最小权限模板");
         Long roleId = roleService.createRole(reqVO, RoleTypeEnum.SYSTEM.getType());
-        // 分配权限
-        permissionService.assignRoleMenu(roleId, tenantPackage.getMenuIds());
+        roleService.updateTenantTemplateRoleDataScope(roleId, definition.getDataScope());
+        permissionService.assignRoleMenu(roleId,
+                TenantRolePermissionTemplate.resolveMenuIds(definition.getCode(), packageMenuIds, menus));
         return roleId;
     }
 
@@ -198,21 +219,62 @@ public class TenantServiceImpl implements TenantService {
     @DSTransactional
     public void updateTenantRoleMenu(Long tenantId, Set<Long> menuIds) {
         TenantUtils.execute(tenantId, () -> {
-            // 获得所有角色
-            List<RoleDO> roles = roleService.getRoleList();
+            // Load the actual enabled menu tree once. A package is a feature
+            // ceiling; built-in tenant roles receive only their own allowlist.
+            List<MenuDO> menus = menuService.getMenuList();
+            List<RoleDO> roles = new ArrayList<>(roleService.getRoleList());
             roles.forEach(role -> Assert.isTrue(tenantId.equals(role.getTenantId()), "角色({}/{}) 租户不匹配",
                     role.getId(), role.getTenantId(), tenantId)); // 兜底校验
-            // 重新分配每个角色的权限
+
+            Map<String, RoleDO> rolesByCode = new HashMap<>();
+            for (RoleDO role : roles) {
+                if (TenantRolePermissionTemplate.isTemplateRole(role.getCode())) {
+                    if (!RoleTypeEnum.SYSTEM.getType().equals(role.getType())
+                            || !CommonStatusEnum.ENABLE.getStatus().equals(role.getStatus())
+                            || rolesByCode.put(role.getCode(), role) != null) {
+                        throw new IllegalStateException("租户内置角色模板状态异常");
+                    }
+                }
+            }
+            if (!rolesByCode.containsKey(RoleCodeEnum.TENANT_ADMIN.getCode())) {
+                throw new IllegalStateException("现有机构缺少机构管理员角色，拒绝自动重建管理员身份");
+            }
+
+            // Existing tenants receive the two new staff templates on their
+            // next package change. No user is assigned either role implicitly.
+            for (TenantRolePermissionTemplate.Definition definition : TenantRolePermissionTemplate.definitions()) {
+                if (!rolesByCode.containsKey(definition.getCode())) {
+                    if (RoleCodeEnum.TENANT_ADMIN.getCode().equals(definition.getCode())) {
+                        throw new IllegalStateException("机构管理员角色模板缺失");
+                    }
+                    Long roleId = createRole(definition, menuIds, menus);
+                    RoleDO role = new RoleDO();
+                    role.setId(roleId);
+                    role.setCode(definition.getCode());
+                    role.setType(RoleTypeEnum.SYSTEM.getType());
+                    role.setTenantId(tenantId);
+                    roles.add(role);
+                    rolesByCode.put(definition.getCode(), role);
+                }
+            }
+
+            // Re-apply immutable templates on every package entitlement change.
             roles.forEach(role -> {
-                // 如果是租户管理员，重新分配其权限为租户套餐的权限
-                if (Objects.equals(role.getCode(), RoleCodeEnum.TENANT_ADMIN.getCode())) {
-                    permissionService.assignRoleMenu(role.getId(), menuIds);
-                    log.info("[updateTenantRoleMenu][租户管理员({}/{}) 的权限修改为({})]", role.getId(), role.getTenantId(), menuIds);
+                TenantRolePermissionTemplate.Definition definition =
+                        TenantRolePermissionTemplate.definition(role.getCode());
+                if (definition != null) {
+                    Set<Long> allowedMenuIds = TenantRolePermissionTemplate.resolveMenuIds(
+                            role.getCode(), menuIds, menus);
+                    permissionService.assignRoleMenu(role.getId(), allowedMenuIds);
+                    roleService.updateTenantTemplateRoleDataScope(role.getId(), definition.getDataScope());
+                    log.info("[updateTenantRoleMenu][角色模板({}/{}) 的权限已按套餐上限重算]",
+                            role.getId(), role.getTenantId());
                     return;
                 }
-                // 如果是其他角色，则去掉超过套餐的权限
+                // Custom / unrelated built-in roles may never exceed the package.
                 Set<Long> roleMenuIds = permissionService.getRoleMenuListByRoleId(role.getId());
-                roleMenuIds = CollUtil.intersectionDistinct(roleMenuIds, menuIds);
+                roleMenuIds = CollUtil.intersectionDistinct(roleMenuIds,
+                        menuIds == null ? Collections.<Long>emptySet() : menuIds);
                 permissionService.assignRoleMenu(role.getId(), roleMenuIds);
                 log.info("[updateTenantRoleMenu][角色({}/{}) 的权限修改为({})]", role.getId(), role.getTenantId(), roleMenuIds);
             });

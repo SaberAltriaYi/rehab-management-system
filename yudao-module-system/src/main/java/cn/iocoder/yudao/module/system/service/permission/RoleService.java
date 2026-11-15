@@ -57,6 +57,13 @@ public interface RoleService {
     void updateRoleDataScope(Long id, Integer dataScope, Set<Long> dataScopeDeptIds);
 
     /**
+     * Internal provisioning hook for immutable tenant role templates. Unlike
+     * the public custom-role operation, this accepts only the three built-in
+     * tenant role codes and never makes a system role editable by tenant users.
+     */
+    void updateTenantTemplateRoleDataScope(Long id, Integer dataScope);
+
+    /**
      * 获得角色
      *
      * @param id 角色编号

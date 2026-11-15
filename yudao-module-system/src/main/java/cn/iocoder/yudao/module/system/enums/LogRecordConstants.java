@@ -15,6 +15,8 @@ public interface LogRecordConstants {
     String SYSTEM_USER_CREATE_SUCCESS = "创建了用户【{{#user.nickname}}】";
     String SYSTEM_USER_UPDATE_SUB_TYPE = "更新用户";
     String SYSTEM_USER_UPDATE_SUCCESS = "更新了用户【{{#user.nickname}}】: {_DIFF{#updateReqVO}}";
+    String SYSTEM_USER_ASSIGN_REHAB_ROLE_SUB_TYPE = "分配康复员工角色";
+    String SYSTEM_USER_ASSIGN_REHAB_ROLE_SUCCESS = "为员工【{{#userId}}】分配了康复角色【{{#roleCode}}】";
     String SYSTEM_USER_DELETE_SUB_TYPE = "删除用户";
     String SYSTEM_USER_DELETE_SUCCESS = "删除了用户【{{#user.nickname}}】";
     String SYSTEM_USER_UPDATE_PASSWORD_SUB_TYPE = "重置用户密码";
