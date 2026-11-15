@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { evaluateInternalPilotReadiness } from './owner-internal-pilot-readiness.mjs'
+import { evaluateInternalPilotReadiness,
+  PILOT_READONLY_MENU_IDS } from './owner-internal-pilot-readiness.mjs'
 
 const license = {
   status: 'APPROVED', provisioning_status: 'NOT_CONFIGURED', main_tenant_id: null,
@@ -59,12 +60,17 @@ test('incorrect Core quota, package or machine identity cannot produce ready', (
   }
 })
 
-test('enabled package without rehab query permission blocks a usable institution', () => {
+test('three-menu pilot is navigation + motion page + query only', () => {
+  assert.deepEqual(PILOT_READONLY_MENU_IDS, [9000, 9700, 9710])
+  assert.equal(Object.isFrozen(PILOT_READONLY_MENU_IDS), true)
+})
+
+test('broad or incomplete package fails exact minimal pilot-scope preflight', () => {
   const result = evaluateInternalPilotReadiness({ ...verified,
     packageMatches: 1, permissionMatches: 0 })
   assert.equal(result.checks.effectiveCorePermissionPackageVerified, true)
-  assert.equal(result.checks.corePermissionPackageHasRehabMotionQuery, false)
-  assert.deepEqual(result.blockers, ['corePermissionPackageHasRehabMotionQuery'])
+  assert.equal(result.checks.corePermissionPackageHasExactPilotScope, false)
+  assert.deepEqual(result.blockers, ['corePermissionPackageHasExactPilotScope'])
   assert.equal(result.technicalPrerequisitesReady, false)
   assert.equal(evaluateInternalPilotReadiness({ ...verified,
     permissionMatches: undefined }).technicalPrerequisitesReady, false)

@@ -13,6 +13,9 @@ const OWNER_ENV = resolve(homedir(), 'my-project/rehab-runtime/owner-local/owner
 const PILOT_QUOTAS = Object.freeze({
   users: 20, patients: 400, assessments: 2000, storageBytes: 5368709120
 })
+// QA-only first-login scope: rehab navigation, motion page, and motion query.
+// No patient write, assessment sign-off, staff management, HEP or other menus.
+export const PILOT_READONLY_MENU_IDS = Object.freeze([9000, 9700, 9710])
 
 function positiveId(value) {
   return typeof value === 'string' && /^[1-9][0-9]{0,17}$/.test(value)
@@ -45,13 +48,13 @@ export function evaluateInternalPilotReadiness({ applicants, planMatches, packag
     ownerCoreProvisioningNotYetAttempted: uniqueApplicant?.provisioning_status === 'NOT_CONFIGURED',
     effectiveCorePilotQuotaVerified: planMatches === 1,
     effectiveCorePermissionPackageVerified: packageMatches === 1,
-    // A valid but empty rehab permission package is insufficient for a usable
-    // clinic: real OAuth login succeeds but motion assessment returns 403.
-    corePermissionPackageHasRehabMotionQuery: permissionMatches === 1,
+    // Require the exact three-menu QA scope; a broad pre-existing package is
+    // not an implicit authorization to grant other system or clinical menus.
+    corePermissionPackageHasExactPilotScope: permissionMatches === 1,
     ownerCoreMachineChannelReady: ownerCore?.ready === true
   }
   return {
-    schema: 'rehab-internal-pilot-live-readonly/1',
+    schema: 'rehab-internal-pilot-live-readonly/2',
     permittedDataScope: 'SYNTHETIC_ONLY',
     actualPatientDataUseVerifiedByThisTool: false,
     expectedQuotas: PILOT_QUOTAS,
@@ -88,9 +91,15 @@ export async function inspectInternalPilotLive() {
         AND status=0 AND deleted=0),
       (SELECT COUNT(*) FROM system_tenant_package p WHERE p.id=${pkg}
         AND p.status=0 AND p.deleted=0
-        AND EXISTS (SELECT 1 FROM system_menu m
-          WHERE m.permission='rehab:motion:query' AND m.deleted=0
-          AND JSON_CONTAINS(p.menu_ids, CAST(m.id AS CHAR))));`
+        AND JSON_VALID(p.menu_ids)=1 AND JSON_TYPE(p.menu_ids)='ARRAY'
+        AND JSON_LENGTH(p.menu_ids)=${PILOT_READONLY_MENU_IDS.length}
+        AND JSON_CONTAINS(p.menu_ids,'${JSON.stringify(PILOT_READONLY_MENU_IDS)}')
+        AND (SELECT COUNT(*) FROM system_menu m WHERE m.status=0 AND m.deleted=0
+          AND ((m.id=9000 AND m.type=1 AND m.parent_id=0)
+            OR (m.id=9700 AND m.type=2 AND m.parent_id=9000
+                AND m.permission='rehab:motion:query')
+            OR (m.id=9710 AND m.type=3 AND m.parent_id=9700
+                AND m.permission='rehab:motion:query')))=${PILOT_READONLY_MENU_IDS.length});`
     const output = execFileSync('docker', [
       'exec', 'rehab-studio-internal-mysql-1', 'mysql',
       '--defaults-extra-file=/run/rehab-secrets/mysql-client.cnf',
